@@ -8,6 +8,27 @@
 
 ![URLab](docs/images/hero.png)
 
+> ## ⚠️ Beta: this release breaks existing MjArticulation assets
+>
+> `main` is now the **beta**. The component model changed: components no longer
+> mirror the MuJoCo model, they **are** the model, and every element is
+> generated from MuJoCo's own `mjcf.schema`.
+>
+> **Updating the plugin will break MjArticulations you already have.** Their
+> components are the previous generation's classes, and nothing migrates them.
+> Expect to re-import your MJCF rather than to open an existing Blueprint. Back
+> up your project first.
+>
+> **If you are not ready for that, stay on the `alpha` branch**, which is the
+> final pre-beta state and is not going to move under you:
+>
+> ```
+> git checkout alpha          # or the v0.5.0-alpha tag, which is frozen
+> ```
+>
+> Re-importing gets you a model that compiles to exactly what stock MuJoCo's
+> own `mj_loadXML` produces, which the previous generation could not promise.
+
 UnrealRoboticsLab (URLab) is an Unreal Engine 5 plugin that embeds the
 [MuJoCo](https://github.com/google-deepmind/mujoco) physics engine directly into
 the editor and runtime. You simulate robots with MuJoCo's accurate contact
@@ -26,13 +47,12 @@ dynamics and render them with Unreal's lighting, materials, and cameras.
   body with a single component.
 - **Simulate with MuJoCo, render with Unreal.** Physics runs on its own thread while
   Unreal renders, so you get accurate contacts and photorealistic output together.
-- **Control robots however you like.** Drive actuators from Blueprints, the in-editor
-  dashboard, or Python and ROS 2 over the network, with PD controllers and live gain
-  tuning.
+- **Control a simulation.** Use the world-owned MuJoCo simulation service and
+  its explicit control authority from the typed Python bridge.
 - **Capture sensor data.** Render RGB, depth, and segmentation from robot cameras with
   real camera intrinsics, alongside MuJoCo's full sensor suite.
-- **Record and replay.** Capture entire simulation episodes and play them back
-  deterministically.
+- **Render from Python.** Attach an owner to a render service, install a source,
+  and request exact camera captures; or drive a visible viewer with Cartesian poses.
 - **Debug visually.** Body-island and segmentation overlays, tendon and muscle
   rendering, collision overlays, and mouse-driven body perturbation.
 
@@ -69,10 +89,13 @@ Full documentation is at
 
 ## Python integration
 
-URLab talks to external systems over ZMQ. The companion
+URLab uses ZMQ commands with network or negotiated shared-memory data.
+On Linux, gRPC (`dm_env_rpc`) carries URLab render extensions with network data;
+it does not provide general simulation control or a continuous viewer bus. The companion
 [urlab_bridge](https://github.com/URLab-Sim/urlab_bridge) package (separate
-repository) provides Python middleware for remote control, policy deployment, and
-ROS 2 bridging.
+repository) provides Python middleware for remote control and ROS 2 bridging, and
+  the typed clients for simulation, render and viewer services described under
+[Render Server](https://urlab-sim.github.io/UnrealRoboticsLab/concepts/render_roles/).
 
 ## Requirements
 
@@ -81,13 +104,16 @@ ROS 2 bridging.
   (x86_64) with UE's bundled clang.
 - CMake 3.24+ to build the dependencies.
 - MuJoCo, CoACD, and libzmq are bundled as submodules and built from source.
-- Python 3.11+ (optional), for `urlab_bridge`.
+- gRPC is built separately and only on Linux; see the gRPC transport page in
+  the contributing docs. Without it the plugin builds and runs, minus that transport.
+- Python 3.11 or 3.12 (optional), for `urlab_bridge`.
 
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and the
 [Contributing docs](https://urlab-sim.github.io/UnrealRoboticsLab/contributing/building/)
-for building from source, the codegen, and bumping MuJoCo. Since Unreal projects
+for building from source, regenerating the MuJoCo profile, and bumping
+MuJoCo. Since Unreal projects
 cannot use standard CI, each PR should include proof of a local build and passing
 tests.
 

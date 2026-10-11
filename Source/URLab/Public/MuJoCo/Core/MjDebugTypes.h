@@ -53,7 +53,7 @@ struct FMuJoCoDebugData
 	 */
 	TArray<FVector> WrapPointsFlat;
 
-	/** Mirror of `mjData.wrap_obj` (nwrap * 2 ints). -2 = pulley, skip when drawing. */
+	/** Copy of `mjData.wrap_obj` (nwrap * 2 ints). -2 = pulley, skip when drawing. */
 	TArray<int32> WrapObj;
 
 	/** Per-tendon: `ten_wrapadr` / `ten_wrapnum`, length, and limit range. Sizes = ntendon. */

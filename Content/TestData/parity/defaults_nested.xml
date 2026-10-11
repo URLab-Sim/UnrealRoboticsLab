@@ -1,0 +1,41 @@
+<mujoco model="defaults_nested">
+<!-- three-level default class tree with geom/joint/position-actuator partials and childclass inheritance -->
+  <default>
+    <default class="top">
+      <geom type="box" size="0.1 0.1 0.1" rgba="0.8 0.2 0.2 1"/>
+      <joint type="hinge" damping="0.5"/>
+      <position kp="10"/>
+      <default class="mid">
+        <geom size="0.05 0.05 0.05" rgba="0.2 0.8 0.2 1"/>
+        <joint damping="1"/>
+        <position kp="20"/>
+        <default class="leaf">
+          <geom size="0.025 0.025 0.025" rgba="0.2 0.2 0.8 1"/>
+          <joint damping="2"/>
+          <position kp="40"/>
+        </default>
+      </default>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="body_top" pos="0 0 1" childclass="top">
+      <geom name="geom_top"/>
+      <joint name="joint_top" axis="0 0 1"/>
+      <body name="body_mid" pos="0.5 0 0" childclass="mid">
+        <geom name="geom_mid"/>
+        <joint name="joint_mid" axis="0 1 0"/>
+        <body name="body_leaf" pos="0.25 0 0">
+          <geom name="geom_leaf" class="leaf"/>
+          <joint name="joint_leaf" class="leaf" axis="1 0 0"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="act_top" joint="joint_top" class="top"/>
+    <position name="act_mid" joint="joint_mid" class="mid"/>
+    <position name="act_leaf" joint="joint_leaf" class="leaf"/>
+  </actuator>
+</mujoco>

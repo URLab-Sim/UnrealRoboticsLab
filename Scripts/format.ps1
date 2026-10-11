@@ -4,9 +4,10 @@
 #   Scripts/format.ps1            # format Source/ in place
 #   Scripts/format.ps1 -Check     # exit 1 if anything is unformatted (CI)
 #
-# Codegen-managed files are also formatted here, but the codegen emits the
-# same formatting (see _clang_format_content in generate_ue_components.py), so
-# running this after a regen is a no-op on generated files.
+# `*.gen.h` / `*.gen.cpp` are skipped. The emitter owns their bytes and the
+# codegen drift gate compares them exactly, so formatting them here would be
+# reverted by the next regen and the two gates would each undo the other. The
+# emitter's own output is the standard those files are held to.
 #
 # Requires clang-format 19.x (VS2022's bundled LLVM, or set $env:CLANG_FORMAT).
 param([switch]$Check)
@@ -25,7 +26,8 @@ function Resolve-ClangFormat {
 
 $cf = Resolve-ClangFormat
 $files = Get-ChildItem -Path (Join-Path $root 'Source') -Recurse -Include *.h, *.cpp -File |
-    Where-Object { $_.FullName -notmatch '[\\/](Intermediate|Binaries)[\\/]' }
+    Where-Object { $_.FullName -notmatch '[\\/](Intermediate|Binaries)[\\/]' } |
+    Where-Object { $_.Name -notmatch '\.gen\.(h|cpp)$' }
 
 Write-Host "clang-format: $cf"
 Write-Host "files: $($files.Count)"

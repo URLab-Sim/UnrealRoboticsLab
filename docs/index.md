@@ -17,8 +17,8 @@ materials, and cameras.
   photorealistic output at the same time.
 - **Control robots however you like.** Drive actuators from Blueprints, from the
   in-editor dashboard, or from Python and ROS 2 over the network.
-- **Capture data.** Render RGB, depth, and segmentation from robot cameras, and
-  record and replay full simulation episodes.
+- **Capture data.** Render RGB, depth, and segmentation from robot cameras through
+  explicit render jobs or advertised camera streams.
 
 ## Who it is for
 
@@ -34,7 +34,7 @@ dedicated massively parallel MuJoCo framework such as
 [mujoco_warp](https://github.com/google-deepmind/mujoco_warp), then evaluate the
 resulting policies directly in URLab. Because both use MuJoCo, the
 [Python bridge](python/index.md) lets you move between training there and
-evaluating, recording, and visualising here.
+evaluating and visualising here.
 
 ## Get started
 
@@ -46,8 +46,10 @@ evaluating, recording, and visualising here.
   in a few minutes.
 - **[Python & External Control](python/index.md)** drives the simulation from
   Python, for scripted control and running policies.
-- **[Architecture](concepts/architecture.md)** explains how the pieces fit
+- **[Architecture](architecture/intended_design.md)** explains how the pieces fit
   together under the hood.
+- **[The Component Model](concepts/model.md)** explains why the Unreal
+  components *are* the MuJoCo model.
 
 </div>
 

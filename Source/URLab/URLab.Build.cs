@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using UnrealBuildTool;
 using System.IO;
@@ -58,7 +59,6 @@ public class URLab : ModuleRules
 			"Engine",
 			"InputCore",
 			"PhysicsCore",
-			"XmlParser",
 			"HTTP",
 			"Json",
 			"JsonUtilities",
@@ -72,7 +72,9 @@ public class URLab : ModuleRules
 			"AssetRegistry",
 			"ProceduralMeshComponent",
 			"GeometryFramework",
-			"GeometryCore"
+			"GeometryCore",
+			"MeshDescription",
+			"StaticMeshDescription"
 		});
 
 		// Editor-only dependencies for DecomposeMesh and other #if WITH_EDITOR code
@@ -81,7 +83,8 @@ public class URLab : ModuleRules
 			PrivateDependencyModuleNames.AddRange(new string[]
 			{
 				"UnrealEd",
-				"AssetTools"
+				"AssetTools",
+				"MaterialEditor"  // MjSkyImporter builds the skybox display material at load
 			});
 		}
 
@@ -129,8 +132,73 @@ public class URLab : ModuleRules
 		VerifyThirdPartyInstalls();
 
 		AddMuj(Target);
+		AddMjShim(Target);
+		AddProtospec(Target);
 		AddCoACD(Target);
 		AddZeroMQ(Target);
+	}
+
+	// MjShim: MuJoCo entry points that take a C++ container by void* and take
+	// ownership of it, restated to cross only C strings. Unreal replaces global
+	// operator new per module, so a container built here and freed by MuJoCo is
+	// two allocators on one allocation. See third_party/MjShim/include for the
+	// whole argument.
+	protected void AddMjShim(ReadOnlyTargetRules Target)
+	{
+		AddThirdPartyLibrary("MjShim", Target);
+	}
+
+	// The schema-driven UE authoring tree uses only native conversion, include
+	// expansion and XML helpers, plus a native model comparison test helper.
+	protected void AddProtospec(ReadOnlyTargetRules Target)
+	{
+		// Only the narrow helpers used by the direct UE XML gateway are staged.
+		string[] IncludeDirs = { "include", "core", "io", "harness",
+			Path.Combine("third_party", "tinyxml2") };
+
+		string Root = Path.Combine(ThirdPartyPath, "protospec");
+		string IncludePath = Path.Combine(Root, "include");
+		string LibPath = Path.Combine(Root, "lib");
+		if (!Directory.Exists(IncludePath) || !Directory.Exists(LibPath))
+		{
+			Console.WriteLine(
+				"URLab: ProtoSpec is not installed under third_party/install/protospec - " +
+				"building without the generated MuJoCo authoring tree. Run " +
+				"protospec/build.ps1 (Windows) or protospec/build.sh (Linux) to enable it.");
+			PublicDefinitions.Add("URLAB_PROTOSPEC=0");
+			return;
+		}
+
+		foreach (string Dir in IncludeDirs)
+		{
+			string Full = Path.Combine(Root, Dir);
+			if (Directory.Exists(Full))
+			{
+				PublicIncludePaths.Add(Full);
+			}
+		}
+
+		// Named, not globbed: the link line is the staging script's contract, so a
+		// library that stops being staged fails here by name instead of silently
+		// disappearing, and a stale archive left in the install cannot creep back on.
+		string[] LibNames = { "protospec_core", "protospec_mjcf", "tinyxml2", "protospec_harness" };
+		bool Win64 = Target.Platform == UnrealTargetPlatform.Win64;
+		foreach (string Name in LibNames)
+		{
+			string Lib = Path.Combine(LibPath, Win64 ? Name + ".lib" : "lib" + Name + ".a");
+			if (!File.Exists(Lib))
+			{
+				throw new BuildException(
+					"ProtoSpec install at {0} is missing '{1}'. " +
+					"Re-run protospec/build.ps1 (Windows) or protospec/build.sh (Linux).", Root, Lib);
+			}
+			PublicAdditionalLibraries.Add(Lib);
+		}
+
+		// ProtoSpec is header-template-heavy and uses C++20 concepts throughout;
+		// UE 5.7 already compiles at C++20, so this only pins the intent.
+		CppStandard = CppStandardVersion.Cpp20;
+		PublicDefinitions.Add("URLAB_PROTOSPEC=1");
 	}
 
 	private string ThirdPartyPath
@@ -173,6 +241,18 @@ public class URLab : ModuleRules
 					string DllName = Path.GetFileName(DllFile);
 					if (DllName.StartsWith("vcruntime") || DllName.StartsWith("msvcp") || DllName.StartsWith("concrt"))
 						continue;
+
+					// MuJoCo's plugin libraries keep their own directory and are
+					// NOT delay-loaded: mj_loadAllPluginLibraries opens them by
+					// path at startup, and flattening them next to the runtime
+					// would both lose the directory it scans and register them
+					// as imports nothing ever calls.
+					if (DllFile.Replace('\\', '/').Contains("/mujoco_plugin/"))
+					{
+						RuntimeDependencies.Add("$(BinaryOutputDir)/mujoco_plugin/" + DllName, DllFile, StagedFileType.NonUFS);
+						continue;
+					}
+
 					RuntimeDependencies.Add("$(BinaryOutputDir)/" + DllName, DllFile, StagedFileType.NonUFS);
 					PublicDelayLoadDLLs.Add(DllName);
 				}
@@ -204,14 +284,20 @@ public class URLab : ModuleRules
 				// records the SONAME, not an absolute versioned path.
 				foreach (string LibFile in Directory.GetFiles(LibPath, "*.so", SearchOption.AllDirectories))
 				{
-					PublicAdditionalLibraries.Add(LibFile);
+					// First-party MuJoCo plugins are loaded from their directory by
+					// mj_loadAllPluginLibraries, not linked as module dependencies.
+					if (!LibFile.Replace('\\', '/').Contains("/mujoco_plugin/"))
+						PublicAdditionalLibraries.Add(LibFile);
 				}
 				// Stage every *.so* (including version-suffixed real files)
 				// next to the plugin .so so the SONAME chain resolves at
 				// runtime under ${ORIGIN}.
 				foreach (string LibFile in Directory.GetFiles(LibPath, "*.so*", SearchOption.AllDirectories))
 				{
-					RuntimeDependencies.Add("$(BinaryOutputDir)/" + Path.GetFileName(LibFile), LibFile, StagedFileType.NonUFS);
+					string Destination = LibFile.Replace('\\', '/').Contains("/mujoco_plugin/")
+						? "$(BinaryOutputDir)/mujoco_plugin/" + Path.GetFileName(LibFile)
+						: "$(BinaryOutputDir)/" + Path.GetFileName(LibFile);
+					RuntimeDependencies.Add(Destination, LibFile, StagedFileType.NonUFS);
 				}
 			}
 
@@ -446,4 +532,5 @@ public class URLab : ModuleRules
 	{
 		AddThirdPartyLibrary("libzmq", Target);
 	}
+
 }

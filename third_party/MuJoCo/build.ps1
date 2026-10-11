@@ -8,6 +8,7 @@ param(
 if (-not [System.IO.Path]::IsPathRooted($InstallDir)) {
     $InstallDir = Join-Path $PSScriptRoot $InstallDir
 }
+$InstallRoot = [System.IO.Path]::GetFullPath($InstallDir).Replace('\', '/')
 $InstallDir = Join-Path $InstallDir "MuJoCo"
 $InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
 $InstallDir = $InstallDir.Replace('\', '/')
@@ -61,7 +62,14 @@ $cmakeArgs = @(
     "-DMUJOCO_BUILD_EXAMPLES=OFF",
     "-DMUJOCO_BUILD_TESTS=OFF",
     "-DMUJOCO_BUILD_SIMULATE=OFF",
-    "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$($BuildType.Replace('Release', '').Replace('Debug', 'Debug'))DLL"
+    "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$($BuildType.Replace('Release', '').Replace('Debug', 'Debug'))DLL",
+    # MuJoCo patches its fetched qhull with `git apply --reject`, which is not
+    # idempotent: applied twice it rejects every hunk and returns non-zero. On
+    # the Visual Studio generator MSBuild re-invokes CMake mid-build once the
+    # FetchContent deps have landed, so a build from a clean tree would re-run
+    # that patch and fail. Suppressing regeneration keeps the one successful
+    # configure authoritative for the rest of the build.
+    "-DCMAKE_SUPPRESS_REGENERATION=ON"
 )
 cmake @cmakeArgs
 if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed for MuJoCo" }
@@ -73,6 +81,24 @@ if ($LASTEXITCODE -ne 0) { throw "Build failed for MuJoCo" }
 Write-Host "Installing MuJoCo..." -ForegroundColor Gray
 cmake --install . --config $BuildType
 if ($LASTEXITCODE -ne 0) { throw "Installation failed for MuJoCo" }
+
+# MuJoCo builds its first-party plugins (PID actuator, elasticity, sensor, SDF)
+# as separate shared libraries but installs none of them -- upstream expects
+# `simulate` to pick them up out of the build tree. URLab loads them at module
+# startup, so they have to be part of the install: a model naming `mujoco.pid`
+# does not build without one.
+$PluginOut = Join-Path $InstallDir "bin/mujoco_plugin"
+New-Item -ItemType Directory -Force -Path $PluginOut | Out-Null
+$PluginBuildDir = Join-Path (Get-Location) "bin/$BuildType"
+$PluginLibs = Get-ChildItem -Path $PluginBuildDir -Filter "*.dll" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne "mujoco.dll" }
+foreach ($Lib in $PluginLibs) {
+    Copy-Item -Path $Lib.FullName -Destination $PluginOut -Force
+    Write-Host "Installed plugin $($Lib.Name)" -ForegroundColor Gray
+}
+if (-not $PluginLibs) {
+    Write-Host "WARNING: no MuJoCo plugin libraries found in $PluginBuildDir" -ForegroundColor Yellow
+}
 
 Pop-Location
 

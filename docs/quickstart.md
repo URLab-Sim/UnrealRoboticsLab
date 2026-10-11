@@ -1,7 +1,7 @@
 # Quickstart
 
-This walks you from an installed plugin to a robot simulating in your level in a
-few minutes. If you have not installed URLab yet, start with
+This walks you from an installed plugin to an authored robot in your level.
+If you have not installed URLab yet, start with
 [Installation](installation.md).
 
 ## 1. Import a robot
@@ -21,40 +21,27 @@ See [Importing Robots](guides/importing.md) for the full import workflow, and
 
 ## 2. Set up the level
 
-1. Place an **MjManager** actor in your level. It coordinates the simulation, one
-   per level.
+1. Place an **MjManager** actor in your level as the authoring source.
 2. Drag your imported robot Blueprint into the level.
 
 ![A robot Blueprint and an MjManager placed in the level](images/placeholder.svg)
 
 ## 3. Press Play
 
-Hit Play. MuJoCo starts simulating on its own thread while Unreal renders. The
-**Simulate** dashboard appears, giving you actuator sliders, sensor readouts,
-live camera feeds, and keyframe controls.
+Hit Play to activate the world-owned MuJoCo simulation service for the authored
+scene. Runtime simulation state and control belong to that service, not to
+the manager or articulation actors.
 
-![The Simulate dashboard during play](images/placeholder.svg)
+## 4. Control the simulation
 
-!!! note "No dashboard?"
-    Make sure an MjManager is in the level with `bAutoCreateSimulateWidget`
-    enabled, and that **Show Plugin Content** is on in the Content Browser
-    settings.
-
-## 4. Move the robot
-
-Try any of these:
-
-- **Dashboard.** Set the control source to UI, then drag the actuator sliders.
-  See the [Simulate Dashboard](guides/dashboard.md) guide.
-- **Blueprint.** Call the articulation's control functions (set actuator targets,
-  read joints and sensors) from your own graphs. See
-  [Controllers](guides/controllers.md).
-- **Python.** Connect a client to step the simulation, send control, and run
-  policies. See the [Python Quickstart](python/quickstart.md).
+Use the companion bridge's `SimulationClient` against an already available
+simulation. Connect, inspect the model generation, explicitly claim control,
+then choose the clock and send controls or steps. See the
+[Python overview](python/index.md) and [architecture](architecture/intended_design.md).
 
 ## Where to next
 
 - [Importing Robots](guides/importing.md) and [Articulations](guides/articulations.md)
 - [Sensors & Cameras](guides/sensors_cameras.md) for cameras and sensor readouts
 - [Debug Visualization](guides/debug.md) for contact, joint, and collision overlays
-- [Python & External Control](python/index.md) to drive everything from code
+- [Python & External Control](python/index.md) for the current service clients

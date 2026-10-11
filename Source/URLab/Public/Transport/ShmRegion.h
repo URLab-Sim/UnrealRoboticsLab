@@ -93,6 +93,15 @@ public:
 	 */
 	bool Open(const FString& Path, uint32 BufferStride, uint32 NBuffers);
 
+	/** Map a region a PRODUCER already created, taking the geometry from the
+	 *  header rather than being told it. Fails (quietly, so a consumer may poll
+	 *  for a producer that has not started yet) when the file is absent, shorter
+	 *  than its own header claims, or does not carry our magic and version.
+	 *
+	 *  The mapping is read/write even though a consumer only reads: a private
+	 *  read-only map would not see the producer's stores. */
+	bool OpenExisting(const FString& Path);
+
 	/** Unmap, close handles, optionally remove the backing file. */
 	void Close(bool bDeleteFile = false);
 

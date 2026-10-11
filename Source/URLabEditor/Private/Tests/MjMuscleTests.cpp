@@ -15,9 +15,10 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Actuators/MjMuscleActuator.h"
-#include "MuJoCo/Components/Tendons/MjTendon.h"
-#include "MuJoCo/Components/Geometry/MjSite.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjMuscle.gen.h"
+#include "MuJoCo/Gen/Elements/Geometry/MjSite.gen.h"
+#include "MuJoCo/Gen/Elements/Tendons/MjSpatial.gen.h"
 #include "mujoco/mujoco.h"
 
 namespace
@@ -196,11 +197,11 @@ bool FTest_MjMuscle_Arm26_Counts::RunTest(const FString&)
 		return false;
 	}
 
-	// Pre-compile diagnostic: how many component templates did the importer create?
-	AddInfo(FString::Printf(TEXT("templates: UMjMuscleActuator=%d, UMjTendon=%d, UMjSite=%d"),
-		S.CountTemplates<class UMjMuscleActuator>(),
-		S.CountTemplates<class UMjTendon>(),
-		S.CountTemplates<class UMjSite>()));
+	// Pre-compile diagnostic: how many element templates did the importer create?
+	AddInfo(FString::Printf(TEXT("templates: UMjMuscle=%d, UMjSpatial=%d, UMjSite=%d"),
+		S.CountTemplates<UMjMuscle>(),
+		S.CountTemplates<UMjSpatial>(),
+		S.CountTemplates<UMjSite>()));
 
 	if (!S.Compile())
 	{

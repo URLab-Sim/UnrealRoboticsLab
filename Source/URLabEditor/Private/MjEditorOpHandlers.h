@@ -14,6 +14,6 @@ namespace URLabEditorOpHandlers
  *  URLabEditor's StartupModule. */
 void RegisterAll();
 
-/** Mirror — called from ShutdownModule. */
+/** The counterpart — called from ShutdownModule. */
 void UnregisterAll();
 } // namespace URLabEditorOpHandlers

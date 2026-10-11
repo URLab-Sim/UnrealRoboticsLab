@@ -66,8 +66,13 @@ EActiveTimerReturnType SURLabBridgeServerToggle::OnPoll(double, float)
 
 	if (Sub->IsRunning())
 	{
+		// Read the port off the running server, not the subsystem's own copy: a
+		// ReloadConfig between start and now would show a port nothing is bound to.
+		const int32 Port = Sub->GetBridgeServer()
+							 ? Sub->GetBridgeServer()->GetInstanceConfig().StepPort
+							 : Sub->GetConfig().StepPort;
 		CachedLabel = FText::FromString(FString::Printf(
-			TEXT("Bridge: running (port %d)"), Sub->GetConfig().StepPort));
+			TEXT("Bridge: running (port %d)"), Port));
 		CachedButtonText = FText::FromString(TEXT("Stop"));
 		CachedColor = FLinearColor(0.18f, 0.55f, 0.20f, 1.0f); // green
 	}

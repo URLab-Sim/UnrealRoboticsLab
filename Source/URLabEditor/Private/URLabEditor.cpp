@@ -25,7 +25,6 @@
 #include "MjBridgeServerSubsystem.h"
 #include "MjEditorOpHandlers.h"
 #include "Bridge/BridgeServerProvider.h"
-#include "SMjStepModeIndicator.h"
 #include "SMjBridgeServerToggle.h"
 #include "Editor.h"
 #include "ToolMenus.h"
@@ -33,33 +32,39 @@
 #include "ToolMenuEntry.h"
 #include "ToolMenuSection.h"
 #include "ToolMenuMisc.h"
+#include "MessageLogModule.h"
 
 DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "PropertyEditorModule.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MjComponentDetailCustomizations.h"
-#include "MuJoCo/Components/Physics/MjContactPair.h"
-#include "MuJoCo/Components/Physics/MjContactExclude.h"
-#include "MuJoCo/Components/Constraints/MjEquality.h"
+
+#include "MjEffectiveDetails.h"
+#include "MjElementVisualizers.h"
+#include "MjFrameTypeCustomizations.h"
+#include "MuJoCo/Spec/MjElementIdentity.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MjDecompositionMenu.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjPair.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjExclude.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjEquality.gen.h"
 
 #include "LevelEditor.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "ScopedTransaction.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Geometry/MjSite.h"
-#include "MuJoCo/Components/Tendons/MjTendon.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Defaults/MjDefault.h"
-#include "MuJoCo/Components/Tendons/MjTendon.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Gen/Elements/Geometry/MjSite.gen.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Gen/Elements/Defaults/MjDefault.gen.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Physics/MjContactPair.h"
-#include "MuJoCo/Components/Physics/MjContactExclude.h"
-#include "MuJoCo/Components/Constraints/MjEquality.h"
+#include "MuJoCo/Spec/MjNodeFactories.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "SMjArticulationOutliner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Framework/Docking/WorkspaceItem.h"
@@ -67,6 +72,23 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 void FURLabEditorModule::StartupModule()
 {
 	FMjEditorStyle::Initialize();
+
+	// Convex decomposition is an action, not an attribute of the geom, so it
+	// sits on the component tree's context menu rather than in the details panel.
+	FMjDecompositionMenu::Register();
+
+	// Import and generation diagnostics are routed to a listing named "URLab"
+	// (see MujocoImportFactory.cpp, MujocoGenerationAction.cpp) via
+	// FMessageLog before this call ever runs, so nothing breaks without it --
+	// but an unregistered listing renders in the Messages panel with no label,
+	// indistinguishable from every other unlabelled entry there. Registering it
+	// is what gives it the "URLab" heading and lets it be opened directly.
+	{
+		FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>(TEXT("MessageLog"));
+		FMessageLogInitializationOptions InitOptions;
+		InitOptions.bShowPages = true;
+		MessageLogModule.RegisterLogListing(TEXT("URLab"), NSLOCTEXT("URLab", "URLabLogLabel", "URLab"), InitOptions);
+	}
 
 	// Install the bridge-server resolver so AAMjManager (URLab module) can
 	// discover the editor-time server without depending on URLabEditor.
@@ -88,23 +110,22 @@ void FURLabEditorModule::StartupModule()
 	// URLabOpRegistry, which these handlers populate.
 	URLabEditorOpHandlers::RegisterAll();
 
+	// The MuJoCo frame types render as a single inline row with a unit label,
+	// rather than as an expandable struct of three doubles.
+	FMjFrameTypeCustomization::RegisterAll();
+
+	// Joints, sites, lights and cameras have no mesh to preview with, so the
+	// editor drew nothing for them at all. One visualizer against the element
+	// base draws all of them from the components and their effective values.
+	FMjElementVisualizer::RegisterAll();
+
+	// An unset attribute is not a blank: it is whatever the element's default
+	// class says. The panel shows that value, greyed, next to the class name.
+	FMjEffectiveDetails::RegisterAll();
+
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	// Only Geom has non-hiding logic (the CoACD decomposition buttons).
-	// The other 9 components' simple "HideProperty(DefaultClass)" /
-	// "HideProperty(Name)" customizations were replaced by
-	// meta=(EditCondition="false", EditConditionHides) on the UPROPERTY
-	// decls themselves — see UMjActuator::DefaultClass et al.
-	{
-		TArray<UClass*> GeomClasses;
-		GetDerivedClasses(UMjGeom::StaticClass(), GeomClasses, true);
-		GeomClasses.Add(UMjGeom::StaticClass());
-		for (UClass* Class : GeomClasses)
-		{
-			PropertyModule.RegisterCustomClassLayout(
-				Class->GetFName(),
-				FOnGetDetailCustomizationInstance::CreateStatic(&FMjGeomDetailCustomization::MakeInstance));
-		}
-	}
+	// No element needs a custom layout: every panel is what the generated
+	// UPROPERTY metadata makes it, which is the point of generating them.
 	PropertyModule.NotifyCustomizationModuleChanged();
 
 	// Register viewport actor context menu extender
@@ -119,21 +140,28 @@ void FURLabEditorModule::StartupModule()
 	// Register auto-parenting hook for MuJoCo components
 	OnObjectModifiedHandle = FCoreUObjectDelegates::OnObjectModified.AddRaw(this, &FURLabEditorModule::OnObjectModified);
 
-	// Register the StepMode status indicator into the level editor toolbar.
-	// The indicator is a small Slate widget that polls AAMjManager::Instance
-	// every 0.5s and shows a coloured pill: green=Live, amber=Direct,
-	// blue=Puppet, grey=Auto/none. No asset deps; pure code.
+	// The move hook the engine does not deliver to a construction-script root.
+	// The delegate lives on `GEngine`, which an editor module can start before,
+	// so the binding waits for the engine when it has to.
+	if (GEngine != nullptr)
+	{
+		OnActorMovedHandle = GEngine->OnActorMoved().AddRaw(this, &FURLabEditorModule::OnActorMoved);
+	}
+	else
+	{
+		PostEngineInitHandle = FCoreDelegates::OnPostEngineInit.AddLambda([this]() {
+			if (GEngine != nullptr && !OnActorMovedHandle.IsValid())
+			{
+				OnActorMovedHandle = GEngine->OnActorMoved().AddRaw(this, &FURLabEditorModule::OnActorMoved);
+			}
+		});
+	}
+
 	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]() {
 		UToolMenu* ToolBar = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.PlayToolBar");
 		if (!ToolBar)
 			return;
 		FToolMenuSection& Section = ToolBar->FindOrAddSection("URLab");
-		Section.AddEntry(FToolMenuEntry::InitWidget(
-			"URLabStepModeIndicator",
-			SNew(SMjStepModeIndicator),
-			FText::GetEmpty(),
-			/*bNoIndent=*/true,
-			/*bSearchable=*/false));
 		Section.AddEntry(FToolMenuEntry::InitWidget(
 			"URLabBridgeServerToggle",
 			SNew(SURLabBridgeServerToggle),
@@ -156,16 +184,32 @@ void FURLabEditorModule::StartupModule()
 								}))
 		.SetDisplayName(FText::FromString(TEXT("MuJoCo Outliner")))
 		.SetTooltipText(FText::FromString(TEXT("Filtered view of MuJoCo articulation components")));
+
 }
+
 
 void FURLabEditorModule::ShutdownModule()
 {
 	FMjEditorStyle::Shutdown();
 
+	if (FModuleManager::Get().IsModuleLoaded("MessageLog"))
+	{
+		FMessageLogModule& MessageLogModule = FModuleManager::GetModuleChecked<FMessageLogModule>(TEXT("MessageLog"));
+		MessageLogModule.UnregisterLogListing(TEXT("URLab"));
+	}
+
+	FMjElementVisualizer::UnregisterAll();
+
 	URLabBridgeProvider::RegisterResolver(nullptr);
 	URLabEditorOpHandlers::UnregisterAll();
 
 	FCoreUObjectDelegates::OnObjectModified.Remove(OnObjectModifiedHandle);
+
+	FCoreDelegates::OnPostEngineInit.Remove(PostEngineInitHandle);
+	if (GEngine != nullptr)
+	{
+		GEngine->OnActorMoved().Remove(OnActorMovedHandle);
+	}
 
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
 
@@ -183,6 +227,8 @@ void FURLabEditorModule::ShutdownModule()
 			}
 		};
 		UnregisterWithSubclasses(UMjGeom::StaticClass());
+		FMjEffectiveDetails::UnregisterAll();
+		FMjFrameTypeCustomization::UnregisterAll();
 	}
 
 	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
@@ -250,6 +296,29 @@ void FURLabEditorModule::BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TAr
 		FText::FromString("CoACD decomposition, free to move under physics"),
 		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, false, true)));
+
+	// Promotion only reads on an actor that is already a quick-convert prop, so
+	// the entry is greyed out until one of the selected actors carries the tag.
+	MenuBuilder.AddMenuSeparator();
+	MenuBuilder.AddMenuEntry(
+		FText::FromString("Promote to Articulation"),
+		FText::FromString("Replace the tagged prop with an editable single-body MuJoCo Articulation"),
+		FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateStatic(&FURLabEditorModule::PromoteToArticulation, WeakActors),
+			FCanExecuteAction::CreateLambda([WeakActors]() {
+				for (const TWeakObjectPtr<AActor>& Weak : WeakActors)
+				{
+					if (AActor* Actor = Weak.Get())
+					{
+						if (Actor->FindComponentByClass<UMjQuickConvertComponent>())
+						{
+							return true;
+						}
+					}
+				}
+				return false;
+			})));
 }
 
 void FURLabEditorModule::ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex)
@@ -292,6 +361,104 @@ void FURLabEditorModule::ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors
 
 	UE_LOG(LogURLabEditor, Log, TEXT("MuJoCo Quick Convert applied to %d actor(s) [Static=%d, Complex=%d]"),
 		Applied, bStatic, bComplex);
+}
+
+void FURLabEditorModule::PromoteToArticulation(TArray<TWeakObjectPtr<AActor>> Actors)
+{
+#if URLAB_MJ_GEN
+	FScopedTransaction Transaction(FText::FromString("MuJoCo Promote to Articulation"));
+
+	int32 Promoted = 0;
+	for (const TWeakObjectPtr<AActor>& WeakActor : Actors)
+	{
+		AActor* Actor = WeakActor.Get();
+		if (!Actor)
+			continue;
+
+		UMjQuickConvertComponent* Convert = Actor->FindComponentByClass<UMjQuickConvertComponent>();
+		if (!Convert)
+			continue;
+
+		UWorld* World = Actor->GetWorld();
+		if (!World)
+			continue;
+
+		// The articulation stands where the prop stood. Scale is deliberately left
+		// at one: an MJCF frame carries none, and the source scale already rides on
+		// the geoms' mesh assets, so folding it into the actor frame too would apply
+		// it twice.
+		const FTransform Source = Actor->GetActorTransform();
+		const FTransform Placement(Source.GetRotation(), Source.GetLocation(), FVector::OneVector);
+		const FString Label = Actor->GetActorLabel();
+
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AMjArticulation* Art = World->SpawnActor<AMjArticulation>(
+			AMjArticulation::StaticClass(), Placement, Params);
+		if (!Art || !Art->Spec)
+		{
+			UE_LOG(LogURLabEditor, Warning, TEXT("Promote to Articulation: spawn failed for '%s'."), *Actor->GetName());
+			continue;
+		}
+		Art->Modify();
+
+		TArray<TObjectPtr<UMjNodeComponent>> Geoms;
+		UMjBodyBase* Body = nullptr;
+		FString ConvertError;
+		{
+			urlab::spec::FMjInstanceScope Scope(*Art);
+			Body = UMjQuickConvertComponent::AuthorConvertedBody(
+				*Actor, *Art->Spec, Convert->GetConvertSettings(), Geoms, ConvertError);
+		}
+		if (!Body)
+		{
+			if (ConvertError.IsEmpty())
+			{
+				UE_LOG(LogURLabEditor, Warning,
+					TEXT("Promote to Articulation: '%s' had nothing convertible; removing the empty articulation."),
+					*Actor->GetName());
+			}
+			else
+			{
+				UE_LOG(LogURLabEditor, Error, TEXT("Promote to Articulation: %s."), *ConvertError);
+			}
+			World->DestroyActor(Art);
+			continue;
+		}
+
+		Art->SetActorLabel(Label);
+		Art->GetPackage()->MarkPackageDirty();
+
+		Actor->Modify();
+		World->DestroyActor(Actor);
+		Promoted++;
+	}
+
+	UE_LOG(LogURLabEditor, Log, TEXT("Promoted %d prop(s) to articulation."), Promoted);
+#else
+	UE_LOG(LogURLabEditor, Warning, TEXT("Promote to Articulation requires the generated spec (URLAB_MJ_GEN)."));
+#endif
+}
+
+void FURLabEditorModule::OnActorMoved(AActor* Actor)
+{
+	USceneComponent* const Root = Actor != nullptr ? Actor->GetRootComponent() : nullptr;
+	if (Root == nullptr || Cast<UMjNodeComponent>(Root) == nullptr)
+	{
+		return;
+	}
+
+	// Only the case the engine skips. A root it made itself already had the hook
+	// from `AActor::PostEditMove`, and delivering a second one would run the
+	// whole subtree's write-back twice per drag.
+	if (!Root->IsCreatedByConstructionScript())
+	{
+		return;
+	}
+
+	// Recurses into every attached child, which is what puts the refusal in front
+	// of every element under the actor rather than only the root.
+	Root->PostEditComponentMove(/*bFinished=*/true);
 }
 
 void FURLabEditorModule::OnObjectModified(UObject* Object)
@@ -341,21 +508,37 @@ bool FURLabEditorModule::AutoParentSCSNode(USCS_Node* Node, USimpleConstructionS
 		return false;
 
 	// Determine the correct parent folder name for this component type
+	// Which organisational folder a freshly added component belongs under is a
+	// question about the element it is, not about its C++ class: an actuator is
+	// thirteen classes with no shared base, and a sensor is forty-eight.
 	FString TargetParentName;
-	if (Node->ComponentTemplate->IsA<UMjSensor>())
+#if URLAB_MJ_GEN
+	using urlab::spec::psm::ElementType;
+	const UMjNodeComponent* Element = Cast<UMjNodeComponent>(Node->ComponentTemplate);
+	ElementType Type;
+	if (Element == nullptr || !urlab::spec::MjElementTypeOfNode(*Element, Type))
+		return false;
+
+	if (UMjSensorRuntime::IsSensor(Element))
 		TargetParentName = TEXT("SensorsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjActuator>())
+	else if (UMjActuatorRuntime::IsActuator(Element))
 		TargetParentName = TEXT("ActuatorsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjDefault>())
+	else if (Type == ElementType::Default)
 		TargetParentName = TEXT("DefaultsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjTendon>())
+	else if (Type == ElementType::Spatial || Type == ElementType::Fixed)
 		TargetParentName = TEXT("TendonsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjContactPair>() || Node->ComponentTemplate->IsA<UMjContactExclude>())
+	else if (Type == ElementType::Pair || Type == ElementType::Exclude)
 		TargetParentName = TEXT("ContactsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjEquality>())
+	else if (Type == ElementType::Connect || Type == ElementType::Weld
+			 || Type == ElementType::EqualityJoint || Type == ElementType::EqualityTendon
+			 || Type == ElementType::EqualityFlex || Type == ElementType::Flexvert
+			 || Type == ElementType::Flexstrain)
 		TargetParentName = TEXT("EqualitiesRoot");
 	else
 		return false;
+#else
+	return false;
+#endif
 
 	// Check if already correctly parented
 	USCS_Node* CurrentParent = SCS->FindParentNode(Node);

@@ -170,6 +170,94 @@ bool FMjShmRegion::Open(const FString& Path, uint32 InBufferStride, uint32 InNBu
 	return true;
 }
 
+bool FMjShmRegion::OpenExisting(const FString& Path)
+{
+	if (MappedAddr != nullptr)
+	{
+		UE_LOG(LogURLabNet, Warning, TEXT("FMjShmRegion::OpenExisting: already open at %s"), *FilePath);
+		return false;
+	}
+
+	// Map the file at whatever size the producer sized it to, then take the
+	// geometry from the header it wrote there. The consumer is never told a stride
+	// -- hard-coding one on this side is how two ends of a ring come to disagree,
+	// which is exactly what left the camera segments unopenable.
+	const int64 OnDiskSize = IFileManager::Get().FileSize(*Path);
+	if (OnDiskSize < static_cast<int64>(sizeof(FMjShmHeader)))
+	{
+		return false; // absent or not yet sized by the producer
+	}
+
+#if PLATFORM_WINDOWS
+	HANDLE hFile = ::CreateFileW(*Path,
+		GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		nullptr,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL,
+		nullptr);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		return false;
+	}
+	HANDLE hMap = ::CreateFileMappingW(hFile, nullptr, PAGE_READWRITE, 0, 0, nullptr);
+	if (!hMap)
+	{
+		::CloseHandle(hFile);
+		return false;
+	}
+	void* Addr = ::MapViewOfFile(hMap, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0);
+	if (!Addr)
+	{
+		::CloseHandle(hMap);
+		::CloseHandle(hFile);
+		return false;
+	}
+	PlatformFileHandle = hFile;
+	PlatformMappingHandle = hMap;
+#else
+	int fd = ::open(TCHAR_TO_UTF8(*Path), O_RDWR);
+	if (fd < 0)
+	{
+		return false;
+	}
+	void* Addr = ::mmap(nullptr, static_cast<size_t>(OnDiskSize),
+		PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (Addr == MAP_FAILED)
+	{
+		::close(fd);
+		return false;
+	}
+	PlatformFileHandle = reinterpret_cast<void*>(static_cast<intptr_t>(fd));
+	PlatformMappingHandle = nullptr;
+#endif
+
+	MappedAddr = Addr;
+	MappedSize = static_cast<uint64>(OnDiskSize);
+
+	const FMjShmHeader* Hdr = static_cast<const FMjShmHeader*>(MappedAddr);
+	const uint64 Claimed = sizeof(FMjShmHeader)
+		+ uint64(Hdr->BufferStride) * uint64(Hdr->NBuffers);
+	if (Hdr->Magic != URLAB_SHM_MAGIC
+		|| Hdr->ProtocolVersion != URLAB_SHM_PROTOCOL_VERSION
+		|| Hdr->NBuffers == 0
+		|| Hdr->BufferStride < sizeof(uint32)
+		|| Claimed > MappedSize)
+	{
+		// Not ours, a version we do not speak, or a file the producer is still
+		// sizing. Unmap and let the caller retry rather than reading rubbish.
+		Close(/*bDeleteFile=*/false);
+		return false;
+	}
+
+	FilePath = Path;
+	BufferStride = Hdr->BufferStride;
+	NumBuffers = Hdr->NBuffers;
+	UE_LOG(LogURLabNet, Log,
+		TEXT("FMjShmRegion: attached to %s (stride=%u, n=%u)"), *FilePath, BufferStride, NumBuffers);
+	return true;
+}
+
 void FMjShmRegion::Close(bool bDeleteFile)
 {
 	if (MappedAddr == nullptr)

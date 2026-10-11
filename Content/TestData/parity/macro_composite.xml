@@ -1,0 +1,18 @@
+<mujoco model="macro_composite">
+<!-- a small cable composite macro, with a default class referenced by a sibling anchor in the same subtree -->
+  <default>
+    <default class="cable_default">
+      <geom type="capsule" size="0.005" rgba="0.9 0.4 0.1 1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="composite_root" pos="0 0 1" childclass="cable_default">
+      <geom name="composite_anchor" type="sphere" size="0.02"/>
+      <composite type="cable" curve="s" count="8 1 1" size="0.5" initial="none">
+        <joint kind="main" damping="0.015"/>
+        <geom type="capsule" size="0.005"/>
+      </composite>
+    </body>
+  </worldbody>
+</mujoco>

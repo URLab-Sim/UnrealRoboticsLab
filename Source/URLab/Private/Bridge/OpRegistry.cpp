@@ -85,6 +85,22 @@ TArray<FOpDecl> GetAllOps()
 	return Out;
 }
 
+TOptional<EMjCapability> PermissionForOp(const FString& OpName)
+{
+	for (int32 i = 0; i < URLabWire::OpPermission::Count; ++i)
+	{
+		if (OpName.Equals(URLabWire::OpPermission::All[i].Op))
+		{
+			EMjCapability Cap = EMjCapability::Rpc;
+			if (MjCapabilityFromToken(URLabWire::OpPermission::All[i].Permission, Cap))
+			{
+				return Cap;
+			}
+		}
+	}
+	return TOptional<EMjCapability>();
+}
+
 bool IsEditorOnlyOp(const FString& OpName)
 {
 	FRWScopeLock Lock(MapLock(), SLT_ReadOnly);

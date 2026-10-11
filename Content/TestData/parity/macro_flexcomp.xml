@@ -1,0 +1,17 @@
+<mujoco model="macro_flexcomp">
+<!-- a 4x4 grid flexcomp macro, with a default class referenced by a sibling anchor in the same subtree -->
+  <default>
+    <default class="flex_default">
+      <geom rgba="0.2 0.6 0.9 1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="flex_root" pos="0 0 2" childclass="flex_default">
+      <geom name="flex_anchor" type="sphere" size="0.02"/>
+      <flexcomp name="cloth" type="grid" count="4 4 1" spacing="0.1 0.1 0.1" radius="0.01" dim="2" mass="1">
+        <edge equality="true"/>
+      </flexcomp>
+    </body>
+  </worldbody>
+</mujoco>

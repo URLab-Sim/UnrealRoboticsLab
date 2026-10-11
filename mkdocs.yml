@@ -95,25 +95,31 @@ nav:
     - Geometry & Collision: guides/geometry.md
     - Sensors & Cameras: guides/sensors_cameras.md
     - Controllers: guides/controllers.md
-    - Simulate Dashboard: guides/dashboard.md
     - Debug Visualization: guides/debug.md
     - Interaction: guides/interaction.md
-    - Recording & Replay: guides/recording.md
+    - ROS 2 Integration: guides/ros.md
   - Python & External Control:
     - Overview: python/index.md
     - Quickstart: python/quickstart.md
-    - Running Policies: python/policies.md
-    - API Reference: python/api.md
-    - Protocol Reference: reference/protocol.md
+    - API status: python/api.md
+  - Render Server:
+    - Workflows and ownership: concepts/render_roles.md
+    - Launch flags: reference/render_server_flags.md
+    - Packaging a render server: guides/render_server_packaging.md
+    - gRPC (dm_env_rpc) transport: contributing/grpc_dmenv.md
   - Concepts:
-    - Architecture: concepts/architecture.md
+    - Architecture: architecture/intended_design.md
+    - Completion status: architecture/completion_status.md
+    - Transport contract: architecture/transport_design.md
+    - The Component Model: concepts/model.md
+    - Generation: concepts/generation.md
     - Networking: concepts/networking.md
-    - Codegen: concepts/codegen.md
     - MJCF Support: concepts/mjcf_support.md
   - Contributing:
     - Building from Source: contributing/building.md
-    - Codegen: contributing/codegen.md
+    - Regenerating the Profile: contributing/generation.md
     - Bumping MuJoCo: contributing/bumping_mujoco.md
+    - mjSpec Architecture: architecture_mjspec.md
   - Troubleshooting: troubleshooting.md
   - Roadmap: roadmap.md
   - Changelog: changelog.md
@@ -268,9 +274,7 @@ nav:
 #       - FMjCompilerSettings: api/utils/fmjcompilersettings.md
 #       - GeomView: api/utils/geomview.md
 #       - JointView: api/utils/jointview.md
-#       - MjOrientationUtils: api/utils/mjorientationutils.md
 #       - MujocoUtils: api/utils/mujocoutils.md
-#       - MujocoXmlUtils: api/utils/mujocoxmlutils.md
 #       - SensorView: api/utils/sensorview.md
 #       - TendonView: api/utils/tendonview.md
 #     - Other:

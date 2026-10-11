@@ -14,10 +14,9 @@ void UURLabBridgeServerSubsystem::Initialize(FSubsystemCollectionBase& Collectio
 
 	ReloadConfig();
 	UE_LOG(LogURLabEditor, Log,
-		TEXT("[BridgeServer] config: AutoStart=%s StepPort=%d StatePort=%d StopOnPIEEnd=%s"),
+		TEXT("[BridgeServer] config: AutoStart=%s StepPort=%d StatePort=%d"),
 		Config.bAutoStart ? TEXT("true") : TEXT("false"),
-		Config.StepPort, Config.StatePort,
-		Config.bStopOnPIEEnd ? TEXT("true") : TEXT("false"));
+		Config.StepPort, Config.StatePort);
 
 	if (Config.bAutoStart)
 	{
@@ -40,18 +39,27 @@ void UURLabBridgeServerSubsystem::StartServer()
 	{
 		Server = NewObject<UURLabBridgeServer>(this, TEXT("EditorBridgeServer"));
 	}
-	const FString Endpoint = FString::Printf(TEXT("tcp://0.0.0.0:%d"), Config.StepPort);
+	Server->SetInstanceConfig(Config);
+	const FString Endpoint = FString::Printf(TEXT("tcp://%s:%d"), *Config.BindAddress, Config.StepPort);
 	Server->Start(Endpoint);
-	Server->EnsureShmBound(); // open req.shm/rep.shm under "live"
+	// NOTE: the discovery registry entry (write + heartbeat + removal) is now
+	// owned by UURLabBridgeServer's Start/Stop lifecycle, so both the editor
+	// subsystem's server AND cooked/packaged manager-owned servers register.
+	// This subsystem does not write it directly (exactly one writer).
+
 	UE_LOG(LogURLabEditor, Log,
-		TEXT("[BridgeServer] started on %s (rpc_transports=%d)"),
-		*Endpoint, Server->GetRpcTransports().Num());
+		TEXT("[BridgeServer] started instance='%s' index=%d bind=%s step=%d state=%d cam_base=%d "
+			 "(rpc_transports=%d)"),
+		Config.InstanceId.IsEmpty() ? TEXT("live") : *Config.InstanceId,
+		Config.InstanceIndex, *Config.BindAddress, Config.StepPort, Config.StatePort,
+		Config.CamBasePort, Server->GetRpcTransports().Num());
 }
 
 void UURLabBridgeServerSubsystem::StopServer()
 {
 	if (!Server)
 		return;
+	// Server->Stop() removes this instance's registry entry (bridge-owned).
 	Server->Stop();
 	Server = nullptr;
 	UE_LOG(LogURLabEditor, Log, TEXT("[BridgeServer] stopped"));
@@ -66,4 +74,5 @@ void UURLabBridgeServerSubsystem::ReloadConfig()
 {
 	Config = FURLabBridgeServerConfig{}; // reset to defaults
 	URLabBridgeServerConfigUtils::LoadFromIni(Config);
+	URLabBridgeServerConfigUtils::ApplyEnvAndCommandLineOverrides(Config);
 }

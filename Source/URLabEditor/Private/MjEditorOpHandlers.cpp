@@ -25,15 +25,15 @@
 #include "LevelEditorViewport.h"
 
 #include "MuJoCo/Utils/MjUtils.h"
+#include "Utils/CoordinateConversion.h"
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Bridge/BridgeServer.h"
-#include "Bridge/BridgeServerProvider.h"
 #include "Bridge/OpRegistry.h"
 #include "Bridge/OpHelpers.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 
 namespace
 {
@@ -63,7 +63,8 @@ inline TSharedPtr<FJsonObject> MakeJsonError(const FString& Code,
  *  run during FEngineLoop::Tick, outside the task-graph processing
  *  call stack, so nested ProcessTasksUntilIdle is safe. */
 template <typename Lambda>
-TSharedPtr<FJsonObject> RunOnGameThreadSync(Lambda&& Body)
+TSharedPtr<FJsonObject> RunOnGameThreadSync(
+	FURLabRpcDispatcher& RequestingDispatcher, Lambda&& Body)
 {
 	if (IsInGameThread())
 	{
@@ -88,9 +89,6 @@ TSharedPtr<FJsonObject> RunOnGameThreadSync(Lambda&& Body)
 				return false;
 			}));
 
-	UURLabBridgeServer* BridgeServer = URLabBridgeProvider::ResolveEditorServer();
-	FURLabRpcDispatcher* Dispatcher = BridgeServer ? BridgeServer->GetDispatcher() : nullptr;
-
 	// No server-side deadline. Editor ops vary wildly in duration
 	// (import_xml shells out to clean_meshes.py + drives the BP
 	// factory, create_level touches the asset registry, etc.) and
@@ -102,14 +100,104 @@ TSharedPtr<FJsonObject> RunOnGameThreadSync(Lambda&& Body)
 	// timeout is the operational deadline.
 	while (!State->bDone.load(std::memory_order_acquire))
 	{
-		if (Dispatcher && Dispatcher->IsDraining())
+		if (RequestingDispatcher.IsDraining())
 		{
-			return URLabOpHelpers::MakeError(TEXT("shutting_down"),
+			return URLabOpHelpers::MakeError(URLabError::ShuttingDown,
 				TEXT("editor op aborted: dispatcher draining"));
 		}
 		FPlatformProcess::Sleep(0.05f);
 	}
 	return State->Result;
+}
+
+// ---- async editor jobs -------------------------------------------------
+// Long editor ops (import_xml, spawn, create/load/save level) block the game
+// thread for seconds. Running them synchronously also blocks the single RPC
+// worker thread (no other RPC is served until they finish). Instead we kick
+// the work onto a game-thread ticker, return a `op_started` + job_id
+// immediately, and let the client poll `op_status` (a fast worker-thread read)
+// until the job is done -- freeing the worker thread and giving the client a
+// liveness signal. The python client tolerates BOTH this async form and a
+// direct synchronous reply.
+struct FEditorJob
+{
+	FString State = TEXT("running"); // running | done | failed
+	FString Progress;
+	TSharedPtr<FJsonObject> Result; // the original handler reply once done
+};
+static FCriticalSection GEditorJobLock;
+static TMap<FString, FEditorJob> GEditorJobs;
+static std::atomic<uint64> GEditorJobCounter{0};
+
+template <typename Lambda>
+TSharedPtr<FJsonObject> RunEditorJobAsync(Lambda&& Body)
+{
+	const FString JobId = FString::Printf(
+		TEXT("job_%llu"), GEditorJobCounter.fetch_add(1, std::memory_order_relaxed) + 1);
+	{
+		FScopeLock Lock(&GEditorJobLock);
+		GEditorJobs.Add(JobId, FEditorJob{});
+	}
+	// Run the body on the game thread next tick; store the result in the job
+	// registry. The ticker (game thread) is the only writer of Result/State.
+	FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateLambda(
+			[JobId, BodyCopy = Forward<Lambda>(Body)](float /*Dt*/) mutable -> bool {
+				TSharedPtr<FJsonObject> Res = BodyCopy();
+				FString ReplyOp;
+				if (Res.IsValid())
+					Res->TryGetStringField(TEXT("op"), ReplyOp);
+				FScopeLock Lock(&GEditorJobLock);
+				if (FEditorJob* Job = GEditorJobs.Find(JobId))
+				{
+					Job->Result = Res;
+					Job->State = (ReplyOp == TEXT("error")) ? TEXT("failed") : TEXT("done");
+				}
+				return false; // one-shot
+			}));
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("op_started"));
+	Reply->SetStringField(TEXT("job_id"), JobId);
+	Reply->SetStringField(TEXT("state"), TEXT("running"));
+	return Reply;
+}
+
+// Fast, worker-thread read of a job's state. Pops the job once it is reported
+// terminal (done/failed) so the registry doesn't grow unbounded.
+TSharedPtr<FJsonObject> HandleOpStatus(const TSharedPtr<FJsonObject>& Req)
+{
+	FString JobId;
+	if (!Req->TryGetStringField(TEXT("job_id"), JobId) || JobId.IsEmpty())
+		return URLabOpHelpers::MakeError(URLabError::BadRequest,
+			TEXT("op_status requires a non-empty 'job_id'"));
+
+	FString State, Progress;
+	TSharedPtr<FJsonObject> Result;
+	bool bTerminal = false;
+	{
+		FScopeLock Lock(&GEditorJobLock);
+		FEditorJob* Job = GEditorJobs.Find(JobId);
+		if (!Job)
+			return URLabOpHelpers::MakeError(URLabError::UnknownJob,
+				FString::Printf(TEXT("no job %s (already collected or never existed)"), *JobId));
+		State = Job->State;
+		Progress = Job->Progress;
+		Result = Job->Result;
+		bTerminal = (State != TEXT("running"));
+		if (bTerminal)
+			GEditorJobs.Remove(JobId);
+	}
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("op_status_ok"));
+	Reply->SetStringField(TEXT("job_id"), JobId);
+	Reply->SetStringField(TEXT("state"), State);
+	if (!Progress.IsEmpty())
+		Reply->SetStringField(TEXT("progress"), Progress);
+	if (bTerminal && Result.IsValid())
+		Reply->SetObjectField(TEXT("result"), Result);
+	return Reply;
 }
 
 // ---- import_xml --------------------------------------------------------
@@ -118,7 +206,7 @@ TSharedPtr<FJsonObject> HandleImportXml(const TSharedPtr<FJsonObject>& Req)
 	FString Path;
 	if (!Req->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("import_xml requires a non-empty 'path'"));
 	}
 	bool bForceReimport = false;
@@ -148,7 +236,7 @@ TSharedPtr<FJsonObject> HandleCreateLevel(const TSharedPtr<FJsonObject>& Req)
 	FString Name;
 	if (!Req->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("create_level requires non-empty 'name'"));
 	}
 	bool bForceOverwrite = false;
@@ -167,7 +255,7 @@ TSharedPtr<FJsonObject> HandleCreateLevel(const TSharedPtr<FJsonObject>& Req)
 TSharedPtr<FJsonObject> HandleCurrentLevel(const TSharedPtr<FJsonObject>& /*Req*/)
 {
 	if (!GEditor)
-		return MakeJsonError(TEXT("not_in_editor"), TEXT("GEditor null"));
+		return MakeJsonError(URLabError::NotInEditor, TEXT("GEditor null"));
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	if (!World)
 		return MakeJsonError(TEXT("no_world"), TEXT("editor world unavailable"));
@@ -183,7 +271,7 @@ TSharedPtr<FJsonObject> HandleDestroyAsset(const TSharedPtr<FJsonObject>& Req)
 	FString AssetPath;
 	if (!Req->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("destroy_asset requires non-empty 'asset_path'"));
 	}
 	bool bWasFound = false;
@@ -202,7 +290,7 @@ TSharedPtr<FJsonObject> HandleDestroyAsset(const TSharedPtr<FJsonObject>& Req)
 TSharedPtr<FJsonObject> HandleEnsureManager(const TSharedPtr<FJsonObject>& /*Req*/)
 {
 	if (!GEditor)
-		return MakeJsonError(TEXT("not_in_editor"), TEXT("GEditor null"));
+		return MakeJsonError(URLabError::NotInEditor, TEXT("GEditor null"));
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	if (!World)
 		return MakeJsonError(TEXT("no_world"), TEXT("editor world unavailable"));
@@ -245,7 +333,7 @@ TSharedPtr<FJsonObject> HandleLoadLevel(const TSharedPtr<FJsonObject>& Req)
 		Req->TryGetStringField(TEXT("name"), Path);
 	if (Path.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("load_level requires 'level_path' or 'name'"));
 	}
 	FString OutPath, Err;
@@ -272,14 +360,14 @@ TSharedPtr<FJsonObject> HandleSaveLevel(const TSharedPtr<FJsonObject>& /*Req*/)
 	return Reply;
 }
 
-// ---- spawn_actor / destroy_actor ---------------------------------------
+// ---- spawn_actor / remove_actor ---------------------------------------
 
 TSharedPtr<FJsonObject> HandleSpawnActor(const TSharedPtr<FJsonObject>& Req)
 {
 	FString Blueprint;
 	if (!Req->TryGetStringField(TEXT("blueprint"), Blueprint) || Blueprint.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("spawn_actor requires non-empty 'blueprint'"));
 	}
 	FString ActorId;
@@ -331,12 +419,12 @@ TSharedPtr<FJsonObject> HandleSpawnGrid(const TSharedPtr<FJsonObject>& Req)
 {
 	FString Blueprint;
 	if (!Req->TryGetStringField(TEXT("blueprint"), Blueprint) || Blueprint.IsEmpty())
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("spawn_grid requires non-empty 'blueprint'"));
 
 	FString BaseId;
 	if (!Req->TryGetStringField(TEXT("base_actor_id"), BaseId) || BaseId.IsEmpty())
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("spawn_grid requires non-empty 'base_actor_id'"));
 
 	int32 CountX = 0, CountY = 0;
@@ -469,7 +557,8 @@ TSharedPtr<FJsonObject> HandleSpawnLight(const TSharedPtr<FJsonObject>& Req)
 
 // ---- begin_pie / stop_pie / pie_status ---------------------------------
 
-TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
+TSharedPtr<FJsonObject> HandleBeginPie(
+	FURLabRpcDispatcher& RequestingDispatcher, const TSharedPtr<FJsonObject>& Req)
 {
 	FString LevelPath;
 	Req->TryGetStringField(TEXT("level_path"), LevelPath);
@@ -477,35 +566,16 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 	double TimeoutS = 30.0;
 	Req->TryGetNumberField(TEXT("timeout_s"), TimeoutS);
 
-	FString SessionId;
-	Req->TryGetStringField(TEXT("session_id"), SessionId);
-
-	// Skip RequestPlaySession when PIE is already ready — restarting it
-	// would briefly tear down the world and risks the recompile wedge.
+	// PIE lifecycle is independent of simulation/model readiness. Skip a
+	// restart whenever the editor play session is already running.
 	// Callers that want a forced restart can pass an explicit level_path.
-	if (LevelPath.IsEmpty())
+	if (LevelPath.IsEmpty() && GEditor && GEditor->IsPlayingSessionInEditor())
 	{
-		AAMjManager* ExistingMgr = AAMjManager::Instance;
-		const bool bAlreadyReady =
-			GEditor && GEditor->IsPlayingSessionInEditor()
-			&& ExistingMgr
-			&& ExistingMgr->PhysicsEngine
-			&& ExistingMgr->PhysicsEngine->IsInitialized()
-			&& ExistingMgr->GetLastCompileError().IsEmpty();
-		if (bAlreadyReady)
-		{
-			TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-			Reply->SetStringField(TEXT("op"), TEXT("begin_pie_ok"));
-			Reply->SetStringField(TEXT("state"), TEXT("ready"));
-			Reply->SetStringField(TEXT("compile_error"), TEXT(""));
-			TSharedPtr<FJsonObject> Hs = FURLabRpcDispatcher::BuildHandshakePayload(
-				ExistingMgr, SessionId, TEXT("urlab/0.1"));
-			if (Hs.IsValid())
-			{
-				Reply->SetObjectField(TEXT("handshake_payload"), Hs);
-			}
-			return Reply;
-		}
+		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+		Reply->SetStringField(TEXT("op"), TEXT("begin_pie_ok"));
+		Reply->SetStringField(TEXT("state"), TEXT("running"));
+		Reply->SetStringField(TEXT("compile_error"), TEXT(""));
+		return Reply;
 	}
 
 	// Dispatcher runs on a worker thread; PIE start must fire on the
@@ -562,15 +632,8 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 				bQueued = true;
 				break;
 			}
-			UURLabBridgeServer* Bridge = URLabBridgeProvider::ResolveEditorServer();
-			if (Bridge)
-			{
-				if (FURLabRpcDispatcher* D = Bridge->GetDispatcher())
-				{
-					if (D->IsDraining())
-						break;
-				}
-			}
+			if (RequestingDispatcher.IsDraining())
+				break;
 		}
 	}
 	FPlatformProcess::ReturnSynchEventToPool(QueuedEvent);
@@ -584,50 +647,31 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 		return TimeoutReply;
 	}
 
-	// Poll for AAMjManager::Instance + compile completion. The manager's
-	// BeginPlay registers with the bridge server (via the resolver), so
-	// by the time PhysicsEngine->IsInitialized() returns true, the
-	// dispatcher's OwnerMgr has been re-bound to the new manager.
+	// Poll only for the editor play session. Model compilation and simulation
+	// authority are separate services and must not gate editor lifecycle.
 	// Also exit early if the bridge is draining (e.g. user toggled
 	// the editor toolbar's Stop while begin_pie was mid-flight) —
 	// checking the bridge's dispatcher each tick.
 	const double Deadline = FPlatformTime::Seconds() + TimeoutS;
-	AAMjManager* Mgr = nullptr;
-	bool bCompiledOrFailed = false;
+	bool bPieRunning = false;
 	bool bDraining = false;
 	while (FPlatformTime::Seconds() < Deadline)
 	{
-		UURLabBridgeServer* Bridge = URLabBridgeProvider::ResolveEditorServer();
-		if (Bridge)
+		if (RequestingDispatcher.IsDraining())
 		{
-			if (FURLabRpcDispatcher* D = Bridge->GetDispatcher())
-			{
-				if (D->IsDraining())
-				{
-					bDraining = true;
-					break;
-				}
-			}
+			bDraining = true;
+			break;
 		}
-		Mgr = AAMjManager::Instance;
-		if (Mgr && Mgr->PhysicsEngine)
+		if (GEditor && GEditor->IsPlayingSessionInEditor())
 		{
-			if (Mgr->PhysicsEngine->IsInitialized())
-			{
-				bCompiledOrFailed = true;
-				break;
-			}
-			if (!Mgr->GetLastCompileError().IsEmpty())
-			{
-				bCompiledOrFailed = true;
-				break;
-			}
+			bPieRunning = true;
+			break;
 		}
 		FPlatformProcess::Sleep(0.05f);
 	}
 	if (bDraining)
 	{
-		return MakeJsonError(TEXT("shutting_down"),
+		return MakeJsonError(URLabError::ShuttingDown,
 			TEXT("Bridge stopping; begin_pie abandoned"));
 	}
 
@@ -636,37 +680,20 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("begin_pie_ok"));
 
-	if (!bCompiledOrFailed)
+	if (!bPieRunning)
 	{
 		Reply->SetStringField(TEXT("state"), TEXT("timeout"));
 		Reply->SetStringField(TEXT("compile_error"), TEXT(""));
 		return Reply;
 	}
 
-	const FString CompileErr = Mgr->GetLastCompileError();
-	if (!CompileErr.IsEmpty())
-	{
-		Reply->SetStringField(TEXT("state"), TEXT("compile_failed"));
-		Reply->SetStringField(TEXT("compile_error"), CompileErr);
-		return Reply;
-	}
-
-	// Compile ok: embed a fresh handshake-shaped payload so the bridge
-	// can re-discover model + articulations against the new PIE world
-	// without an extra hello round-trip.
-	Reply->SetStringField(TEXT("state"), TEXT("ready"));
+	Reply->SetStringField(TEXT("state"), TEXT("running"));
 	Reply->SetStringField(TEXT("compile_error"), TEXT(""));
-
-	TSharedPtr<FJsonObject> Hs = FURLabRpcDispatcher::BuildHandshakePayload(
-		Mgr, SessionId, TEXT("urlab/0.1"));
-	if (Hs.IsValid())
-	{
-		Reply->SetObjectField(TEXT("handshake_payload"), Hs);
-	}
 	return Reply;
 }
 
-TSharedPtr<FJsonObject> HandleStopPie(const TSharedPtr<FJsonObject>& /*Req*/)
+TSharedPtr<FJsonObject> HandleStopPie(
+	FURLabRpcDispatcher& RequestingDispatcher, const TSharedPtr<FJsonObject>& /*Req*/)
 {
 	FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
 	AsyncTask(ENamedThreads::GameThread, [DoneEvent]() {
@@ -688,21 +715,14 @@ TSharedPtr<FJsonObject> HandleStopPie(const TSharedPtr<FJsonObject>& /*Req*/)
 				bTriggered = true;
 				break;
 			}
-			UURLabBridgeServer* Bridge = URLabBridgeProvider::ResolveEditorServer();
-			if (Bridge)
-			{
-				if (FURLabRpcDispatcher* D = Bridge->GetDispatcher())
-				{
-					if (D->IsDraining())
-						break;
-				}
-			}
+			if (RequestingDispatcher.IsDraining())
+				break;
 		}
 	}
 	FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
 	if (!bTriggered)
 	{
-		return MakeJsonError(TEXT("timeout"),
+		return MakeJsonError(URLabError::Timeout,
 			TEXT("game thread blocked (modal dialog?); stop_pie did not complete"));
 	}
 
@@ -713,50 +733,17 @@ TSharedPtr<FJsonObject> HandleStopPie(const TSharedPtr<FJsonObject>& /*Req*/)
 
 TSharedPtr<FJsonObject> HandlePieStatus(const TSharedPtr<FJsonObject>& /*Req*/)
 {
-	// Single `state` enum: off / compiling / compile_failed /
-	// timeout / ready.
-	// (timeout is unobservable from pie_status — only emitted by
-	//  begin_pie when the deadline elapses; pie_status callers see
-	//  the underlying state once compile finishes one way or other.)
+	// PIE lifecycle is deliberately independent of simulation/model readiness.
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("pie_status_ok"));
 
 	const bool bInPie = GEditor && GEditor->IsPlayingSessionInEditor();
-	AAMjManager* Mgr = AAMjManager::Instance;
-	FString State;
-	FString CompileErr;
-	if (!bInPie)
-	{
-		State = TEXT("off");
-	}
-	else if (!Mgr || !Mgr->PhysicsEngine)
-	{
-		State = TEXT("compiling");
-	}
-	else
-	{
-		CompileErr = Mgr->GetLastCompileError();
-		if (!CompileErr.IsEmpty())
-		{
-			State = TEXT("compile_failed");
-		}
-		else if (Mgr->PhysicsEngine->IsInitialized())
-		{
-			State = TEXT("ready");
-		}
-		else
-		{
-			State = TEXT("compiling");
-		}
-	}
+	const FString State = bInPie ? TEXT("running") : TEXT("off");
+	const FString CompileErr;
 
 	Reply->SetStringField(TEXT("state"), State);
 	Reply->SetStringField(TEXT("compile_error"), CompileErr);
-	if (Mgr && Mgr->PhysicsEngine && Mgr->PhysicsEngine->m_data)
-	{
-		Reply->SetNumberField(TEXT("sim_time"),
-			Mgr->PhysicsEngine->m_data->time);
-	}
+
 	return Reply;
 }
 
@@ -766,7 +753,7 @@ TSharedPtr<FJsonObject> HandleSetActorTransform(const TSharedPtr<FJsonObject>& R
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("set_actor_transform: %s"), *Err));
 	}
 
@@ -826,7 +813,7 @@ TSharedPtr<FJsonObject> HandleGetActorBounds(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("get_actor_bounds: %s"), *Err));
 	}
 	bool bComponentsOnly = false;
@@ -881,13 +868,13 @@ TSharedPtr<FJsonObject> HandleDuplicateActor(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("duplicate_actor: %s"), *Err));
 	}
 	FString NewActorId;
 	if (!Req->TryGetStringField(TEXT("new_actor_id"), NewActorId) || NewActorId.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("duplicate_actor requires non-empty 'new_actor_id'"));
 	}
 
@@ -916,7 +903,7 @@ TSharedPtr<FJsonObject> HandleActorHierarchy(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("actor_hierarchy: %s"), *Err));
 	}
 	TSharedPtr<FJsonObject> Root;
@@ -952,7 +939,7 @@ TSharedPtr<FJsonObject> HandleSelectActor(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("select_actor: %s"), *Err));
 	}
 	FString ActorName;
@@ -972,7 +959,7 @@ TSharedPtr<FJsonObject> HandleAddQuickConvert(const TSharedPtr<FJsonObject>& Req
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("add_quick_convert: %s"), *Err));
 	}
 	bool bStatic = false, bComplexMesh = false, bDrivenByUnreal = false;
@@ -1025,7 +1012,7 @@ TSharedPtr<FJsonObject> HandleRemoveQuickConvert(const TSharedPtr<FJsonObject>& 
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("remove_quick_convert: %s"), *Err));
 	}
 	FString ActorName;
@@ -1041,21 +1028,21 @@ TSharedPtr<FJsonObject> HandleRemoveQuickConvert(const TSharedPtr<FJsonObject>& 
 	return Reply;
 }
 
-TSharedPtr<FJsonObject> HandleDestroyActor(const TSharedPtr<FJsonObject>& Req)
+TSharedPtr<FJsonObject> HandleRemoveActor(const TSharedPtr<FJsonObject>& Req)
 {
 	FString Id, Err;
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Id, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
-			FString::Printf(TEXT("destroy_actor: %s"), *Err));
+		return MakeJsonError(URLabError::MissingField,
+			FString::Printf(TEXT("remove_actor: %s"), *Err));
 	}
 	if (!URLabLevelOps::DestroyActorSync(Id, Err))
 	{
 		return MakeJsonError(TEXT("destroy_failed"), Err);
 	}
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("destroy_actor_ok"));
+	Reply->SetStringField(TEXT("op"), TEXT("remove_actor_ok"));
 	Reply->SetBoolField(TEXT("requires_pie_restart"),
 		GEditor ? GEditor->IsPlayingSessionInEditor() : false);
 	return Reply;
@@ -1118,9 +1105,9 @@ TSharedPtr<FJsonObject> HandleDrawMarker(const TSharedPtr<FJsonObject>& Req)
 
 	FVector MjLoc;
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("draw_marker requires 'location'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("draw_marker requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
-	const FVector UELoc = MjUtils::MjToUEPosition(MjPos);
+	const FVector UELoc = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjPos);
 
 	const FColor Color = ReadColor(Req);
 	bool bPersistent;
@@ -1148,11 +1135,11 @@ TSharedPtr<FJsonObject> HandleDrawLine(const TSharedPtr<FJsonObject>& Req)
 	FVector MjFrom, MjTo;
 	if (!ReadVec3(Req, TEXT("from"), MjFrom, FVector::ZeroVector)
 		|| !ReadVec3(Req, TEXT("to"), MjTo, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("draw_line requires 'from' + 'to'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("draw_line requires 'from' + 'to'"));
 	const double MjF[3] = {MjFrom.X, MjFrom.Y, MjFrom.Z};
 	const double MjT[3] = {MjTo.X, MjTo.Y, MjTo.Z};
-	const FVector UEFrom = MjUtils::MjToUEPosition(MjF);
-	const FVector UETo = MjUtils::MjToUEPosition(MjT);
+	const FVector UEFrom = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjF);
+	const FVector UETo = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjT);
 
 	const FColor Color = ReadColor(Req);
 	bool bPersistent;
@@ -1178,11 +1165,11 @@ TSharedPtr<FJsonObject> HandleDrawBox(const TSharedPtr<FJsonObject>& Req)
 	FVector MjCenter, MjHalf;
 	if (!ReadVec3(Req, TEXT("center"), MjCenter, FVector::ZeroVector)
 		|| !ReadVec3(Req, TEXT("half_extents"), MjHalf, FVector(0.1, 0.1, 0.1)))
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("draw_box requires 'center' + 'half_extents'"));
 
 	const double MjC[3] = {MjCenter.X, MjCenter.Y, MjCenter.Z};
-	const FVector UECenter = MjUtils::MjToUEPosition(MjC);
+	const FVector UECenter = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjC);
 	// Extents are unsigned magnitudes; cm scaling is one MjToUEDist multiply.
 	// MjUtils::MjToUEPosition would also flip Y, so we do extents by hand.
 	const FVector UEHalf(
@@ -1215,12 +1202,12 @@ TSharedPtr<FJsonObject> HandleDrawArrow(const TSharedPtr<FJsonObject>& Req)
 	FVector MjFrom, MjTo;
 	if (!ReadVec3(Req, TEXT("from"), MjFrom, FVector::ZeroVector)
 		|| !ReadVec3(Req, TEXT("to"), MjTo, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("draw_arrow requires 'from' + 'to'"));
 	const double MjF[3] = {MjFrom.X, MjFrom.Y, MjFrom.Z};
 	const double MjT[3] = {MjTo.X, MjTo.Y, MjTo.Z};
-	const FVector UEFrom = MjUtils::MjToUEPosition(MjF);
-	const FVector UETo = MjUtils::MjToUEPosition(MjT);
+	const FVector UEFrom = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjF);
+	const FVector UETo = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjT);
 
 	const FColor Color = ReadColor(Req);
 	bool bPersistent;
@@ -1253,9 +1240,9 @@ TSharedPtr<FJsonObject> HandleDrawAxes(const TSharedPtr<FJsonObject>& Req)
 
 	FVector MjLoc;
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("draw_axes requires 'location'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("draw_axes requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
-	const FVector UEOrigin = MjUtils::MjToUEPosition(MjPos);
+	const FVector UEOrigin = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjPos);
 
 	FQuat UEQuat = FQuat::Identity;
 	ReadRotation(Req, UEQuat);
@@ -1384,9 +1371,9 @@ void ExportCameraPose(FEditorViewportClient* Client, TSharedPtr<FJsonObject>& Re
 	const FVector UELoc = Client->GetViewLocation();
 	const FRotator UERot = Client->GetViewRotation();
 	double MjPos[3] = {0};
-	MjUtils::UEToMjPosition(UELoc, MjPos);
+	URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(UELoc, MjPos);
 	double MjQuat[4] = {0};
-	MjUtils::UEToMjRotation(UERot.Quaternion(), MjQuat);
+	URLabCoordinateConversion::UnrealQuaternionToRightHandedWxyz(UERot.Quaternion(), MjQuat);
 
 	TArray<TSharedPtr<FJsonValue>> Loc;
 	for (int32 i = 0; i < 3; ++i)
@@ -1420,9 +1407,9 @@ TSharedPtr<FJsonObject> HandleViewportSetCamera(const TSharedPtr<FJsonObject>& R
 
 	FVector MjLoc;
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("set_camera requires 'location'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("set_camera requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
-	Client->SetViewLocation(MjUtils::MjToUEPosition(MjPos));
+	Client->SetViewLocation(URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjPos));
 
 	FQuat UEQuat;
 	if (ReadRotation(Req, UEQuat))
@@ -1461,7 +1448,7 @@ TSharedPtr<FJsonObject> HandleViewportFrameActor(const TSharedPtr<FJsonObject>& 
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("frame_actor: %s"), *Err));
 	}
 	AActor* Actor = FindActorInEditorWorld(Key, bByName);
@@ -1490,7 +1477,7 @@ TSharedPtr<FJsonObject> HandleViewportSetMode(const TSharedPtr<FJsonObject>& Req
 	FString ModeStr;
 	Req->TryGetStringField(TEXT("mode"), ModeStr);
 	if (ModeStr.IsEmpty())
-		return MakeJsonError(TEXT("missing_field"), TEXT("set_mode requires 'mode'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("set_mode requires 'mode'"));
 
 	EViewModeIndex Mode = VMI_Lit;
 	if (ModeStr.Equals(TEXT("lit"), ESearchCase::IgnoreCase))
@@ -1555,7 +1542,7 @@ TSharedPtr<FJsonObject> HandleViewportTrackActor(const TSharedPtr<FJsonObject>& 
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("track_actor: %s"), *Err));
 	}
 	AActor* Actor = FindActorInEditorWorld(Key, bByName);
@@ -1570,12 +1557,12 @@ TSharedPtr<FJsonObject> HandleViewportTrackActor(const TSharedPtr<FJsonObject>& 
 	if (ReadVec3(Req, TEXT("offset"), OffsetMj, FVector(0.0, -2.0, 1.0)))
 	{
 		const double MjOff[3] = {OffsetMj.X, OffsetMj.Y, OffsetMj.Z};
-		S.OffsetUE = MjUtils::MjToUEPosition(MjOff);
+		S.OffsetUE = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjOff);
 	}
 	else
 	{
 		const double MjOff[3] = {0.0, -2.0, 1.0};
-		S.OffsetUE = MjUtils::MjToUEPosition(MjOff);
+		S.OffsetUE = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjOff);
 	}
 
 	double SmoothingD = 0.0;
@@ -1634,8 +1621,19 @@ namespace URLabEditorOpHandlers
 static URLabOpRegistry::FHandler GameThreadHandler(
 	TSharedPtr<FJsonObject> (*Inner)(const TSharedPtr<FJsonObject>&))
 {
-	return [Inner](const TSharedPtr<FJsonObject>& Req) {
-		return RunOnGameThreadSync([&]() { return Inner(Req); });
+	return [Inner](FURLabRpcDispatcher& Dispatcher, const TSharedPtr<FJsonObject>& Req) {
+		return RunOnGameThreadSync(Dispatcher, [Inner, Req]() { return Inner(Req); });
+	};
+}
+
+// Async variant for long-running editor ops: returns op_started + job_id
+// immediately and runs the body on a game-thread ticker; the client polls
+// op_status. Req is copied (TSharedPtr) so the deferred body owns it safely.
+static URLabOpRegistry::FHandler GameThreadHandlerAsync(
+	TSharedPtr<FJsonObject> (*Inner)(const TSharedPtr<FJsonObject>&))
+{
+	return [Inner](FURLabRpcDispatcher&, const TSharedPtr<FJsonObject>& Req) {
+		return RunEditorJobAsync([Inner, Req]() { return Inner(Req); });
 	};
 }
 
@@ -1650,12 +1648,14 @@ void RegEditor(const TCHAR* Name, const TCHAR* Ns,
 	Decl.Name = Name;
 	Decl.Category = URLabOpRegistry::EOpCategory::EditorOnly;
 	Decl.Namespace = Ns;
+	URLabOpRegistry::FHandler TypedBody = Body;
 	Decl.Body = MoveTemp(Body);
 	for (const TCHAR* F : ReplyFields)
 		Decl.ReplyFields.Add(F);
 	for (const TCHAR* F : RequiredFields)
 		Decl.RequiredFields.Add(F);
 	URLabOpRegistry::RegisterOp(MoveTemp(Decl));
+	URLabOpRegistry::RegisterHandler(FString(TEXT("__typed_editor_")) + Name, MoveTemp(TypedBody));
 }
 
 void RegisterAll()
@@ -1713,16 +1713,15 @@ void RegisterAll()
 			TEXT("actor_path:string"), TEXT("kind:string"),
 			TEXT("intensity:float"), TEXT("color:array"),
 			TEXT("location:array"), TEXT("requires_pie_restart:bool")});
-	RegEditor(TEXT("destroy_actor"), TEXT("scene"),
-		GameThreadHandler(&HandleDestroyActor),
+	RegEditor(TEXT("remove_actor"), TEXT("scene"),
+		GameThreadHandler(&HandleRemoveActor),
 		/*Reply=*/{TEXT("op:string"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("target")});
 	RegEditor(TEXT("set_actor_transform"), TEXT("scene"),
 		GameThreadHandler(&HandleSetActorTransform),
 		/*Reply=*/{TEXT("op:string"), TEXT("target:string"), TEXT("actor_name:string"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("target")});
-
-	// sim namespace: PIE lifecycle. Per the plan §5.1 the Python
+	// sim namespace: PIE lifecycle. The Python
 	// wrappers expose these as client.sim.start / sim.stop /
 	// sim.status; the wire op names (begin_pie / stop_pie /
 	// pie_status) stay unchanged.
@@ -1766,60 +1765,6 @@ void RegisterAll()
 		GameThreadHandler(&HandleListBlueprints),
 		{TEXT("op:string"), TEXT("blueprints:array")});
 
-	// debug namespace: DrawDebug* primitives (editor + PIE).
-	RegEditor(TEXT("draw_marker"), TEXT("debug"),
-		GameThreadHandler(&HandleDrawMarker),
-		/*Reply=*/{TEXT("op:string")},
-		/*Required=*/{TEXT("location"), TEXT("color")});
-	RegEditor(TEXT("draw_line"), TEXT("debug"),
-		GameThreadHandler(&HandleDrawLine),
-		/*Reply=*/{TEXT("op:string")},
-		/*Required=*/{TEXT("from"), TEXT("to"), TEXT("color")});
-	RegEditor(TEXT("draw_box"), TEXT("debug"),
-		GameThreadHandler(&HandleDrawBox),
-		/*Reply=*/{TEXT("op:string")},
-		/*Required=*/{TEXT("center"), TEXT("half_extents"), TEXT("color")});
-	RegEditor(TEXT("draw_axes"), TEXT("debug"),
-		GameThreadHandler(&HandleDrawAxes),
-		/*Reply=*/{TEXT("op:string")},
-		/*Required=*/{TEXT("location")});
-	RegEditor(TEXT("draw_arrow"), TEXT("debug"),
-		GameThreadHandler(&HandleDrawArrow),
-		/*Reply=*/{TEXT("op:string")},
-		/*Required=*/{TEXT("from"), TEXT("to"), TEXT("color")});
-	RegEditor(TEXT("clear_markers"), TEXT("debug"),
-		GameThreadHandler(&HandleClearMarkers),
-		{TEXT("op:string")});
-	RegEditor(TEXT("set_overlay_text"), TEXT("debug"),
-		GameThreadHandler(&HandleSetOverlayText),
-		/*Reply=*/{TEXT("op:string")},
-		/*Required=*/{TEXT("text")});
-
-	// viewport namespace: perspective viewport control. Editor-only.
-	RegEditor(TEXT("set_camera"), TEXT("viewport"),
-		GameThreadHandler(&HandleViewportSetCamera),
-		/*Reply=*/{TEXT("op:string"), TEXT("location:array"), TEXT("rotation_quat:array"), TEXT("rotation_euler:array"), TEXT("fov:float")},
-		/*Required=*/{TEXT("location")});
-	RegEditor(TEXT("get_camera"), TEXT("viewport"),
-		GameThreadHandler(&HandleViewportGetCamera),
-		{TEXT("op:string"), TEXT("location:array"),
-			TEXT("rotation_quat:array"), TEXT("rotation_euler:array"),
-			TEXT("fov:float")});
-	RegEditor(TEXT("frame_actor"), TEXT("viewport"),
-		GameThreadHandler(&HandleViewportFrameActor),
-		/*Reply=*/{TEXT("op:string"), TEXT("location:array"), TEXT("rotation_quat:array"), TEXT("rotation_euler:array"), TEXT("fov:float")},
-		/*Required=*/{TEXT("target")});
-	RegEditor(TEXT("set_viewport_mode"), TEXT("viewport"),
-		GameThreadHandler(&HandleViewportSetMode),
-		/*Reply=*/{TEXT("op:string"), TEXT("mode:string")},
-		/*Required=*/{TEXT("mode")});
-	RegEditor(TEXT("track_actor"), TEXT("viewport"),
-		GameThreadHandler(&HandleViewportTrackActor),
-		/*Reply=*/{TEXT("op:string"), TEXT("tracked_actor_path:string")},
-		/*Required=*/{TEXT("target")});
-	RegEditor(TEXT("untrack"), TEXT("viewport"),
-		GameThreadHandler(&HandleViewportUntrack),
-		{TEXT("op:string"), TEXT("was_tracking:bool")});
 }
 
 void UnregisterAll()
@@ -1839,7 +1784,8 @@ void UnregisterAll()
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_actor"));
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_grid"));
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_light"));
-	URLabOpRegistry::UnregisterHandler(TEXT("destroy_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("remove_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("op_status"));
 	URLabOpRegistry::UnregisterHandler(TEXT("set_actor_transform"));
 	URLabOpRegistry::UnregisterHandler(TEXT("begin_pie"));
 	URLabOpRegistry::UnregisterHandler(TEXT("stop_pie"));
@@ -1849,19 +1795,31 @@ void UnregisterAll()
 	URLabOpRegistry::UnregisterHandler(TEXT("add_quick_convert"));
 	URLabOpRegistry::UnregisterHandler(TEXT("remove_quick_convert"));
 	URLabOpRegistry::UnregisterHandler(TEXT("list_blueprints"));
-	URLabOpRegistry::UnregisterHandler(TEXT("draw_marker"));
-	URLabOpRegistry::UnregisterHandler(TEXT("draw_line"));
-	URLabOpRegistry::UnregisterHandler(TEXT("draw_box"));
-	URLabOpRegistry::UnregisterHandler(TEXT("draw_axes"));
-	URLabOpRegistry::UnregisterHandler(TEXT("draw_arrow"));
-	URLabOpRegistry::UnregisterHandler(TEXT("clear_markers"));
-	URLabOpRegistry::UnregisterHandler(TEXT("set_overlay_text"));
-	URLabOpRegistry::UnregisterHandler(TEXT("set_camera"));
-	URLabOpRegistry::UnregisterHandler(TEXT("get_camera"));
-	URLabOpRegistry::UnregisterHandler(TEXT("frame_actor"));
-	URLabOpRegistry::UnregisterHandler(TEXT("set_viewport_mode"));
-	URLabOpRegistry::UnregisterHandler(TEXT("track_actor"));
-	URLabOpRegistry::UnregisterHandler(TEXT("untrack"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_import_xml"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_create_level"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_ensure_manager"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_destroy_asset"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_current_level"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_snapshot"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_duplicate_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_actor_hierarchy"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_find_actors"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_get_actor_bounds"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_load_level"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_save_level"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_spawn_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_spawn_grid"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_spawn_light"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_remove_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_set_actor_transform"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_begin_pie"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_stop_pie"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_pie_status"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_list_actors"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_select_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_add_quick_convert"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_remove_quick_convert"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_list_blueprints"));
 	StopTrackingCameraInternal();
 }
 } // namespace URLabEditorOpHandlers

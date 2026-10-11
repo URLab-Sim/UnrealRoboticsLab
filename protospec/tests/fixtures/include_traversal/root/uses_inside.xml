@@ -1,0 +1,5 @@
+<mujoco model="uses_inside">
+  <worldbody>
+    <include file="inc_inside.xml"/>
+  </worldbody>
+</mujoco>

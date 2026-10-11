@@ -17,6 +17,7 @@
 #include "GameFramework/WorldSettings.h"
 #include "IAssetTools.h"
 #include "LevelEditorSubsystem.h"
+#include "LevelEditorViewport.h"
 #include "Misc/Paths.h"
 #include "ObjectTools.h"
 #include "UObject/UObjectGlobals.h"
@@ -25,23 +26,33 @@
 #include "Engine/DirectionalLight.h"
 #include "Engine/PointLight.h"
 #include "Engine/SpotLight.h"
+#include "Engine/SkyLight.h"
 #include "Components/LightComponent.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/SkyLightComponent.h"
+
+#include "Wire/UrlabWire.gen.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
-#include "MuJoCo/Components/MjComponent.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Utils/MjUtils.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "Utils/CoordinateConversion.h"
 #include "MujocoImportFactory.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Light.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Bridge/InstanceRegistry.h"
 
 namespace URLabLevelOps
 {
@@ -398,20 +409,20 @@ bool SpawnActorSync(
 		return false;
 	}
 
-	// MJ -> UE: cm + Y-flip + (handedness baked into MjUtils helpers).
+	// MJ -> UE: cm + Y-flip + (handedness baked into the conversion helpers).
 	// Accept the conversion routines we already use everywhere else
 	// so spawn matches imported geometry to within float precision.
 	double MjPos[3] = {LocationMeters.X, LocationMeters.Y, LocationMeters.Z};
-	FVector UELoc = MjUtils::MjToUEPosition(MjPos);
+	FVector UELoc = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjPos);
 
 	// Quaternion convention is (w, x, y, z) on the wire when read by
-	// MjUtils, so re-pack from xyzw.
+	// URLabCoordinateConversion, so re-pack from xyzw.
 	double MjQuat[4] = {
 		RotationQuatXyzw.W,
 		RotationQuatXyzw.X,
 		RotationQuatXyzw.Y,
 		RotationQuatXyzw.Z};
-	FQuat UEQuat = MjUtils::MjToUERotation(MjQuat);
+	FQuat UEQuat = URLabCoordinateConversion::RightHandedWxyzQuaternionToUnreal(MjQuat);
 	FRotator UERot = UEQuat.Rotator();
 
 	// Idempotent path: a non-empty ActorId may already be in the world.
@@ -522,7 +533,7 @@ bool SpawnLightSync(
 
 	// Position: MJ -> UE (cm + Y-flip + handedness handled by helper).
 	double MjPos[3] = {LocationMeters.X, LocationMeters.Y, LocationMeters.Z};
-	const FVector UELoc = MjUtils::MjToUEPosition(MjPos);
+	const FVector UELoc = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjPos);
 
 	// Rotation: input is degrees in (Roll, Pitch, Yaw) along MJ axes
 	// (X, Y, Z respectively). FRotator constructor is (Pitch, Yaw, Roll).
@@ -637,7 +648,7 @@ bool SetActorTransformSync(
 	if (LocationMeters)
 	{
 		double MjPos[3] = {LocationMeters->X, LocationMeters->Y, LocationMeters->Z};
-		T.SetLocation(MjUtils::MjToUEPosition(MjPos));
+		T.SetLocation(URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(MjPos));
 	}
 	if (RotationQuatXyzw)
 	{
@@ -646,7 +657,7 @@ bool SetActorTransformSync(
 			RotationQuatXyzw->X,
 			RotationQuatXyzw->Y,
 			RotationQuatXyzw->Z};
-		T.SetRotation(MjUtils::MjToUERotation(MjQuat));
+		T.SetRotation(URLabCoordinateConversion::RightHandedWxyzQuaternionToUnreal(MjQuat));
 	}
 	A->SetActorTransform(T, /*bSweep=*/false, nullptr,
 		ETeleportType::TeleportPhysics);
@@ -755,8 +766,8 @@ bool ListActorsSync(
 		const FVector UELoc = A->GetActorLocation();
 		const FQuat UEQ = A->GetActorQuat();
 		double MjPos[3], MjQuat[4];
-		MjUtils::UEToMjPosition(UELoc, MjPos);
-		MjUtils::UEToMjRotation(UEQ, MjQuat);
+		URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(UELoc, MjPos);
+		URLabCoordinateConversion::UnrealQuaternionToRightHandedWxyz(UEQ, MjQuat);
 		TArray<TSharedPtr<FJsonValue>> LocOut;
 		for (int i = 0; i < 3; ++i)
 			LocOut.Add(MakeShared<FJsonValueNumber>(MjPos[i]));
@@ -1026,8 +1037,8 @@ TSharedPtr<FJsonObject> BuildActorRow(AActor* A)
 	const FVector UELoc = A->GetActorLocation();
 	const FQuat UEQ = A->GetActorQuat();
 	double MjPos[3], MjQuat[4];
-	MjUtils::UEToMjPosition(UELoc, MjPos);
-	MjUtils::UEToMjRotation(UEQ, MjQuat);
+	URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(UELoc, MjPos);
+	URLabCoordinateConversion::UnrealQuaternionToRightHandedWxyz(UEQ, MjQuat);
 	TArray<TSharedPtr<FJsonValue>> LocOut;
 	for (int i = 0; i < 3; ++i)
 		LocOut.Add(MakeShared<FJsonValueNumber>(MjPos[i]));
@@ -1151,10 +1162,10 @@ bool GetActorBoundsSync(
 	OutResolvedName = A->GetName();
 
 	const FBox Box = A->GetComponentsBoundingBox(bComponentsOnly);
-	// UE cm -> MJ metres, +Y -> -Y flip baked into MjUtils.
+	// UE cm -> MJ metres, +Y -> -Y flip baked into URLabCoordinateConversion.
 	double MjMin[3], MjMax[3];
-	MjUtils::UEToMjPosition(Box.Min, MjMin);
-	MjUtils::UEToMjPosition(Box.Max, MjMax);
+	URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(Box.Min, MjMin);
+	URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(Box.Max, MjMax);
 	// The Y-flip swaps min/max on that axis; normalise.
 	for (int i = 0; i < 3; ++i)
 	{
@@ -1200,35 +1211,49 @@ bool SnapshotSceneSync(
 			TSharedPtr<FJsonObject> Urlab = MakeShared<FJsonObject>();
 			Urlab->SetStringField(TEXT("mj_class"), TEXT("articulation"));
 
-			TArray<UMjJoint*> Joints;
-			Mj->GetComponents<UMjJoint>(Joints);
-			TArray<TSharedPtr<FJsonValue>> JointNames;
-			for (UMjJoint* J : Joints)
-				if (J && !J->bIsDefault)
-					JointNames.Add(MakeShared<FJsonValueString>(J->GetMjName()));
+			// The authored names, straight off the spec, so an articulation
+			// that has never compiled still lists what it contains.
+			auto NamesOfTag = [Mj](const TCHAR* Tag) {
+				TArray<TSharedPtr<FJsonValue>> Names;
+				for (const UMjNodeComponent* Element : Mj->GetElementsByTag(Tag))
+				{
+					if (Element != nullptr)
+					{
+						Names.Add(MakeShared<FJsonValueString>(Element->MjName.Get(Element->GetName())));
+					}
+				}
+				return Names;
+			};
+
+			TArray<TSharedPtr<FJsonValue>> JointNames = NamesOfTag(TEXT("joint"));
+			JointNames.Append(NamesOfTag(TEXT("freejoint")));
 			Urlab->SetArrayField(TEXT("joints"), JointNames);
 
-			TArray<UMjActuator*> Acts;
-			Mj->GetComponents<UMjActuator>(Acts);
 			TArray<TSharedPtr<FJsonValue>> ActNames;
-			for (UMjActuator* Act : Acts)
-				if (Act && !Act->bIsDefault)
-					ActNames.Add(MakeShared<FJsonValueString>(Act->GetMjName()));
+			for (const UMjNodeComponent* Act : Mj->GetActuators())
+			{
+				if (Act != nullptr)
+				{
+					ActNames.Add(MakeShared<FJsonValueString>(Act->MjName.Get(Act->GetName())));
+				}
+			}
 			Urlab->SetArrayField(TEXT("actuators"), ActNames);
 
-			TArray<UMjSensor*> Sensors;
-			Mj->GetComponents<UMjSensor>(Sensors);
 			TArray<TSharedPtr<FJsonValue>> SensorNames;
-			for (UMjSensor* S : Sensors)
-				if (S && !S->bIsDefault)
-					SensorNames.Add(MakeShared<FJsonValueString>(S->GetMjName()));
+			for (const UMjNodeComponent* Sensor : Mj->GetSensors())
+			{
+				if (Sensor != nullptr)
+				{
+					SensorNames.Add(MakeShared<FJsonValueString>(Sensor->MjName.Get(Sensor->GetName())));
+				}
+			}
 			Urlab->SetArrayField(TEXT("sensors"), SensorNames);
 
 			TArray<UMjCamera*> Cams;
 			Mj->GetComponents<UMjCamera>(Cams);
 			TArray<TSharedPtr<FJsonValue>> CamNames;
 			for (UMjCamera* C : Cams)
-				if (C && !C->bIsDefault)
+				if (C)
 					CamNames.Add(MakeShared<FJsonValueString>(C->GetName()));
 			Urlab->SetArrayField(TEXT("cameras"), CamNames);
 
@@ -1272,14 +1297,14 @@ bool DuplicateActorSync(
 	FVector SourceMjPos;
 	{
 		double MjPos[3];
-		MjUtils::UEToMjPosition(Src->GetActorLocation(), MjPos);
+		URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(Src->GetActorLocation(), MjPos);
 		SourceMjPos = FVector(MjPos[0], MjPos[1], MjPos[2]);
 	}
 	FQuat SrcQuatXyzw;
 	{
 		double MjQuat[4];
-		MjUtils::UEToMjRotation(Src->GetActorQuat(), MjQuat);
-		// MjUtils emits wxyz; pack as xyzw for SpawnActorSync.
+		URLabCoordinateConversion::UnrealQuaternionToRightHandedWxyz(Src->GetActorQuat(), MjQuat);
+		// URLabCoordinateConversion emits wxyz; pack as xyzw for SpawnActorSync.
 		SrcQuatXyzw = FQuat(MjQuat[1], MjQuat[2], MjQuat[3], MjQuat[0]);
 	}
 	const FVector SrcScale = Src->GetActorScale3D();
@@ -1330,7 +1355,7 @@ bool ActorHierarchySync(
 		Node->SetStringField(TEXT("class"), N->GetClass()->GetName());
 
 		double MjPos[3];
-		MjUtils::UEToMjPosition(N->GetActorLocation(), MjPos);
+		URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(N->GetActorLocation(), MjPos);
 		TArray<TSharedPtr<FJsonValue>> LocOut;
 		for (int i = 0; i < 3; ++i)
 			LocOut.Add(MakeShared<FJsonValueNumber>(MjPos[i]));

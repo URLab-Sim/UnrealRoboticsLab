@@ -5,6 +5,13 @@
 # CoreUObject/Public/VerseVM/.clang-format), with ONE deliberate deviation:
 #
 #   SortIncludes: false
+#   LineEnding: LF
+#
+# Epic's config leaves the line ending to whatever the file already has, which
+# on Windows means clang-format preserves the CRLF that core.autocrlf wrote.
+# Pinning it makes the formatter normalise, so a file formatted on Windows and
+# one formatted on Linux are the same bytes. `.gitattributes` pins the same
+# thing for the repository; this is the half that runs before a commit exists.
 #
 # Epic ships SortIncludes: true, but those engine subsystems have no
 # reflection/generated headers. URLab's UPROPERTY modules require the
@@ -62,6 +69,7 @@ IndentCaseLabels: true
 IndentPPDirectives: None
 IndentWidth: 4
 Language: Cpp
+LineEnding: LF
 NamespaceIndentation: None
 PackConstructorInitializers: CurrentLine
 PointerAlignment: Left

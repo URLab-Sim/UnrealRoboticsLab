@@ -12,7 +12,7 @@
 
 /**
  * Colour helpers matching MuJoCo's upstream visualizer (engine_vis_visualize.c).
- * Used by UMjDebugVisualizer to paint bodies in Island / Segmentation modes.
+ * Color utilities for MuJoCo visualization.
  */
 namespace MjColor
 {

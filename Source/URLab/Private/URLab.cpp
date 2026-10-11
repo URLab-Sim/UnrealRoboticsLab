@@ -25,7 +25,27 @@
 #include "Misc/Paths.h"
 #include "Misc/MessageDialog.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Core/MjContentPaths.h"
 #include "Interfaces/IPluginManager.h"
+
+#include <mujoco/mujoco.h>
+
+#if PLATFORM_LINUX
+#include <dlfcn.h>
+#endif
+
+#include "MuJoCo/Spec/MjGenHooks.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjFlexcomp.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjMesh.h"
+#include "MuJoCo/Elements/MjModelAsset.h"
+#include "MuJoCo/Elements/MjTexture.h"
+
+#if URLAB_MJ_GEN
+#include "MuJoCo/Spec/MjNodeFactories.h"
+#endif
 
 #if WITH_EDITOR
 #include "AssetToolsModule.h"
@@ -33,8 +53,50 @@
 #endif
 
 #define LOCTEXT_NAMESPACE "FURLabModule"
+
+namespace
+{
+/**
+ * The elements that are built as a hand subclass rather than the generated class.
+ *
+ * Each is here because it holds per-instance state the reflection system has to
+ * see: a render target and a worker thread for the camera, mesh component
+ * references held against garbage collection for the geom and the flexcomp, a
+ * pivot cache for the body, and the imported UAsset a file-backed mesh or
+ * texture stands for. Everything else an element does that is not a schema
+ * attribute lives in a runtime function library instead, so this list does not
+ * grow with the schema.
+ *
+ * Registration is process-wide and every registration has to happen before the
+ * first spec is read, which is what module startup is.
+ */
+void RegisterHandElementClasses()
+{
+#if URLAB_MJ_GEN
+	using urlab::spec::psm::ElementType;
+	urlab::spec::MjSetElementClass(ElementType::Body, UMjBody::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Camera, UMjCamera::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Flexcomp, UMjFlexcomp::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Geom, UMjGeom::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Mesh, UMjMesh::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::ModelAsset, UMjModelAsset::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Texture, UMjTexture::StaticClass());
+#endif
+}
+} // namespace
+
 void FURLabModule::StartupModule()
 {
+	RegisterHandElementClasses();
+
+	// The plugin's runtime assets are reached by path, so the cooker cannot see
+	// them and a packaged build silently loses them if their directories were
+	// not cooked. Check once here and say so, rather than letting each call site
+	// degrade quietly and leave someone puzzling over a render that looks wrong.
+	// Deliberately not fatal: every consequence is a degradation, not a crash,
+	// and refusing to start would be worse than starting unlit.
+	URLabContent::VerifyRequiredContent();
+
 	FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
 	FString InstallDir = FPaths::Combine(PluginDir, TEXT("third_party/install"));
 
@@ -54,11 +116,11 @@ void FURLabModule::StartupModule()
 
 	// Load a shared library and log success/failure. LibraryPattern may
 	// contain `*` so we can match toolset-versioned filenames (libzmq bakes
-	// the MSVC toolset version into its DLL name; building with a different
-	// toolset than the URLab hardcode used to surface as a delay-load
-	// 0xc06d007e on first ZMQ call). BinSubDir is the per-package
-	// subdirectory under third_party/install/<SubDir>/ that holds the
-	// loadable artifact: "bin" on Windows (DLLs), "lib" on Linux (.so).
+	// the MSVC toolset version into its DLL name, so a hardcoded filename
+	// built against the wrong toolset fails as a delay-load 0xc06d007e on
+	// first ZMQ call). BinSubDir is the per-package subdirectory under
+	// third_party/install/<SubDir>/ that holds the loadable artifact: "bin"
+	// on Windows (DLLs), "lib" on Linux (.so).
 	auto LoadDependencyDLL = [&](const FString& LibraryPattern, const FString& SubDir, const FString& BinSubDir) {
 		// Try plugin third-party path first (editor / development).
 		FString DLLPath = ResolveLibraryFile(FPaths::Combine(InstallDir, SubDir, BinSubDir), LibraryPattern);
@@ -98,18 +160,87 @@ void FURLabModule::StartupModule()
 	// for newer toolsets). Glob so URLab works regardless of which VS
 	// version the user built third_party with.
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq-*-mt-*.dll"), TEXT("libzmq"), TEXT("bin"));
+	// After MuJoCo, which it links against.
+	bAllDepsLoaded &= LoadDependencyDLL(TEXT("urlab_mjshim.dll"), TEXT("MjShim"), TEXT("bin"));
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.dll"), TEXT("CoACD"), TEXT("bin"));
 #elif PLATFORM_LINUX
-	// Linux .so layout: third_party/install/<pkg>/lib/. Glob the SONAME
-	// suffix so a MuJoCo bump (or any minor version bump) doesn't require
-	// tracking the literal version in the loader.
-	bAllDepsLoaded &= LoadDependencyDLL(TEXT("libmujoco.so*"), TEXT("MuJoCo"), TEXT("lib"));
-	bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq.so*"), TEXT("libzmq"), TEXT("lib"));
+	// These two libraries are linked into the module. The dynamic linker has
+	// loaded their exact SONAMEs before StartupModule runs. Check the resident
+	// symbols instead of dlopening an unversioned alias: staging can copy an
+	// alias and its SONAME as separate regular files, and loading both MuJoCo
+	// images registers its built-in resource decoders twice.
+	auto VerifyLinkedDependency = [](const ANSICHAR* Symbol, const TCHAR* Label) {
+		void* Address = dlsym(RTLD_DEFAULT, Symbol);
+		Dl_info Info{};
+		if (!Address || !dladdr(Address, &Info) || !Info.dli_fname)
+		{
+			UE_LOG(LogURLab, Error, TEXT("Linked %s symbol %hs is unavailable"), Label, Symbol);
+			return false;
+		}
+		UE_LOG(LogURLab, Log, TEXT("Using linked %s from %hs"), Label, Info.dli_fname);
+		return true;
+	};
+	bAllDepsLoaded &= VerifyLinkedDependency("mj_version", TEXT("MuJoCo"));
+	if (mj_version() != mjVERSION_HEADER)
+	{
+		UE_LOG(LogURLab, Error, TEXT("Linked MuJoCo version %d does not match header version %d"),
+			mj_version(), mjVERSION_HEADER);
+		bAllDepsLoaded = false;
+	}
+	// After MuJoCo, which it links against.
+	bAllDepsLoaded &= LoadDependencyDLL(TEXT("liburlab_mjshim.so*"), TEXT("MjShim"), TEXT("lib"));
+	bAllDepsLoaded &= VerifyLinkedDependency("zmq_version", TEXT("libzmq"));
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.so*"), TEXT("CoACD"), TEXT("lib"));
 #endif
 
+	// MuJoCo's first-party plugins -- the PID actuator, cable and shell
+	// elasticity, the touch-grid sensor, SDF shapes -- are separate shared
+	// libraries rather than part of the runtime, and a document naming one
+	// fails to build until its library is loaded: the plugin registry is
+	// process-global and empty until something fills it. Loading them here
+	// means both our reader and MuJoCo's own see the same set, and it happens
+	// once, before any model is read.
+	//
+	// Only after the runtime itself loaded, because each plugin library links
+	// against it.
+	if (bAllDepsLoaded)
+	{
+#if PLATFORM_WINDOWS
+		const TCHAR* const PluginBinSubDir = TEXT("bin");
+#else
+		const TCHAR* const PluginBinSubDir = TEXT("lib");
+#endif
+		FString PluginLibDir =
+			FPaths::Combine(InstallDir, TEXT("MuJoCo"), PluginBinSubDir, TEXT("mujoco_plugin"));
+		if (!IFileManager::Get().DirectoryExists(*PluginLibDir))
+		{
+			PluginLibDir = FPaths::Combine(FPlatformProcess::GetModulesDirectory(), TEXT("mujoco_plugin"));
+		}
+		if (IFileManager::Get().DirectoryExists(*PluginLibDir))
+		{
+			const int32 Before = mjp_pluginCount();
+			mj_loadAllPluginLibraries(TCHAR_TO_UTF8(*PluginLibDir), nullptr);
+			UE_LOG(LogURLab, Log, TEXT("Loaded %d MuJoCo plugin(s) from %s"),
+				mjp_pluginCount() - Before, *PluginLibDir);
+		}
+		else
+		{
+			// Not fatal: everything except a model that names a plugin works
+			// without them, and saying so beats a compile error that only
+			// names the plugin the document asked for.
+			UE_LOG(LogURLab, Warning,
+				TEXT("No MuJoCo plugin directory found; models using plugins (mujoco.pid, cable, "
+					 "shell, touch_grid, SDF) will not build. Re-run third_party/build_all.ps1 "
+					 "(Windows) or build_all.sh (Linux/macOS) to install them."));
+		}
+	}
+
 	if (!bAllDepsLoaded)
 	{
+#if PLATFORM_LINUX
+		UE_LOG(LogURLab, Fatal,
+			TEXT("Required linked third-party dependency is unavailable or has the wrong ABI; see preceding URLab errors"));
+#else
 		// Surface the failure now instead of letting the first ZMQ / MuJoCo
 		// call fault with delay-load's generic 0xc06d007e.
 		const FText Title = LOCTEXT("URLabDllLoadFailedTitle", "URLab: third-party DLL load failed");
@@ -120,6 +251,7 @@ void FURLabModule::StartupModule()
 			"from the plugin root, then rebuild the editor.\n\n"
 			"See the URLab log for the missing file name(s).");
 		FMessageDialog::Open(EAppMsgType::Ok, Body, Title);
+#endif
 	}
 
 	// Some CoACD dependencies like TBB or runtimes might be in CoACD/bin

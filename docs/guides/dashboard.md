@@ -1,5 +1,10 @@
 # Simulate Dashboard
 
+> **Retired:** The old Simulate UI and its per-articulation runtime controls were
+> removed in the architecture cleanup. The instructions below describe the
+> former UI and are preserved only as historical context. Use the current
+> [Python service overview](../python/index.md) for simulation control.
+
 The Simulate dashboard is an in-editor widget that mirrors MuJoCo's `simulate` UI. Drive actuators, read sensors, watch camera feeds, jump to keyframes, and control playback without leaving Play-in-Editor.
 
 ![The Simulate dashboard with actuator sliders, sensor readouts, and a camera feed panel](../images/placeholder.svg)
@@ -8,7 +13,7 @@ The Simulate dashboard is an in-editor widget that mirrors MuJoCo's `simulate` U
 
 The dashboard appears automatically when you hit Play, as long as:
 
-1. An `MjManager` actor is present in the level (one per level).
+1. An `AAMjManager` actor is present in the level (one per level).
 2. `bAutoCreateSimulateWidget` is enabled on the Manager.
 3. **Show Plugin Content** is enabled in the Content Browser settings (gear icon), so the bundled widget assets are visible to the engine.
 

@@ -70,9 +70,6 @@ discussion so we can point you at the code.
   so the controls feel familiar to MuJoCo users.
 - **Simulate widget overhaul.** Rework the in-editor simulation control panel
   (`UMjSimulateWidget`) into a cleaner, more capable UI.
-- **Codegen: flexcomp sub-elements.** Bring flexcomp's `<contact>`, `<edge>`,
-  `<elasticity>`, and `<pin>` sub-elements under the codegen; they are hand-rolled
-  today pending per-sub-element property support.
 - **Raw control-path cleanup.** Simplify the raw control mode's `NetworkValue`
   indirection and dual-write.
 - **Script consolidation.** Merge the overlapping Linux build/test scripts and

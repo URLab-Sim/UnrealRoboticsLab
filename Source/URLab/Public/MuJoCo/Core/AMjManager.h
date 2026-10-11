@@ -22,60 +22,32 @@
 
 #pragma once
 
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "Bridge/RpcDispatcher.h"
-#include "Bridge/BridgeServer.h"
-#include "Transport/SnapshotPublisher.h"
-#include <atomic>
+#include "MuJoCo/Core/MjCapabilities.h"
 #include "AMjManager.generated.h"
 
 // Forward declarations
+class AMjArticulation;
 class AMjHeightfieldActor;
-class UMjPhysicsEngine;
-class UMjDebugVisualizer;
-class UMjNetworkManager;
-class UMjInputHandler;
-class UMjPerturbation;
-class UMjSimulationState;
-class UMjBody;
+class URenderCameraComponent;
+struct FSpecRef;
 
-/**
- * @struct FMjEntityRecord
- * @brief Cached non-articulation entity metadata: a UMjBody whose owner is
- *        not an AMjArticulation (props, free-jointed scene objects, ...).
- *        Built once at session start (PostCompile) and consumed by
- *        UURLabZmqPublishTransport for "scene/<name>/state" PUB topics and by
- *        the step server for the `entities` block in step replies.
- *        Articulations have their own typed cache; this struct is for
- *        everything else dynamic in the world.
- */
-struct FMjEntityRecord
-{
-	/** UMjBody MjID after compile. */
-	int32 MjId = -1;
-	/** Compiled name (the same string mj_id2name returns). */
-	FString Name;
-	/** True if the body owns a single mjJNT_FREE joint (qpos[7]/qvel[6]). */
-	bool bHasFreeBase = false;
-	/** Weak ref kept for diagnostics; consumers should index by MjId. */
-	TWeakObjectPtr<UMjBody> BodyComp;
-};
+class UMjCompiler;
+class UMjFlag;
+class UMjModel;
+class UMjOption;
+class UMjBody;
+class UMjAppearanceStore;
 
 /**
  * @class AAMjManager
- * @brief Thin coordinator actor for the MuJoCo simulation within Unreal Engine.
+ * @brief Authoring scene root for compiling placed URLab content.
  *
- * Owns subsystem components and delegates to them:
- * - UMjPhysicsEngine: simulation lifecycle, model/data, options, async loop
- * - UMjDebugVisualizer: debug drawing, collision wireframes
- * - UMjNetworkManager: ZMQ components, camera streaming
- * - UMjInputHandler: keyboard hotkeys
- *
- * External code accesses subsystem state via Manager->PhysicsEngine->X, etc.
+ * In a game world it performs one owned compile/data handoff to the simulation
+ * world subsystem and retires. It owns no runtime, worker, transport, render
+ * view, model/data pointer, or runtime service registration.
  */
 UCLASS()
 class URLAB_API AAMjManager : public AActor
@@ -85,220 +57,150 @@ class URLAB_API AAMjManager : public AActor
 public:
 	AAMjManager();
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
-	UMjPhysicsEngine* PhysicsEngine;
+	/**
+	 * The scene spec's root, and the manager's transform root.
+	 *
+	 * A level is one MuJoCo scene, so it is one MJCF spec; the sections
+	 * below are its children, and every articulation in the level is attached
+	 * into it at write time rather than being merged into it.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjModel> SceneSpec;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
-	UMjDebugVisualizer* DebugVisualizer;
+	/**
+	 * The scene's `<option>`, as the spec element it is.
+	 *
+	 * The scene is one MuJoCo spec assembled from the level, and its
+	 * top-level sections belong to the manager rather than to any articulation:
+	 * MuJoCo takes the scene's option block whole and discards an attached
+	 * spec's own copy, so there is exactly one authority and this is it.
+	 * Fields hold MJCF's values in MJCF's units.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjOption> SceneOption;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
-	UMjNetworkManager* NetworkManager;
+	/** The scene's `<option><flag>`. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjFlag> SceneFlags;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
-	UMjInputHandler* InputHandler;
+	/**
+	 * The scene's `<compiler>`, which carries the attach conflict policy.
+	 *
+	 * `merge` rather than MuJoCo's `warning` default, because the attach target
+	 * is a scene nobody authored: under `warning` the parent keeps every field,
+	 * so an imported model's `<option>` is discarded against defaults.
+	 * Per-articulation `AttachConflict` overrides it.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjCompiler> SceneCompiler;
 
-	/** Mouse-driven body perturbation (simulate-style Ctrl+LMB/RMB drag). */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
-	UMjPerturbation* Perturbation;
+	/** A handle on the scene spec the manager's sections belong to. */
+	FSpecRef GetSceneSpec() const;
 
-	/** Set in BeginPlay, cleared in EndPlay. Use GetManager() from Blueprints. */
+	/** Editor lookup for the authored scene root. */
 	static AAMjManager* Instance;
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Global", meta = (DisplayName = "Get MuJoCo Manager"))
 	static AAMjManager* GetManager();
 
-	// --- State Control (delegates to PhysicsEngine) ---
+	/**
+	 * Every camera the RPC surface can serve, in one place: the manager's global cameras
+	 * plus the compiled render view's re-homed body-fixed cameras. When the render view
+	 * carries cameras it owns the model cameras, so the transitional articulation-mounted
+	 * cameras are skipped -- enumerating both would collide on the shared canonical name
+	 * and double the GPU capture. Falls back to the articulation cameras only while the
+	 * view has none. Works with the articulations alive or gone.
+	 */
+	void CollectCameras(TArray<URenderCameraComponent*>& Out) const;
 
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Control")
-	void SetPaused(bool bPaused);
+	/**
+	 * The visual appearance channel: name-keyed overrides for live materials. Lazily created on first
+	 * request and owned here (so overrides outlive any one render scene and a
+	 * render-server swap can re-apply them). Never null.
+	 */
+	UMjAppearanceStore* GetAppearanceStore();
 
-	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
-	bool IsRunning() const;
 
-	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
-	bool IsInitialized() const;
+	// --- Capabilities (composable, orthogonal to the pose source) ---
 
-	// --- Articulation Access ---
+	/**
+	 * @brief Whether this instance PRODUCES camera frames (its model cameras and/or its own view).
+	 *
+	 * An output: absent means the frames are never produced, so nothing downstream has to
+	 * check again. It used to be the same word as the camera-RPC permission below, which is
+	 * why the two were one CLI token setting two booleans in two functions that could
+	 * disagree -- authorising the ops on an instance that built no cameras, or building
+	 * cameras nobody was allowed to configure.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Capabilities")
+	bool bStreamCameraFrames = true;
 
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Global")
-	AMjArticulation* GetArticulation(const FString& ActorName) const;
+	/**
+	 * @brief Whether peers may CALL the camera ops on this instance.
+	 *
+	 * A permission: the dispatcher refuses the ops from the op's declared requirement, so
+	 * nothing here has to be re-checked inside a handler.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Capabilities")
+	bool bAllowCameraRpc = true;
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
-	TArray<AMjArticulation*> GetAllArticulations() const;
+	/**
+	 * @brief Whether this instance accepts interactive input (xfrc / wrench / drag) into its sim.
+	 *
+	 * A permission. When off, forwarded perturbation input is rejected. Advertised in the
+	 * handshake.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Capabilities")
+	bool bAcceptInput = true;
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
-	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
+	/**
+	 * @brief Whether peers may swap this instance's model out from under it.
+	 *
+	 * A permission, and the reason it exists: the model swap was ungated, so a discovery
+	 * probe could replace a running scene. The resolved workflow determines the
+	 * permission policy: a simulation-owned source refuses model replacement
+	 * unless an authorized simulation operation requests it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Capabilities")
+	bool bAcceptModelLoad = true;
 
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
-	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
-
-	/** Non-articulation entity table built in PostCompile; empty until then. */
-	const TArray<FMjEntityRecord>& GetEntities() const { return EntityCache; }
-
-	/** Refresh the entity cache; called from PostCompile. */
-	void BuildEntityCache();
-
-	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
-	float GetSimTime() const;
-
-	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
-	float GetTimestep() const;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|UI")
-	bool bAutoCreateSimulateWidget = true;
+	/** True if this instance currently has the given capability enabled. */
+	UFUNCTION(BlueprintPure, Category = "MuJoCo|Capabilities")
+	bool HasCapability(EMjCapability Capability) const;
 
 	// --- Remote Stepping ---
 
 	/**
-	 * @brief Step mode for the simulation.
+	 * @brief The episode seed, recorded here for anything that wants to mirror it.
 	 *
-	 * Auto (default) lets the Python client promote to Direct or Puppet on hello.
-	 * Pinning to Live / Direct / Puppet locks the engine and rejects
-	 * mode-switch RPCs with error("mode_locked_by_server").
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Remote Stepping")
-	EStepMode StepMode = EStepMode::Auto;
-
-	/**
-	 * @brief Deterministic seed written to m->opt.seed before compile.
-	 *
-	 * Also writable at runtime via the reset RPC for episode-level reseeding.
+	 * Nothing in this plugin consumes it. Modern mjOption has no `seed` field and
+	 * mj_step is deterministic -- MuJoCo's randomness comes from noise inputs the
+	 * client sets, not an integrator RNG -- so there is nowhere to write it. The
+	 * Retained only as authoring metadata for Blueprint integrations.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Remote Stepping")
 	int32 Seed = 0;
 
-	/**
-	 * @brief Single source of truth for "publishers should pause".
-	 *
-	 * FURLabRpcDispatcher flips this to true on entering Direct/Puppet so the
-	 * sensor broadcaster, control subscriber, and camera workers all idle.
-	 * Flipped back to false on exit.
-	 */
-	std::atomic<bool> bPublishersPaused{false};
+protected:
+	/** Last authored compile/handoff diagnostic. It is not runtime state. */
+	FString AuthoringCompileError;
 
-	/**
-	 * @brief The resolved, authoritative step mode the physics loop runs under.
-	 *
-	 * `StepMode` above is the *configured* value and may be `Auto`, which the
-	 * dispatcher resolves to a concrete mode (Auto starts Live). The physics
-	 * loop must pace off the resolved mode, not the configured one — reading
-	 * `StepMode == Live` directly leaves `Auto` (the default) pacing as if it
-	 * were Direct, blocking on the step-request timeout at ~10 Hz. The
-	 * dispatcher mirrors its `ActiveStepMode` here whenever it changes; defaults
-	 * to Live so a bridge-less PIE session runs real-time.
-	 */
-	std::atomic<EStepMode> EffectiveStepMode{EStepMode::Live};
-
-	/** Owns the FURLabRpcDispatcher + transports. Created in BeginPlay, destroyed in EndPlay. */
-	UPROPERTY()
-	TObjectPtr<UURLabBridgeServer> BridgeServer;
-
-	FURLabRpcDispatcher* GetStepDispatcher() const
-	{
-		return BridgeServer ? BridgeServer->GetDispatcher() : nullptr;
-	}
-
-	/** Snapshot publishers share one per-step state_full payload — each
-	 *  wire transport (ZMQ PUB, SHM ring) avoids re-serialising the same
-	 *  data. OwnerObj may be any UObject; parameter name avoids shadowing
-	 *  AActor::Owner. */
-	void RegisterSnapshotPublisher(IMjSnapshotPublisher* Publisher,
-		class UObject* OwnerObj);
-	void UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher);
-
-	/** Bound to Tab key. */
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
-	void ToggleSimulateWidget();
-
-	UPROPERTY()
-	UUserWidget* SimulateWidget = nullptr;
+	/** Name-keyed geom appearance overrides (visual DR). Lazily created; see
+	 *  GetAppearanceStore. Transient so it is GC-rooted across PIE without
+	 *  serialising the overrides. */
+	UPROPERTY(Transient)
+	TObjectPtr<UMjAppearanceStore> AppearanceStore;
 
 protected:
-	/** O(1) articulation lookup built in PostCompile. Key = actor name. */
-	TMap<FString, AMjArticulation*> m_ArticulationMap;
-
-	TArray<FMjEntityRecord> EntityCache;
-
-public:
-	/** Manager-owned UObject publish transports
-	 *  (UURLabShmPublishTransport + UURLabZmqPublishTransport).
-	 *  UPROPERTY(Transient) keeps GC alive across PIE without
-	 *  serialising. EndPlay calls TransportShutdown on each before
-	 *  clearing. Public so the dispatcher can iterate to find specific
-	 *  publishers (e.g. SHM state path for hello reply). */
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<class UURLabPublishTransport>> ManagerOwnedPublishTransports;
-
-	/** Manager-owned UObject subscribe transports
-	 *  (UURLabZmqSubscribeTransport). Same lifetime contract as the publish
-	 *  array; same per-step iteration contract via PreStep callback. */
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<class UURLabSubscribeTransport>> ManagerOwnedSubscribeTransports;
-
-protected:
-	struct FRegisteredSnapshotPublisher
-	{
-		TWeakObjectPtr<UObject> Owner;
-		IMjSnapshotPublisher* Publisher = nullptr;
-	};
-	/** Snapshot publishers registered by their owning components. Read on
-	 *  the physics async thread, mutated on the game thread (BeginPlay /
-	 *  EndPlay) -- protect with SnapshotPublishersMutex. */
-	TArray<FRegisteredSnapshotPublisher> SnapshotPublishers;
-	mutable FCriticalSection SnapshotPublishersMutex;
-
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
-	virtual void Tick(float DeltaTime) override;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
-	TArray<UMjQuickConvertComponent*> m_MujocoComponents;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
-	TArray<AMjArticulation*> m_articulations;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
-	TArray<AMjHeightfieldActor*> m_heightfieldActors;
-
 	void Compile();
-	void PreCompile();
-	void PostCompile();
-
-	// --- Replay ---
-
-	UFUNCTION(CallInEditor, Category = "MuJoCo|Replay")
-	void StartRecording();
-
-	UFUNCTION(CallInEditor, Category = "MuJoCo|Replay")
-	void StopRecording();
-
-	UFUNCTION(CallInEditor, Category = "MuJoCo|Replay")
-	void StartReplay();
-
-	UFUNCTION(CallInEditor, Category = "MuJoCo|Replay")
-	void StopReplay();
-
-	// --- Delegating Methods (thin wrappers around PhysicsEngine) ---
-
-	UFUNCTION(BlueprintCallable, CallInEditor, Category = "MuJoCo|Control")
-	void ResetSimulation();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Status")
 	FString GetLastCompileError() const;
 
-	/** Pauses the async loop, steps N times synchronously, then restores pause state. */
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Control")
-	void StepSync(int32 NumSteps);
-
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Control")
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Authoring")
 	bool CompileModel();
-
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Snapshot")
-	UMjSimulationState* CaptureSnapshot();
-
-	/** Restore is scheduled for the next physics step (not applied immediately). */
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Snapshot")
-	void RestoreSnapshot(UMjSimulationState* Snapshot);
 };

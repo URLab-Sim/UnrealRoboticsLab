@@ -1,0 +1,23 @@
+// Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "MuJoCo/Gen/Elements/Bodies/MjBody.gen.h"
+#include "MjBody.generated.h"
+
+UCLASS(ClassGroup = (MuJoCo), meta = (BlueprintSpawnableComponent))
+class URLAB_API UMjBody : public UMjBodyBase
+{
+	GENERATED_BODY()
+public:
+	/** Set by Quick Convert for authored mesh origin metadata. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body")
+	bool bIsQuickConverted = false;
+};

@@ -1,5 +1,10 @@
 # Recording & Replay
 
+> **Retired:** Recording/replay integration is outside the completed architecture
+> and the old commands below are no longer available. See
+> [completion status](../architecture/completion_status.md) and the current
+> [Python service overview](../python/index.md).
+
 Capture every physics step as a per-joint `qpos`/`qvel` frame keyed by sim-time, save it as a `.json` file, and play it back deterministically. Recording works the same from the editor and from Python.
 
 Because the recorder hooks the physics engine's post-step event, it captures one frame per `mj_step` regardless of what drove the step, so it behaves identically across all step modes. Sim time is the authoritative axis: a session captured at 10x real time in a scripted rollout replays at wall-clock speed with no tempo jitter.

@@ -1,117 +1,123 @@
 # MJCF Support
 
-What URLab parses from MJCF and writes back to a MuJoCo spec. This is a reference for which elements and attributes round-trip, so you can tell ahead of time whether a model will import cleanly.
+What URLab reads from MJCF and writes back. The short answer is all of it:
+the model layer is generated from MuJoCo's own schema, so coverage is
+whatever the pinned MuJoCo declares. This page is about the places where
+that answer needs qualifying, and about how the claim is checked.
 
-Checked against MuJoCo upstream `main` (header version `3010000`, that is 3.10.0-dev). Status terms:
+Checked against MuJoCo 3.11.1 (`mjVERSION_HEADER 3011001`).
 
-- **Supported** parses on import and exports back to the spec.
-- **Missing** is not parsed or written; MuJoCo's own default applies if the model relies on it.
+## Coverage is the schema
 
-URLab models MJCF through `UMjComponent` subclasses. Most attribute-to-field mapping is generated from the MuJoCo schema; see [Codegen](../contributing/codegen.md) for how coverage is kept in sync with each MuJoCo version. The import flow itself is in the [Importing guide](../guides/importing.md).
+There is no hand-maintained list of supported elements and no
+hand-maintained list of supported attributes. Every element MuJoCo's
+`mjcf.schema` declares becomes a component class, and every attribute
+becomes a property on it. The current tree has 144 element classes and 48
+enums.
 
-## Coverage at a glance
+| Family | Elements |
+|---|---|
+| Model blocks | `mujoco`, `compiler`, `lengthrange`, `option`, `flag`, `size`, `statistic`, `visual` and its six sub-blocks |
+| Bodies | `body`, `inertial`, `frame`, `attach`, `replicate` |
+| Geometry | `geom`, `site` |
+| Joints | `joint`, `freejoint` |
+| Cameras and lights | `camera`, `light` |
+| Assets | `mesh`, `hfield`, `skin`, `bone`, `texture`, `material`, `layer`, `model` |
+| Defaults | `default` and every class partial |
+| Contact, equality, tendon | `pair`, `exclude`, all seven equality types, spatial and fixed tendons with all four wrap types |
+| Actuators | all twelve spellings plus `plugin` |
+| Sensors | all 49 sensor tags |
+| Custom, keyframe, extension | `numeric`, `text`, `tuple`, `key`, `plugin`, `config` |
+| Deformable and macros | `flex`, `flexcomp`, `composite` and their sub-elements |
 
-| Category | Supported | Missing | Total |
-|---|---:|---:|---:|
-| body | 7 | 3 | 10 |
-| joint | 18 | 2 | 20 |
-| geom | 22 | 5 | 27 |
-| site | 10 | 2 | 12 |
-| actuator (common) | 14 | 2 | 16 |
-| actuator types | 10 | 0 | 10 |
-| sensor types | 41 | 0 | 41 |
-| tendon | 16 | 1 | 17 |
-| equality | 10 | 0 | 10 |
-| default | 6 | 5 | 11 |
-| compiler | 5 | 2 | 7 |
-| option | 17 | 3 | 20 |
-| keyframe | 6 | 0 | 6 |
-| contact | 2 | 0 | 2 |
-| asset | 3 | 1 | 4 |
-| flexcomp | 22 | 2 | 24 |
+An attribute upstream adds is not a silent omission. It is a generation
+error naming the attribute, until an overlay row says what it means. See
+[Generation](generation.md) for the gates that make that true.
 
-The per-element notes below list only the attributes worth flagging (the gaps and the import-specific behaviour). Anything not called out as Missing is supported.
+## How the claim is checked
 
-## body
+Three independent nets, because "the schema declares it" and "the value
+survives" are different claims.
 
-Supported: `name`, `childclass`, `pos`, `quat`, `axisangle`, `xyaxes`, `zaxis`, `euler`, `mocap`, `gravcomp`, `sleep`. All orientation forms resolve through `OrientationToMjQuat`, honouring the `<compiler>` angle and eulerseq settings. `mocap` maps to `bDrivenByUnreal` so Unreal can drive the body kinematically.
+**The corpus net** round-trips every model in MuJoCo's own test corpus
+through URLab's MJCF reader and writer, loads the written text with
+`mj_loadXML`, and diffs the resulting `mjModel` against a stock load of
+the original file, field by field: every size, the name table, every
+pointer array. Its recorded allowed-failure list is currently empty. Run
+it with `protospec/corpus_net.ps1` or `corpus_net.sh`.
 
-Missing: `user`.
+**Live compile parity** compiles every fixture in
+`Content/TestData/parity/` twice, once through the component tree and
+once through `mj_loadXML` of the same file, and diffs the two `mjModel`s
+at zero tolerance. This is the one that covers the path an actual
+simulation takes, since a simulation never goes through text.
 
-## joint
+**Compiled-model goldens** in `Content/TestData/goldens/` pin the output
+across changes that are not supposed to move it.
 
-Supported includes `type`, `axis`, `range`, `springdamper`, `stiffness` and `damping` (up to three polynomial coefficients each), `armature`, `frictionloss`, `actuatorfrcrange`, and the full `sol*limit` / `sol*friction` set. Slide-joint `range` and `ref` auto-convert metres and centimetres.
+## Macros are expanded by MuJoCo, not by URLab
 
-Missing: `actuatorgravcomp`, `user`.
+`<replicate>`, `<composite>` and `<flexcomp>` are not elements. They are
+compile-time macros that MuJoCo expands during its own read, and there is
+no spec-API call for any of them. URLab serializes the macro's subtree
+back to MJCF, hands it to MuJoCo's reader, and attaches the expansion, so
+the result is exactly what MuJoCo would have produced.
 
-## geom
+The consequence to know is about addressing, not fidelity. The bodies,
+geoms and joints a macro produces exist in the compiled model and not in
+the component tree, so there is no component to select or bind for any of
+them. `FMjBinding::Find(ObjType, Glob)` is how you reach them by name
+pattern.
 
-Supported includes `type`, `size`, `fromto`, `contype`, `conaffinity`, `condim`, `priority`, `friction`, `mass`, `density`, `material`, `rgba`, `mesh`, all orientation forms, and the `sol*` pair. Type maps to a UE visualizer where one exists: box, sphere, cylinder, and capsule (an engine cylinder plus two sphere caps). Ellipsoid, plane, hfield, and sdf use the base `UMjGeom` with no visualizer mesh.
+## What the compiler removes
 
-Missing: `hfield` (the geom type is recognised but the hfield asset is not imported from `<asset>`), `fitscale`, `shellinertia`, `solmix` (bound in the runtime view but not imported / exported via XML), `fluidshape`, `fluidcoef`, `user`.
+`<compiler discardvisual>` and `<compiler fusestatic>` both remove
+elements during compilation. A component whose element did not survive
+reports no id and stays as authoring data, because an id into a table
+that no longer holds the element is worse than no id at all.
 
-!!! note "fromto resolution"
-    `fromto` on geoms and sites is decomposed at import into `pos`, `quat`, and the half-length size slot, leaving the radius to come from the default chain. See the [Geometry guide](../guides/geometry.md).
+## Includes are a security boundary
 
-## site
+`<include>` is resolved when the document is read. An include whose
+resolved path escapes the root model's directory tree is refused by
+default: the reader opens untrusted MJCF inside a GUI host, and an
+unbounded include is exfiltration-shaped. `FMjDocParseOptions` carries
+the opt-in.
 
-Supported: `name`, `class`, `type`, `group`, `pos`, all orientation forms, `size`, `fromto`, `rgba`.
+## What the viewport draws
 
-Missing: `material`, `user`.
+Coverage of the format and coverage of the *picture* are different
+questions, and the second one is presentation only. The compiled model is
+the same either way.
 
-## actuator
+A geom previews as an engine primitive where one fits: plane, sphere,
+capsule (a cylinder plus two sphere caps), ellipsoid, cylinder and box. A
+`mesh` geom carries its picture as a child mesh component instead. A
+`hfield` or `sdf` geom has no preview, which is the honest answer rather
+than a wrong one. A geom that resolves to a shape with nothing to draw
+records it in `PreviewProblems` on the component, because the viewport is
+the only report that case otherwise gets.
 
-Common attributes supported: `class`, `group`, `ctrllimited`, `forcelimited`, `ctrlrange`, `forcerange`, `lengthrange`, `gear`, `cranklength`, the four transmission targets (`joint` / `tendon` / `site` / `body`), `actearly`, `actlimited`, `actrange`.
+## Writing back out
 
-Missing common: `damping` (not on the base actuator, though the `damper` subtype's `kv` covers that case), `armature`, `user`.
+Export is not a re-serialisation of what was imported. An element nobody
+touched writes back byte for byte, because the element remembers which
+Unreal asset its `file` stands for and a swap is a comparison rather than
+a guess.
 
-All ten actuator types are supported: `general`, `motor`, `position`, `velocity`, `intvelocity`, `damper`, `cylinder`, `muscle`, `adhesion`, `dcmotor`. Preset types use the matching `mjs_setTo*` function; `general` writes raw `gainprm` / `biasprm` / `dynprm`.
+When an asset was swapped, it is written back as a file so the spec stays
+portable: a `<mesh>` as OBJ, a `<texture>` as PNG, both into a
+`urlab_assets` folder inside the directory MJCF already resolves that
+element's `file` against. `<hfield>` and `<skin>` name files but have no
+imported Unreal asset to write back, so they are deliberately left alone.
 
-!!! note "biastype / gaintype / dyntype"
-    `<general>` actuators round-trip their `biastype`, `gaintype`, and `dyntype` so affine PD loops survive import. See the [Controllers guide](../guides/controllers.md).
+Only authored attributes are written. An attribute you never set does not
+appear in the output, which is what lets the value keep falling through
+to a default class or to MuJoCo's own default, and it is why a second
+write of the same document is a fixpoint.
 
-## sensor
+## Related
 
-All 41 sensor types are supported, imported via a tag-name map and exported through `mjsSensor->type`. This spans touch / IMU sensors, joint / tendon / actuator readouts, frame and subtree quantities, geometric queries (`geomdist`, `geomnormal`, `geomfromto`), `contact`, energy, `clock`, `tactile`, `plugin`, and `user`.
-
-Common attributes supported: `noise`, `cutoff`, target resolution (`objname` / `site` / `joint`), `refname`, `objtype`, `reftype`, `dim`, `class`. Missing: `user`.
-
-## tendon
-
-Spatial and fixed tendons are supported, including `stiffness` and `damping` (three-coefficient polynomials), `springlength`, `armature`, `range`, `actfrcrange`, the `sol*` set, `width`, and `rgba`. All four wrap types work: `joint`, `site`, `geom` (with sidesite), `pulley`.
-
-Missing: `user`.
-
-## equality
-
-All types supported: `connect`, `weld`, `joint`, `tendon`, plus the flex constraints `flex`, `flexvert`, and `flexstrain`. Common attributes `active`, `solref`, `solimp` round-trip.
-
-## default
-
-The `<default>` class hierarchy (including nesting) is supported, and these children export: `geom`, `joint`, `site`, `camera`, `tendon`, and all actuator subtypes (polymorphic).
-
-Missing from default export: `mesh`, `material`, `pair`, `equality`, `light`.
-
-## compiler
-
-Supported: `angle`, `eulerseq`, `meshdir`, `texturedir`, `assetdir`, `autolimits`. Missing: `coordinate` (always treated as `local`, the MuJoCo 3.x default), `settotalmass`.
-
-## option
-
-Supported: `timestep`, `gravity`, `wind`, `magnetic`, `density`, `viscosity`, `impratio`, `tolerance`, `iterations`, `ls_iterations`, `integrator`, `cone`, `solver`, the `noslip_*` and `ccd_*` pairs, and the `MultiCCD` / `Sleep` enable flags.
-
-Missing: `o_margin`, `o_solref`, `o_solimp`, the `mpr_*` and `sdf_*` solver tuning groups.
-
-## keyframe, contact, asset
-
-- **keyframe**: `name`, `time`, `qpos` (auto-padded for free joints), `qvel`, `act`, `ctrl`, `mpos`, `mquat` all round-trip.
-- **contact**: `pair` and `exclude` both import and export fully.
-- **asset**: `mesh`, `material`, and `texture` import (GLB / STL / OBJ meshes; PNG / JPG / BMP / TGA textures applied to material instances). Missing: `hfield` is not imported from `<asset>`.
-
-## flexcomp
-
-`<flexcomp>` is parsed into a `UMjFlexcomp` and, at registration, serialised back to an MJCF fragment that MuJoCo's own parser expands via `mjs_attach`. All geometry types (grid / box / cylinder / ellipsoid / square / disc / circle / mesh / direct) and DOF modes (full / radial / trilinear / quadratic) work without a plugin-side reimplementation. Sub-elements `<contact>`, `<edge>`, `<elasticity>`, and `<pin>` are supported through `bOverride_*` rules.
-
-Missing: the `pingrid` and `pinrange` pin selectors (only `id` and `gridrange` are supported).
-
-The compiled `<flex>` element is read back at runtime for visualization; `UMjFlexcomp::Bind` caches `flex_vertadr`, `flex_vertnum`, and the triangle index list and updates from `mjData.flexvert_xpos` each tick.
+- [The component model](model.md): how an element becomes a component.
+- [Generation](generation.md): where the coverage comes from.
+- [Importing Robots](../guides/importing.md): the import flow.

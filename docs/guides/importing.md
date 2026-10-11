@@ -1,59 +1,27 @@
-# Importing Robots
+# Importing and authoring MuJoCo models
 
-Drag a MuJoCo XML (MJCF) file into the Content Browser and URLab rebuilds the full model as an Unreal Blueprint, ready to simulate.
+The Editor's MuJoCo XML factory imports an MJCF file as an Unreal Blueprint whose generated, typed component hierarchy is the persistent authoring document. The Content Browser import action and the editor-only `editor_import_xml` RPC use the same import operation. The RPC accepts an XML `path` and optional `force_reimport`; it is an Editor workflow, separate from the source-independent runtime API used by external controllers.
 
-Grab an `.xml` from the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) or use your own, then drop it straight into Unreal.
+## Import an XML model
 
-![Dragging an MJCF file into the Unreal Content Browser and the resulting articulation Blueprint](../images/placeholder.svg)
+1. Import the `.xml` file through the Unreal Content Browser. The factory creates a Blueprint in the chosen destination and imports the supported referenced mesh and texture assets. The editor RPC uses `/Game/MuJoCoImports` as its destination.
+2. Inspect the generated component hierarchy and diagnostics. Elements expose typed properties, schema-filtered references, and native Unreal transforms for supported spatial values. XML includes are expanded during import. Resource files captured by import are stored with the authored components so export does not have to read the original source tree.
+3. Save the Blueprint, place it in a level, and add an `AAMjManager` scene-root actor. In an authored-simulation boot mode, the manager compiles the level's authored scene at play start, installs an owned model into the world simulation subsystem, and hands its presentation to the existing neutral renderer.
 
-## Import a model
+The RPC can automate step 1 from an external Editor client. It takes a filesystem path, not uploaded XML bytes; the RPC is unavailable in packaged games. `force_reimport=true` replaces the existing imported Blueprint, so use it only when that replacement is intended.
 
-1. Drag your `.xml` file into the Unreal **Content Browser**.
-2. On first import, the editor prompts you to install the Python packages the importer needs (`trimesh`, `numpy`, `scipy`). By default these install into UE's bundled Python, so no external Python is required. You can also point the dialog at your own interpreter (conda, venv). The chosen path is saved to `Config/LocalUnrealRoboticsLab.ini` (per-machine, not committed).
-3. The importer runs `Scripts/clean_meshes.py` to prepare meshes: it parses the XML to find referenced meshes, resolves GLB stem conflicts (for example `link1.obj` and `link1.stl` both producing `link1.glb`), converts meshes to GLB while preserving UVs, and writes a `_ue.xml` with updated references. If you skip the Python setup, the raw XML is used and some meshes may not display.
-4. The factory builds an `AMjArticulation` Blueprint from the prepared model in four passes: assets (meshes, textures, materials), defaults (the class hierarchy), the worldbody (bodies, geoms, joints, sites), and the rest (actuators, sensors, tendons, equalities, keyframes, contact pairs and excludes).
-5. Place the Blueprint in your level. It is ready to simulate.
+## Author a scene in Unreal
 
-!!! tip
-    You can also prepare meshes ahead of time by running `python Scripts/clean_meshes.py path/to/robot.xml` yourself, then dragging the resulting `_ue.xml` into Unreal.
+The scene can also be assembled from the generated typed model, section, asset, body, joint, geom, and actuator components. The manager owns the scene root; imported articulation Blueprints can be placed as scene participants. Asset entries have typed mesh and texture asset references, while geoms refer to the corresponding authored asset elements. Component properties and generated accessors provide Blueprint and C++ authoring access without editing XML directly.
 
-## What the importer reads
+Spatial import normalizes MJCF orientation spellings and `fromto` into Unreal transforms and supported dimensions. Those original spellings/endpoints are discarded, so export preserves the compiled meaning of the imported model rather than reconstructing its original syntax. Default-class spatial values remain inherited until a local authored override is made.
 
-The importer honours the MJCF `<compiler>` element, so `angle="degree"` vs `"radian"`, `autolimits`, and `eulerseq` are all interpreted the way MuJoCo would interpret them.
+Visual mesh export reads the selected static mesh's LOD0 MeshDescription, preserving authored per-corner normals and UVs independently from collision geometry. If all corner normals are absent, the OBJ omits `vn` and MuJoCo applies its native missing-normal behavior; a partial normal stream is rejected. This does not promise parity with normals Unreal may generate for the built render LOD when mesh build settings recompute them. Exporting built-render topology/normals is a separate audit follow-up because it would also change the current source-MeshDescription geometry/build-scale contract. Arbitrary Unreal material graphs are not converted into MJCF materials; explicit MJCF material nodes remain authoritative. Some source formats have no Unreal preview converter even when the source bytes remain usable by MuJoCo.
 
-Geoms written with `fromto` are resolved to explicit position, orientation, and size at import time. The component stores the resolved transform; the original `fromto` is not kept.
+## Runtime and packaging boundary
 
-Cameras are imported with their intrinsics resolved. Where the MJCF specifies `focal`, `focalpixel`, or `sensorsize` instead of a vertical field of view, the importer derives `fovy` from those values so the Unreal camera matches the MuJoCo camera. See [Sensors & Cameras](sensors_cameras.md) for what you can do with imported cameras.
+The authored level is compiled once at play start. `AAMjManager.CompileModel` reports whether the authored scene compiles; it does not replace the already installed runtime model. Generated authoring fields can be edited in Blueprint construction and level instances, but typed live-property bindings, runtime recompile/replacement from changed authored fields, and save-back are not committed features.
 
-For the full list of MJCF elements URLab understands, see [MJCF Support](../concepts/mjcf_support.md).
+Asset bytes can be prepared and serialized with authored components before cooking. A scoped Linux Development cook/stage/archive passed for an authored map with a 2x2 hfield, and the staged game loaded that map with the linked MuJoCo 3.11.1 library. A negative cook with missing persisted `missing.obj` bytes exited 1. Existing `simulation_describe` and `simulation_observe` RPCs then confirmed the imported authored model at generation 1 with nq=7/nv=6, the expected Blueprint joint and advancing step/time. That NullRHI run verifies installation and stepping, not rendered pixels; broader resource and rendering validation remains open. The neutral renderer currently rejects a 1x1 heightfield (it requires at least 2 rows and columns). See [persistent cook/runtime evidence](../../../audit_docs/implementation_runs/authoring_packaged_handoff_20261002/README.md). Editor import UI, Details customization, and the import RPC remain Editor-only. XML, MJB, MJZ, and neutral-render sources continue to use the separate runtime loading path without authoring components.
 
-## How defaults are preserved
-
-MJCF `<default>` blocks define properties that child elements inherit by class name. URLab imports these as live components, not static notes. When the Blueprint is compiled back into a MuJoCo spec, each component resolves its class against the default chain exactly as raw XML would.
-
-This means:
-
-- Editing a default component changes every component that references that class.
-- Nested defaults keep their inheritance chain.
-- Removing a default makes its dependents fall back to their own explicit values.
-
-See [Articulations](articulations.md) for editing defaults in the Blueprint editor.
-
-## Materials, textures, and meshes
-
-The importer creates one shared Unreal material instance per MJCF `<material>` name, so every geom that references the same material shares a single instance. Textures from `<texture>` elements are applied to the matching material instance.
-
-Meshes are located relative to the XML file and copied into a `/Meshes/` subfolder under the import target. The importer prefers GLB, then falls back to raw OBJ/STL. If a mesh cannot be loaded, the geom is still created as a collision primitive (without a visual mesh), a warning is logged, and the rest of the import succeeds.
-
-## Debugging an import
-
-If something does not look right after import, enable `bSaveDebugXml` on the Manager actor. After compilation URLab writes `scene_compiled.xml` and `scene_compiled.mjb` to `Saved/URLab/`. Diff the original MJCF against the compiled XML to spot missing elements, wrong values, or broken default inheritance. The compiled XML can also be opened in native MuJoCo for cross-checking.
-
-!!! note
-    The XML is only read at import time. After that, the Unreal components are the source of truth. You can rearrange components, add sensors or cameras, override properties, and save the result as a reusable Blueprint.
-
-## Next steps
-
-- [Articulations](articulations.md) covers editing the imported Blueprint and building one from scratch.
-- [Geometry & Collision](geometry.md) covers collision shapes and contact filtering.
-- [Controllers](controllers.md) covers how control targets become joint torques.
+See [MJCF authoring requirements and implementation status](../architecture/authoring_requirements.md) for supported semantics, known limits, and validation evidence.

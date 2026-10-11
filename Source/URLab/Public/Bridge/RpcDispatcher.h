@@ -15,230 +15,327 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "Dom/JsonObject.h"
-#include "Containers/Queue.h"
+#include "MuJoCo/Core/MjCapabilities.h"
+#include "Bridge/RequestLedger.h"
+#include "Bridge/DataSession.h"
+#include "Bridge/RenderServiceBinding.h"
+#include "Bridge/ViewerServiceBinding.h"
+#include "Bridge/PoseStreamServiceBinding.h"
+#include "Bridge/CameraStreamServiceBinding.h"
+#include "Bridge/SerialCommandQueue.h"
+#include "Bridge/GameThreadCommandQueue.h"
+#include "Bridge/URLabPayloadStore.h"
+#include "Wire/RequestEnvelope.h"
 #include <atomic>
 
-class AAMjManager;
-class AMjReplayManager;
-struct FMjStepRequest;
-struct FMjDirectStepCommand;
-struct FMjPushStateRequest;
+class UURLabBridgeServer;
+class FMjSimulationRuntime;
+class FMjSimulationControlSessionLifetime;
 
 /**
- * @brief Transport-agnostic step-server core.
+ * @brief Bridge-owned command dispatcher and protocol-v2 admission core.
  *
- * Owns session id, mode state, step counter, request queues, and all the
- * Handle* / dispatch logic. Knows nothing about ZMQ, SHM, msgpack, or any
- * specific wire transport. Multiple transports (ZMQ, SHM) call into the
- * same dispatcher; they only differ in how bytes get from the wire to
- * `Dispatch()` and back.
+ * Owns typed sessions, request admission, and service bindings. ZMQ and the
+ * render-only gRPC extension enter as
+ * command adapters; negotiated network/exact-SHM data transfers retain their
+ * own session resources. The dispatcher does not own adapter handles.
  *
- * Lives on `AAMjManager` so all transports share one instance; the
- * dispatcher's serializing mutex makes concurrent dispatches from
- * multiple transports safe.
+ * Owned by `UURLabBridgeServer`, so every command adapter shares one session
+ * and request ledger. Protocol-v2 simulation work captures an independently
+ * owned `FMjSimulationRuntime` at admission.
  */
 class URLAB_API FURLabRpcDispatcher
 {
 public:
-	/** Observation verbosity. minimal=qpos+qvel; standard=+ctrl+act+sensors;
-	 *  full=+body xpos/xquat+actuator forces. */
-	enum class EObservationLevel : uint8
-	{
-		Minimal,
-		Standard,
-		Full
-	};
-
-	/** Per-camera include mode for step replies. */
-	enum class ECameraInclude : uint8
-	{
-		Sync,
-		Latest
-	};
-
 	FURLabRpcDispatcher();
 	~FURLabRpcDispatcher();
 
-	/** Bind the dispatcher to a manager (game thread, called from BeginPlay). */
-	void Init(AAMjManager* InManager);
+	/** Opaque ownership proof for one independent simulation-service binding. */
+	class FSimulationRuntimeRegistration
+	{
+	public:
+		bool IsValid() const { return DispatcherIdentity.IsValid() && Serial != 0; }
 
-	/** Per-manager teardown: drop the manager pointer, uninstall step
-	 *  handlers, drain queues, reset per-PIE state (mode, step counter).
-	 *  KEEPS the bridge-level session id, encoding flag, and observation
-	 *  level — those belong to the connected client, not to a single
-	 *  PIE manager. Called when a PIE cycle ends or the editor level
-	 *  changes; the same bridge session should survive both. */
-	void OnManagerGone();
+	private:
+		friend class FURLabRpcDispatcher;
+		FGuid DispatcherIdentity;
+		uint64 Serial = 0;
+	};
 
-	/** Full bridge-server teardown. Resets everything OnManagerGone
-	 *  does PLUS the session id, encoding flag, etc. Called from
-	 *  BridgeServer::Stop. */
+	/**
+	 * Register the independent simulation runtime served by typed protocol-v2
+	 * operations. A second live registration is rejected. OutRegistration is
+	 * changed only on success.
+	 */
+	bool AttachSimulationRuntime(
+		TSharedRef<FMjSimulationRuntime, ESPMode::ThreadSafe> Runtime,
+		FSimulationRuntimeRegistration& OutRegistration, FString& OutError);
+
+	/** True only while this dispatcher owns the exact identity-and-serial token. */
+	bool IsSimulationRuntimeRegistrationActive(
+		FSimulationRuntimeRegistration Registration) const;
+
+	/** Clear the exact registration represented by Registration. */
+	bool DetachSimulationRuntime(FSimulationRuntimeRegistration Registration);
+
+	class FRenderServiceRegistration
+	{
+	public:
+		bool IsValid() const { return DispatcherIdentity.IsValid() && Serial != 0; }
+	private:
+		friend class FURLabRpcDispatcher;
+		FGuid DispatcherIdentity;
+		uint64 Serial = 0;
+	};
+	bool AttachRenderService(
+		TSharedRef<FURLabRenderServiceBinding, ESPMode::ThreadSafe> Binding,
+		FRenderServiceRegistration& OutRegistration, FString& OutError);
+	bool IsRenderServiceRegistrationActive(FRenderServiceRegistration Registration) const;
+	bool DetachRenderService(FRenderServiceRegistration Registration);
+	class FViewerServiceRegistration
+	{
+	public: bool IsValid() const { return DispatcherIdentity.IsValid() && Serial != 0; }
+	private: friend class FURLabRpcDispatcher; FGuid DispatcherIdentity; uint64 Serial=0;
+	};
+	bool AttachViewerService(TSharedRef<FURLabViewerServiceBinding,ESPMode::ThreadSafe> Binding,
+		FViewerServiceRegistration& OutRegistration,FString& OutError);
+	bool IsViewerServiceRegistrationActive(FViewerServiceRegistration Registration) const;
+	bool DetachViewerService(FViewerServiceRegistration Registration);
+	class FPoseStreamServiceRegistration
+	{
+	public: bool IsValid() const { return DispatcherIdentity.IsValid() && Serial != 0; }
+	private: friend class FURLabRpcDispatcher; FGuid DispatcherIdentity; uint64 Serial = 0;
+	};
+	bool AttachPoseStreamService(
+		TSharedRef<FURLabPoseStreamServiceBinding, ESPMode::ThreadSafe> Binding,
+		FPoseStreamServiceRegistration& OutRegistration, FString& OutError);
+	bool DetachPoseStreamService(FPoseStreamServiceRegistration Registration);
+	bool IsPoseStreamServiceRegistrationActive(FPoseStreamServiceRegistration Registration) const;
+	class FCameraStreamServiceRegistration
+	{
+	public: bool IsValid() const { return DispatcherIdentity.IsValid() && Serial != 0; }
+	private: friend class FURLabRpcDispatcher; FGuid DispatcherIdentity; uint64 Serial = 0;
+	};
+	bool AttachCameraStreamService(
+		TSharedRef<FURLabCameraStreamServiceBinding, ESPMode::ThreadSafe> Binding,
+		FCameraStreamServiceRegistration& OutRegistration, FString& OutError);
+	bool DetachCameraStreamService(FCameraStreamServiceRegistration Registration);
+	bool IsCameraStreamServiceRegistrationActive(FCameraStreamServiceRegistration Registration) const;
+	FURLabShmExactRegionPtr GetShmRegionForLocalProducer() const { return ShmRegion; }
+
+	/** Back-pointer to the owning bridge server for permission and endpoint metadata. */
+	void SetOwningBridge(UURLabBridgeServer* InBridge);
+
+	/** Whether this instance grants peers `Cap`. Asked of the owning bridge, which is
+	 *  what a peer reaches and what holds the resolved grants; a dispatcher with no
+	 *  bridge (a bare test double) grants everything, because there is no peer. */
+	bool GrantsPermission(EMjCapability Cap) const;
+
+	/** Full bridge-server teardown. */
 	void Shutdown();
 
-	/** Cooperative shutdown signal. Set by BridgeServer::Stop() so blocking
-	 *  handlers can exit early. Reset in Init() for the next session. */
+	/** Cooperative shutdown signal. A fresh dispatcher starts open; Shutdown
+	 *  closes admission permanently for that dispatcher lifetime. */
 	void SetDraining(bool bIn) { bDraining.store(bIn, std::memory_order_release); }
 	bool IsDraining() const { return bDraining.load(std::memory_order_acquire); }
 
 	/** Wire format echoed to the client as the urlab plugin version. */
-	FString URLabVersion = TEXT("urlab/0.1");
+	FString URLabVersion = TEXT("urlab/0.2");
 
-	// --- Top-level dispatch ---
+	/** Strict protocol-v2 MessagePack entry point used by command transports. */
+	bool DispatchBytes(TConstArrayView<uint8> RequestBytes, const FString& Adapter,
+		TArray<uint8>& OutReplyBytes, const FString* OuterOp = nullptr);
 
-	/** Parse one inbound (already-decoded) request and run the matching
-	 *  Handle* method. Returns the reply as an FJsonObject; the transport
-	 *  layer is responsible for serialising to bytes (msgpack/JSON). */
-	TSharedPtr<FJsonObject> Dispatch(const TSharedPtr<FJsonObject>& Req);
+	// --- Session introspection (used by transports and tests) ---
 
-	// --- Session / mode introspection (used by transports + UI) ---
-
-	bool ValidateSession(const FString& ClientSessionId) const
+	/** True when ClientSessionId names a live session. Read-only: prefer
+	 *  ValidateAndTouchSession on the dispatch path so the session's
+	 *  least-recently-used ranking stays honest. */
+	bool ValidateSession(const FString& ClientSessionId) const;
+	/** Validate ClientSessionId and stamp it as most-recently-used. */
+	bool ValidateAndTouchSession(const FString& ClientSessionId);
+	/** The most recently active session id, for the transports that synthesise a
+	 *  request on a connected client's behalf. Empty when nothing is connected. */
+	FString GetActiveSessionId() const;
+	/** Make Id the one and only live session. Test seam. */
+	void SetActiveSessionIdForTest(const FString& Id);
+	void SetSessionClockForTest(double NowSeconds)
 	{
-		if (ClientSessionId.IsEmpty())
-			return false;
-		return ClientSessionId.Equals(ActiveSessionId);
+		SessionClockOverrideForTest->store(NowSeconds, std::memory_order_release);
 	}
-	FString GetActiveSessionId() const { return ActiveSessionId; }
-	void SetActiveSessionIdForTest(const FString& Id) { ActiveSessionId = Id; }
-
-	EStepMode GetActiveStepMode() const { return ActiveStepMode; }
-	void SetActiveStepMode(EStepMode NewMode);
-
-	EObservationLevel GetActiveObservationLevel() const { return ActiveObservationLevel; }
-	void SetActiveObservationLevelForTest(EObservationLevel L) { ActiveObservationLevel = L; }
-
-	bool GetUseJsonEncoding() const { return bUseJsonEncoding.load(std::memory_order_acquire); }
-	void SetUseJsonEncoding(bool bUse) { bUseJsonEncoding.store(bUse, std::memory_order_release); }
-
-	int64 GetStepCounter() const { return StepCounter.load(std::memory_order_acquire); }
-
-	/** Worker threads read the replay manager via this cache instead of
-	 *  TActorIterator (which asserts IsInGameThread). */
-	void SetCachedReplayManager(AMjReplayManager* RM);
-
-	// --- Test seams (lifted from UURLabZmqRpcTransport) ---
-
-	void EnqueueStepRequestForTest(FMjStepRequest&& Req);
-	void EnqueuePushStateRequestForTest(FMjPushStateRequest&& Req);
-	void DrainQueuesForTest();
-
-	// --- Static helpers (transport-agnostic, callable from anywhere) ---
-
-	/** Build the hello-reply payload. When bIncludeAssets is true (caller
-	 *  asked via hello.include_assets=true), the payload also carries:
-	 *    - mjcf_compiled (string): the compiled MJCF re-serialised via
-	 *      mj_saveXMLString, with all mesh file= paths flattened to the
-	 *      bare filename so a VFS keyed by clean filename resolves them.
-	 *    - vfs_assets (msgpack-bin object): each VFS-registered asset
-	 *      shipped as a raw binary field (key = filename).
-	 *  Without the flag, none of that is sent. Asset payloads can be
-	 *  multi-MB for typical robots; the legacy bridge handshake stays
-	 *  light by default. */
-	static TSharedPtr<FJsonObject> BuildHandshakePayload(AAMjManager* Manager,
-		const FString& SessionId,
-		const FString& URLabVer,
-		bool bIncludeAssets = false);
-
-	static void ApplyStepCtrl(AAMjManager* Manager, const FMjStepRequest& Req,
-		mjModel* m, mjData* d);
-
-	static TSharedPtr<FJsonObject> BuildStepObservations(AAMjManager* Manager,
-		mjModel* m, mjData* d,
-		EObservationLevel Level = EObservationLevel::Standard);
-
-	static TSharedPtr<FJsonObject> BuildEntitiesBlock(AAMjManager* Manager,
-		mjModel* m, mjData* d);
-
-	static TSharedPtr<FJsonObject> BuildCamerasBlock(AAMjManager* Manager,
-		const TMap<FString, ECameraInclude>& CameraSpec,
-		int32 TimeoutMs = 1000);
-
-	static TSharedPtr<FJsonObject> MakeError(const FString& Code, const FString& Message);
-
-	/** Stamps `sim_time` + `wall_time` blocks (ROS `builtin_interfaces/Time`
-	 *  layout: `{sec, nsec}`). */
-	static void AppendClockFields(TSharedPtr<FJsonObject>& Reply, double SimTimeSec);
+	TSharedRef<FURLabRequestLedger, ESPMode::ThreadSafe> GetRequestLedgerForTest() const
+	{
+		return RequestLedger;
+	}
+	TSharedRef<FURLabPayloadStore, ESPMode::ThreadSafe> GetPayloadStoreForTest() const
+	{
+		return PayloadStore;
+	}
+	void SetPayloadQueueAutoDrainForTest(bool bEnabled)
+	{
+		bPayloadQueueAutoDrainForTest.store(bEnabled, std::memory_order_release);
+	}
+	TSharedRef<FURLabSerialCommandQueue, ESPMode::ThreadSafe>
+	GetPayloadCommandQueueForTest() const
+	{
+		return PayloadCommandQueue;
+	}
 
 private:
-	/** Inner body of Dispatch; wrapped by the public method so every
-	 *  call gets one in-and-out log line regardless of which early
-	 *  return fires. */
-	TSharedPtr<FJsonObject> DispatchInternal(const TSharedPtr<FJsonObject>& Req);
+	/** Owning bridge server (set at construction). */
+	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
 
-	/** Weak so stale-manager bugs return nullptr on .Get() instead of
-	 *  dangling. The dispatcher is a plain C++ class so the pointer is
-	 *  weak via TWeakObjectPtr rather than UPROPERTY. */
-	TWeakObjectPtr<AAMjManager> OwnerMgr;
+	/** Independent runtime service and its owner proof. Guarded by DispatchMutex. */
+	TSharedPtr<FMjSimulationRuntime, ESPMode::ThreadSafe> SimulationRuntime;
+	const FGuid SimulationRegistrationDispatcherId = FGuid::NewGuid();
+	uint64 ActiveSimulationRegistration = 0;
+	uint64 NextSimulationRegistration = 1;
+	TSharedPtr<FURLabRenderServiceBinding, ESPMode::ThreadSafe> RenderService;
+	const FGuid RenderRegistrationDispatcherId = FGuid::NewGuid();
+	uint64 ActiveRenderRegistration = 0;
+	uint64 NextRenderRegistration = 1;
+	TSharedPtr<FURLabViewerServiceBinding,ESPMode::ThreadSafe> ViewerService;
+	const FGuid ViewerRegistrationDispatcherId=FGuid::NewGuid();
+	uint64 ActiveViewerRegistration=0;
+	uint64 NextViewerRegistration=1;
+	TSharedPtr<FURLabPoseStreamServiceBinding, ESPMode::ThreadSafe> PoseStreamService;
+	TSharedPtr<FURLabCameraStreamServiceBinding, ESPMode::ThreadSafe> CameraStreamService;
+	const FGuid CameraStreamRegistrationDispatcherId = FGuid::NewGuid();
+	uint64 ActiveCameraStreamRegistration = 0;
+	uint64 NextCameraStreamRegistration = 1;
+	const FGuid PoseStreamRegistrationDispatcherId = FGuid::NewGuid();
+	uint64 ActivePoseStreamRegistration = 0;
+	uint64 NextPoseStreamRegistration = 1;
 
-	/** Guards ActiveSessionId + step-handler install/uninstall. NOT held
-	 *  across handler bodies — Dispatch releases it before invoking. */
-	FCriticalSection DispatchMutex;
+	/** Guards service bindings and active sessions. */
+	mutable FCriticalSection DispatchMutex;
 
-	FString ActiveSessionId;
+	/** One live client session. */
+	struct FSession
+	{
+		FString Id;
+		FString Adapter;
+		/** FPlatformTime::Seconds() when a request last carried this id. */
+		double LastSeenSeconds = 0.0;
+		FURLabRequestLedger::FSessionRef LedgerSession;
+		TSharedRef<FMjSimulationControlSessionLifetime, ESPMode::ThreadSafe> ControlSession;
+		FURLabRenderOwnerSessionScopePtr RenderOwnerScope;
+		FURLabRenderOwnerSessionScopePtr ViewerOwnerScope;
+		FURLabPayloadSessionPtr PayloadSession;
+		FURLabDataSessionPtr DataSession;
 
-	std::atomic<EStepMode> ActiveStepMode{EStepMode::Live};
-	std::atomic<EObservationLevel> ActiveObservationLevel{EObservationLevel::Standard};
-	std::atomic<int64> StepCounter{0};
+		FSession(const FString& InId, const FString& InAdapter, double InLastSeen,
+			FURLabRequestLedger::FSessionRef InLedgerSession,
+			TSharedRef<FMjSimulationControlSessionLifetime, ESPMode::ThreadSafe> InControlSession,
+			FURLabRenderOwnerSessionScopePtr InRenderOwnerScope,
+			FURLabRenderOwnerSessionScopePtr InViewerOwnerScope,
+			FURLabPayloadSessionPtr InPayloadSession, FURLabDataSessionPtr InDataSession)
+			: Id(InId), Adapter(InAdapter), LastSeenSeconds(InLastSeen),
+			  LedgerSession(MoveTemp(InLedgerSession)), ControlSession(MoveTemp(InControlSession)),
+			  RenderOwnerScope(MoveTemp(InRenderOwnerScope)),
+			  ViewerOwnerScope(MoveTemp(InViewerOwnerScope)),
+			  PayloadSession(MoveTemp(InPayloadSession)), DataSession(MoveTemp(InDataSession)) {}
+	};
 
-	/** false = msgpack (default), true = JSON. */
-	std::atomic<bool> bUseJsonEncoding{false};
+	/** Every live session, keyed by id. A single slot used to be overwritten by
+	 *  each `hello`, and a pool's discovery probe is indistinguishable from a real
+	 *  client on the wire -- so probing a busy instance evicted the working client
+	 *  before it could take the lease that exists to protect it. Sessions are
+	 *  additive instead: a second `hello` mints its own id and leaves the first
+	 *  valid. */
+	TArray<FSession> ActiveSessions;
+	/** Fresh for each dispatcher/bridge-server lifetime; stable across PIE. */
+	FString BootId;
+	TSharedRef<FURLabRequestLedger, ESPMode::ThreadSafe> RequestLedger;
+	TSharedRef<FURLabGameThreadCommandQueue, ESPMode::ThreadSafe> SimulationCommandQueue;
+	TSharedRef<FURLabGameThreadCommandQueue, ESPMode::ThreadSafe> RenderCommandQueue;
+	TSharedRef<FURLabSerialCommandQueue, ESPMode::ThreadSafe> PayloadCommandQueue;
+	TSharedRef<FURLabPayloadStore, ESPMode::ThreadSafe> PayloadStore;
+	FURLabShmExactRegionPtr ShmRegion;
+
+	/** Ceiling on retained sessions. Idle sessions expire; when every slot is
+	 *  active, new connections are rejected instead of evicting a live client. */
+	static constexpr int32 kMaxActiveSessions = 16;
+
+	static constexpr double kSessionIdleTimeoutSeconds = 300.0;
+	TSharedRef<std::atomic<double>, ESPMode::ThreadSafe> SessionClockOverrideForTest;
+	double SessionNow() const;
+	struct FRetiredDataScope
+	{
+		FURLabDataSessionPtr Session;
+		FURLabShmExactChallengePtr Challenge;
+	};
+	struct FRetiredSessionScopes
+	{
+		TArray<TSharedRef<FMjSimulationControlSessionLifetime, ESPMode::ThreadSafe>> Control;
+		TArray<FURLabPayloadOwner> Payload;
+		TArray<FRetiredDataScope> Data;
+		struct FRender
+		{
+			TSharedPtr<FURLabRenderServiceBinding, ESPMode::ThreadSafe> Binding;
+			FURLabRenderOwnerSessionScopePtr Scope;
+		};
+		TArray<FRender> Render;
+		struct FViewer { TSharedPtr<FURLabViewerServiceBinding,ESPMode::ThreadSafe> Binding; FURLabRenderOwnerSessionScopePtr Scope; };
+		TArray<FViewer> Viewer;
+	};
+	void DeactivateSessionLocked(const FSession& Session, FRetiredSessionScopes& OutScopes);
+	static void RevokeSessionScopes(
+		const TSharedPtr<FMjSimulationRuntime, ESPMode::ThreadSafe>& Runtime,
+		const TSharedRef<FURLabPayloadStore, ESPMode::ThreadSafe>& Store,
+		const FRetiredSessionScopes& Scopes);
+	static void RevokeControlSessions(
+		const TSharedPtr<FMjSimulationRuntime, ESPMode::ThreadSafe>& Runtime,
+		const TArray<TSharedRef<FMjSimulationControlSessionLifetime, ESPMode::ThreadSafe>>& Sessions);
+	bool RemoveSession(const FString& Id, const FString& Adapter);
+	bool FindAndTouchSession(const FString& Id,
+		const FString& Adapter,
+		TSharedPtr<FURLabRequestLedger::FSession, ESPMode::ThreadSafe>& OutSession,
+		TSharedPtr<FMjSimulationControlSessionLifetime, ESPMode::ThreadSafe>& OutControlSession,
+		FURLabRenderOwnerSessionScopePtr& OutRenderOwnerScope,
+		FURLabRenderOwnerSessionScopePtr& OutViewerOwnerScope,
+		FURLabPayloadSessionPtr& OutPayloadSession, FURLabDataSessionPtr& OutDataSession);
+	bool HasSimulationRuntime() const;
+	bool HasRenderService() const;
+	bool HasViewerService() const;
+	bool HasPoseStreamService() const;
+	bool HasEditorService() const;
+
+	/** Mint and register a fresh session id, or return empty at active capacity. */
+	bool RegisterNewSession(const FString& Adapter, EURLabDataPolicy DataPolicy,
+		FString& OutSessionId, FURLabDataSessionSnapshot& OutData,
+		FString& OutErrorCode, FString& OutError);
+	bool DispatchTypedSimulation(const FURLabRequestEnvelope& Request,
+		const FURLabRequestDigest& Digest,
+		const FURLabRequestLedger::FSessionRef& Session,
+		const TSharedRef<FMjSimulationControlSessionLifetime, ESPMode::ThreadSafe>& ControlSession,
+		TArray<uint8>& OutReplyBytes);
+	bool DispatchTypedPayload(const FURLabRequestEnvelope& Request,
+		const FURLabRequestDigest& Digest,
+		const FURLabRequestLedger::FSessionRef& Session,
+		const FURLabDataSessionPtr& DataSession,
+		TArray<uint8>& OutReplyBytes);
+	bool DispatchTypedRender(const FURLabRequestEnvelope& Request,
+		const FURLabRequestDigest& Digest,
+		const FURLabRequestLedger::FSessionRef& Session,
+		const FURLabRenderOwnerSessionScopePtr& OwnerScope,
+		const FURLabDataSessionPtr& DataSession,
+		TArray<uint8>& OutReplyBytes);
+	bool DispatchTypedViewer(const FURLabRequestEnvelope& Request,
+		const FURLabRequestDigest& Digest,
+		const FURLabRequestLedger::FSessionRef& Session,
+		const FURLabRenderOwnerSessionScopePtr& OwnerScope,
+		const FURLabDataSessionPtr& DataSession,TArray<uint8>& OutReplyBytes);
+	bool DispatchTypedStreams(const FURLabRequestEnvelope& Request,
+		const FURLabRequestDigest& Digest,
+		const FURLabRequestLedger::FSessionRef& Session,
+		const FURLabDataSessionPtr& DataSession, TArray<uint8>& OutReplyBytes);
+	bool DispatchTypedEditor(const FURLabRequestEnvelope& Request,
+		const FURLabRequestDigest& Digest,
+		const FURLabRequestLedger::FSessionRef& Session,
+		TArray<uint8>& OutReplyBytes);
 
 	/** Set by BridgeServer::Stop() so blocking handlers exit early. */
 	std::atomic<bool> bDraining{false};
-
-	TWeakObjectPtr<AMjReplayManager> CachedReplayManager;
-
-	/** SPSC. Shared ownership so both RPC + physics threads can drop their
-	 *  ref independently — avoids UAF on RPC-side timeout while the handler
-	 *  is still processing. */
-	TQueue<TSharedPtr<FMjDirectStepCommand>, EQueueMode::Spsc> StepQueue;
-
-	/** Puppet-mode request queue. */
-	TQueue<FMjPushStateRequest, EQueueMode::Spsc> PushStateQueue;
-
-	/** Custom step handlers installed on the engine for Direct / Puppet. */
-	UMjPhysicsEngine::FMujocoStepCallback PuppetStepHandler;
-	UMjPhysicsEngine::FMujocoStepCallback DirectStepHandler;
-	bool bPuppetHandlerInstalled = false;
-	bool bDirectHandlerInstalled = false;
-
-	void InstallPuppetHandler();
-	void UninstallPuppetHandler();
-	void InstallDirectHandler();
-	void UninstallDirectHandler();
-
-	/** Register every dispatcher-owned op (manager-required +
-	 *  no-manager) on the URLabOpRegistry with the right Category and
-	 *  Namespace metadata. Bound `this` lambdas — paired with
-	 *  UnregisterDispatcherOps() in the destructor.
-	 *
-	 *  `RegisteredOpNames` records every name the dispatcher registered
-	 *  so the destructor can unregister exactly that set without
-	 *  hardcoding a parallel list. */
-	void RegisterDispatcherOps();
-	void UnregisterDispatcherOps();
-	TArray<FString> RegisteredOpNames;
-
-	// Op handlers
-	TSharedPtr<FJsonObject> HandleHello(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleMeta(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleStep(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleReset(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleForward(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetMode(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetPaused(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleConfigureController(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetSimOptions(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetSimSpeed(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetControlSource(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetTwist(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetQpos(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetMocapPose(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleReadMocapPose(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleGetContacts(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleListKeyframes(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleRecording(const FString& Op, const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleReplay(const FString& Op, const TSharedPtr<FJsonObject>& Req);
+	std::atomic<bool> bPayloadQueueAutoDrainForTest{true};
 };

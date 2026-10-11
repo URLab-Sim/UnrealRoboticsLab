@@ -1,0 +1,5 @@
+<mujoco model="uses_outside">
+  <worldbody>
+    <include file="../outside/secret.xml"/>
+  </worldbody>
+</mujoco>

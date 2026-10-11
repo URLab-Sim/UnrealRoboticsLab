@@ -1,189 +1,262 @@
 # Bumping MuJoCo
 
-How to move URLab onto a newer MuJoCo. The codegen is built so common bumps are nearly zero-touch: re-run one script and ship. This page covers the routine path and the rarer bumps where MuJoCo adds something the rules do not yet know about.
+How to move URLab onto a newer MuJoCo.
 
-URLab currently pins MuJoCo to upstream `main` (header version `3010000`, that is 3.10.0-dev), not a tagged release. The submodule lives at `third_party/MuJoCo/src/`. For the codegen internals this builds on, read [Codegen](codegen.md) first.
+The engine is a submodule, `third_party/MuJoCo/src`. Everything URLab derives
+from it — generated UE authoring descriptors, native compiler behavior and
+compiled-model goldens — is pinned to that commit, and
+each derived thing has a different failure style when the pin moves. This page
+is ordered so the loud failures happen before the silent ones.
 
-## TL;DR
+!!! info "Where ProtoSpec lives"
+
+    **The plugin's `protospec/` is the live tree.** The generator, the overlay,
+    and the narrow native helpers that `Source/URLab/*/MuJoCo/Gen` uses are all
+    there, in the plugin, tracked in the plugin's history.
+
+    The MuJoCo submodule contains a directory also called `protospec/`. It is
+    **not consumed** — `.gitmodules` says so, and that is the authoritative
+    statement — but it still holds a runnable generator with its own, older
+    overlay. Running that copy produces plausible output from the wrong tables.
+    Check which tree you are in before running anything: the live one is at the
+    plugin root, not under `third_party/`.
+
+    What the submodule *does* supply is the grammar and the C API:
+    `src/xml/mjcf.schema`, `doc/generate/mjcf_schema.py`, and the headers under
+    `include/mujoco/`. The generator reads all of them straight from the
+    submodule working tree (`frontend.py`, `mujoco_src()`), which is why the
+    submodule has to be at the new commit before anything is regenerated.
+
+## Procedure
+
+### 1. Read the upstream changelog slice
+
+MuJoCo maintains `doc/changelog.rst`. Read every entry between the current pin
+and the target before touching code — breaking changes land regularly and the
+blast radius is worth knowing up front rather than at link time.
 
 ```bash
-# 1. Move the submodule pointer to the new commit (upstream main, or a tag)
-cd third_party/MuJoCo/src && git fetch origin && git checkout <commit-or-tag>
-
-# 2. Rebuild the install (Windows: .ps1, Linux/macOS: .sh)
-cd .. && .\build.ps1 -NoSubmoduleSync       # or ./build.sh on Linux/macOS
-
-# 3. Refresh all three snapshots + run the C++ codegen
-cd ../../ && python Scripts/codegen/regen_all.py
-
-# 4. Read any diagnostics the codegen printed (stderr). Apply rule edits
-#    if it asked for any (see "Reading diagnostics"). Re-run step 3.
-
-# 5. Close the editor, rebuild + test
-"$UE/Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.exe" \
-    url_projEditor Win64 Development "-Project=$URLPROJ/url_proj.uproject"
-"$UE/Engine/Binaries/Win64/UnrealEditor-Cmd.exe" "$URLPROJ/url_proj.uproject" \
-    -ExecCmds="Automation RunTests URLab" -Unattended -NullRHI -NoSound \
-    -NoSplash -stdout -log -TestExit="Automation Test Queue Empty"
+gh api "repos/google-deepmind/mujoco/contents/doc/changelog.rst?ref=<TARGET>" \
+    --jq '.content' | base64 -d
 ```
 
-If step 3 printed no diagnostics and step 5 ran green, you are done.
+Pay particular attention to the **Breaking API changes** admonition in each
+release's `General` section, to removed or renamed `mjs_*` entry points, and to
+anything about plugin packaging or CMake targets (a DLL-packaging change is what
+made the 3.7.0 bump crash URLab silently during module init).
 
-!!! note "Build script"
-    The canonical builders are `third_party/build_all.{ps1,sh}` (all three deps) and the per-dep `third_party/MuJoCo/build.{ps1,sh}`. Use `-NoSubmoduleSync` (or `--no-submodule-sync`) when you have already checked out the new commit yourself, so the build does not snap the submodule back. The drift-check behaviour around these scripts is in [Building from Source](building.md).
+Read it for MJCF changes too, not just API changes. Sections 6 and 7 below are
+the parts of the bump the tooling cannot do for you, and the changelog is the
+only advance warning either of them gets.
 
-## The pipeline
+### 2. Move the submodule and stage the gitlink
 
-`Scripts/codegen/regen_all.py` runs four steps in order and writes all snapshots under `Scripts/codegen/snapshots/`:
-
-1. **`build_mjxmacro_snapshot.py`** parses `mjxmacro.h` and writes `mjxmacro_snapshot.json` (the `mjModel` / `mjData` array layouts URLab needs for `MjBind.h` views).
-2. **`build_mjcf_schema_snapshot.py`** parses `third_party/MuJoCo/src/src/xml/xml_native_reader.cc` and writes `mjcf_schema_snapshot.json` (every MJCF element with its attributes and child structure). It auto-detects the MuJoCo version from `mjVERSION_HEADER`.
-3. **`build_introspect_snapshot.py`** does a libclang clang-AST scrape of `mjspec.h` and `mjmodel.h` and writes `introspect_snapshot.json` (every `mjsX` struct's fields, the `mjt*` enums, and every `mjs_setTo*` signature). This supersedes the retired `build_mjspec_snapshot.py`. It needs `clang.cindex` and a loadable libclang; if libclang is missing the step fails and `regen_all.py` falls back to the committed snapshot, silently skipping any header change in the bump. Run regen in an environment that has libclang (see [Environment](#environment)).
-4. **`generate_ue_components.py`** reads all three snapshots plus `codegen_rules.json` and emits the per-component `.h` / `.cpp` files between the `CODEGEN_*_START` / `CODEGEN_*_END` markers, then clang-formats the output. Hand-edits outside the markers are preserved.
-
-Step 4 prints drift diagnostics to stderr whenever the snapshots surface something the rules do not cover.
-
-## Reading diagnostics
-
-After each codegen run, watch for a block that starts with:
-
-```
---- codegen diagnostics (N) ---
-[diagnostic] schema has top-level element 'foo' but no category in codegen_rules.json ...
+```bash
+cd third_party/MuJoCo/src
+git fetch origin && git checkout <target>
+cd ../../..
+git add third_party/MuJoCo/src
 ```
 
-Each line names the exact rule path to edit.
+Stage it now. Two different checks read the gitlink from two different places
+and both have to agree:
 
-### `schema has top-level element 'X' but no category`
+- `third_party/MuJoCo/build.ps1` runs `git submodule update --force`, which
+  follows the **index**. Build with the gitlink unstaged and it resets your
+  submodule back under you.
+- UBT's drift check (`URLab.Build.cs`) reads `git ls-tree HEAD`, so it compares
+  against the **committed** gitlink and refuses the editor build with
+  `MuJoCo submodule drift: URLab expects SHA ...`.
 
-MuJoCo added a new top-level MJCF element. Pick one:
+So the gitlink is staged before the third-party build and committed before the
+UE build. Step 5 opens that commit for exactly that reason.
 
-- **Add a category** in `codegen_rules.json` under `categories.X` with `base_class_name`, `base_class_header`, `mjs_struct`, and `schema_common_block: "X.attrs"`. Codegen emits `UMjX` next run.
-- **Mark unmodeled** in `intentionally_unmodeled_elements` with a one-line reason.
-- **Treat as a container** by listing it in the `container_keys` set inside `_emit_drift_diagnostics`.
+### 3. Rebuild the third-party install, then ProtoSpec
 
-### `schema actuator/sensor subtype 'X' has no entry in categories.actuator/sensor.subtypes`
+Order matters. The generator parses the **submodule's** headers while the
+build links the **staged install**, so an install that is one version behind
+produces a profile that compiles against nothing.
 
-MuJoCo added an actuator or sensor type. Add a subtype entry and URLab emits `UMjXActuator` or `UMjXSensor` next run, including the common base attrs. If the type has an `mjs_setToX` preset function, also add a `subtype_setto` entry pointing at the C function name; codegen marshals the signature for you.
-
-```json
-"actuator": {
-  "subtypes": [
-    { "key": "newactuator", "enum_value": "NewActuator",
-      "class_name": "UMjNewActuator", "header": "MjNewActuator.h" }
-  ],
-  "subtype_setto": {
-    "newactuator": { "call": "mjs_setToNewActuator" }
-  }
-}
+```bash
+cd third_party && ./build_all.ps1        # or ./build_all.sh
+cd ../protospec && ./build.ps1           # or ./build.sh — NOT part of build_all
 ```
 
-### `mjs_setToX param 'Y' is not in the schema attrs and has no param_renames or setto_param_defaults entry`
+`protospec/build.ps1` is deliberately not a step of the MuJoCo build, so it is
+also easy to forget. Confirm both landed:
 
-MuJoCo added a parameter to an existing `mjs_setTo*` function. Decide:
-
-- **It maps to an MJCF attr** the user should control: add it to the per-subtype extras so codegen emits a UPROPERTY and passes the value through.
-- **It is internal**: pin a sentinel in `setto_param_defaults[fn_name][param]` and codegen hard-codes it.
-- **It was renamed**: add a `param_renames` entry in the subtype's setto rule.
-
-### `attr 'X' (used by Y) falls back to default_type ('float')`
-
-A schema attr's UE type defaulted to `float`. If it is really an int / array / bool / string, add it to `type_mappings`:
-
-```json
-"type_mappings": { "newcount": "TArray<int32>" }
+```bash
+ls third_party/install/protospec/io/include.h
+grep '#define mjVERSION_HEADER' third_party/install/MuJoCo/include/mujoco/mujoco.h
 ```
 
-## Rare cases the diagnostics do not catch
+If `third_party/install/protospec/` is missing, `URLab.Build.cs` defines
+`URLAB_PROTOSPEC=0`, the generated authoring path compiles out, and the build
+**succeeds** with one warning in a long log. See
+[Prove the pipeline is live](#9-prove-the-pipeline-is-live).
 
-### An `mjsX` field was renamed
+### 4. Regenerate and answer the gates
 
-Most renames are handled by the auto-resolver, but a brand-new one surfaces as a compile error (`error C2039: 'oldname' is not a member of 'mjsX'`). Add the rename to the element's `attr_to_mjs_field` block:
-
-```json
-"camera": { "attr_to_mjs_field": { "target": "targetbody" } }
+```bash
+cd protospec && uv run pytest && uv run python -m protospec_gen.emit_ue --out .. --check
+cd .. && ./Scripts/regen_ue_profile.ps1        # or .sh
 ```
 
-### A new enum-valued attr
+A schema change moves the generated profile, so expect `Source/URLab/*/MuJoCo/Gen`
+to change. It is checked in; commit it.
 
-If MuJoCo adds an attr whose XML values are a fixed enum, use `xml_enum_attrs` so codegen emits the UE enum bridge, the XML parse, and the mjs write together:
+This is the strongest part of the bump: the gates fail **by name**, and each
+failure names the exact overlay entry to edit or delete. Two families:
 
-```json
-"camera": {
-  "xml_enum_attrs": {
-    "projection": {
-      "ue_property": "Projection",
-      "ue_enum_type": "EMjCameraProjection",
-      "mjs_field": "proj",
-      "mjs_cast": "mjtProjection",
-      "value_map": {
-        "perspective":  ["Perspective",  "mjPROJ_PERSPECTIVE"],
-        "orthographic": ["Orthographic", "mjPROJ_ORTHOGRAPHIC"]
-      }
-    }
-  }
-}
-```
+**Removal and change.** An overlay entry naming an element, enum, keyword or
+attribute the schema no longer declares; a `reading=custom` / `writing=custom`
+facet with no handler and no waiver; an `ATTR_TYPE_OVERRIDES` row correcting a
+declaration that has changed under it; a newly unsupported native XML spelling. All in
+`protospec/protospec_gen/overlay.py` and `overlay_ue.py`.
 
-The UE enum itself is hand-declared in the component header; codegen owns the bridge but not the enum decl.
+**Addition.** Three classes of upstream addition would otherwise pass every
+removal gate and land silently wrong, so each has its own gate
+(`frontend.py`):
 
-### A packed `data[]`-style attr
-
-Some structs pack values into an array. URLab handles this with `mjs_data_packed_attrs`:
-
-```json
-"equality": {
-  "mjs_data_packed_attrs": {
-    "anchor": {
-      "slot_range": [0, 3],
-      "condition": "(EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)",
-      "export_op": "cm_to_m"
-    }
-  }
-}
-```
-
-### The spec C-API changed shape
-
-If `mjs_addX` / `mjs_setString` / `mjs_attach` gained new required args, codegen needs a one-shot Python edit in `generate_ue_components.py`. The relevant helpers are `_emit_setto_call` and the `_emit_X_export` / `_emit_X_import` family. This is uncommon; most bumps only add fields and attrs, which the emitters handle automatically.
-
-## When not to use codegen for a new element
-
-Some elements are not a pure attribute-to-struct mapping:
-
-- **`flexcomp`** uses `xml_passthrough_emission: true` because at spec time it builds a standalone MJCF fragment and re-parses it via `mj_parseXMLString` + `mjs_attach`. Codegen still owns the top-level UPROPERTYs and emits `BuildSchemaAttrsXml()`; hand-rolling is limited to the wrapper and sub-element handling in `MjFlexcomp.cpp`.
-- Sub-elements (`<contact>`, `<edge>`, `<elasticity>`, `<pin>`) under `<flexcomp>` are not modelled by codegen; new sub-element attrs need manual handling in the host `.cpp`.
-
-If a bump grows `flexcomp` a new sub-element, that is the case to widen codegen for first; the rest of URLab's components are already covered.
-
-## Reference
-
-| File | Owned by | Touch on a bump? |
+| Addition | If unclassified | Gate |
 |---|---|---|
-| `Scripts/codegen/snapshots/introspect_snapshot.json` | `build_introspect_snapshot.py` (libclang) | regen rewrites it; commit the result |
-| `Scripts/codegen/snapshots/mjxmacro_snapshot.json` | `build_mjxmacro_snapshot.py` | same |
-| `Scripts/codegen/snapshots/mjcf_schema_snapshot.json` | `build_mjcf_schema_snapshot.py` | same |
-| `Scripts/codegen/codegen_rules.json` | hand-written | only when diagnostics ask |
-| `Scripts/codegen/generate_ue_components.py` | hand-written | only when the MuJoCo C-API shape changes |
-| `Source/URLab/.../*.{h,cpp}` between the `CODEGEN_*` markers | regen | do not hand-edit |
-| outside the markers | hand-written | preserved across regen |
-| `third_party/MuJoCo/src/` | submodule pointer | `git checkout <commit>`, then rebuild |
-| `URLab.Build.cs` `SkipThirdPartyDriftChecks` | hand-written | leave `false` in commits |
+| a repeatable child of an interleaved section (`body`, `tendon`, `spatial`, `equality`, `actuator`, `sensor`) left out of its `INTERLEAVE` row | written as a separate list after the ordered one, shifting every id in that family | strict, no waiver |
+| a new angle-valued attribute not in `ANGLE_ATTRS` | read as radians whatever the document says: wrong by 57.3x | heuristic; waive in `NOT_ANGLE` |
+| a new dynamic reference not in `TARGET_FROM` | a plain string no referrer scan or rename fixup can see | heuristic; waive in `NOT_TARGET` |
 
-## Environment
+The two heuristic gates fire only on attributes that are *new*, which is
+computed against `protospec/protospec_gen/classified_attrs.json`. Once every
+new attribute is either classified or waived with a reason, refresh that
+baseline and commit it with the rest:
 
-`regen_all.py`'s introspect step imports `clang.cindex` and loads libclang. Run regen and the codegen tests in an environment that has libclang; without it the introspect step fails silently and a header change is quietly skipped. Override the library path with `$LIBCLANG_LIBRARY_FILE` or `--libclang` if auto-detection fails.
+```bash
+cd protospec && uv run python -m protospec_gen.frontend --update-baseline
+```
 
-## Checklist after a bump
+Refresh it **after** answering the gates, never before: the baseline is what
+makes "new" mean anything, and refreshing first is how an unclassified
+attribute becomes permanently invisible.
 
-- [ ] `python Scripts/codegen/regen_all.py` prints no diagnostics.
-- [ ] `python -m pytest Scripts/codegen/tests/` is green.
-- [ ] `UnrealBuildTool` compiles `url_projEditor Win64 Development` without new warnings.
-- [ ] `Automation RunTests URLab` is all-green.
+**Documentation.** The editor's tooltips are MuJoCo's own reference manual,
+bound per attribute to an anchor in `doc/XMLreference.rst` and recorded in
+`protospec/protospec_gen/doc_anchors.json`. A restructured manual fails
+generation naming the attribute and the anchor that moved, because the
+alternative is the editor quietly describing an attribute from an anchor that
+now documents something else. Read what moved, then either refresh the
+recording or, for an attribute upstream has genuinely stopped documenting, add
+a waiver with a reason to `overlay_ue.XMLREF_WAIVERS`:
+
+```bash
+cd protospec && uv run python -m protospec_gen.xmlref --update-baseline
+```
+
+Same ordering rule as above, and for the same reason.
+
+### 5. Commit the gitlink, the profile and the baseline
+
+UBT reads the **committed** gitlink, so this happens before the editor build:
+
+```bash
+git add third_party/MuJoCo/src Source/ protospec/
+git commit -m 'Bump MuJoCo to <SHA> and ...'
+```
+
+Amend this commit as the rest of the bump lands — see [Finish the
+commit](#11-finish-the-commit).
+
+### 6. Review native integration assumptions
+
+The direct UE gateway emits MJCF and calls MuJoCo's native XML parser to build `mjSpec`. On a MuJoCo bump, review the native parser's treatment of raw aliases, default classes, attach/model VFS entries, and the `mjs_resolveOrientation` call used at import. The narrow include expander in `protospec/lib/io/include.cc` must still match the version's include lookup and diagnostics. Review `MjFromtoFold.cpp` and shape size conversion for any changed `fromto` or geom/site defaults. There is no per-element direct `mjSpec` writer to update.
+
+The scene still uses `mjs_attach` after individual documents parse. A failed attach currently invalidates the destination spec, so URLab discards that build. Verify the error path and the native compiled-model comparison suite after any change to attach semantics. Test-only `protospec_harness` compares native `mjModel` values; it has no persistent authoring document.
+
+### 8. Build, test, and run the nets
+
+```powershell
+.\Scripts\build_and_test.ps1 -Engine 'C:\Program Files\Epic Games\UE_5.7' `
+                             -Project 'C:\path\to\your.uproject'
+```
+
+The wrapper runs the profile drift gate first and prints the summary block the
+PR template wants. **Confirm you saw the gate line**,
+`>>> Profile drift gate: regen_ue_profile.ps1 -Check`. If it is absent the
+script prints a `WARNING:` naming what it could not find — `uv` off PATH, the
+generator missing — and continues without gating. Exit 4 is drift.
+
+Then run URLab's direct import/export and differential compile suites against the bundled model corpus. These use the generated UE component document, the direct XML gateway and the native parser/compiler. The retired standalone `ps_roundtrip` corpus net is not a valid substitute.
+
+### 9. Prove the pipeline is live
+
+Do this before you believe a green build. A green build and a green suite are
+not evidence the generated profile is present: with `URLAB_PROTOSPEC=0`
+everything that would have failed compiles out instead, and the automation
+suite's ProtoSpec tests go with it.
+
+1. **`third_party/install/protospec/` exists** and `URLAB_PROTOSPEC` is 1. The
+   build prints a `URLab: ProtoSpec is not installed ...` line when it is 0;
+   the absence of that line plus the presence of the directory is the check.
+2. **The drift gate executed** — its own output line, above. A skipped gate and
+   a passing gate have the same exit code.
+3. **A representative imported model still loads and simulates** in the editor.
+
+### 10. The goldens
+
+`Content/TestData/goldens/` holds compiled `mjModel` files (`.mjb`).
+`mj_loadModel` validates the MuJoCo version in the `.mjb` header, so **any
+release bump makes every golden fail to load**.
+
+`Content/TestData/goldens/CAPTURE.json` records the MuJoCo version and
+submodule SHA the goldens were captured at, and the golden test reads it before
+loading anything, so a version bump gives you an explanatory failure rather
+than a message indistinguishable from file corruption. When it fires:
+
+1. Confirm the live compile-parity check is green first. It compares URLab's
+   compiled output against `mj_loadXML` of the same authored file on every run,
+   with no recording involved, so it is the thing that says the new output is
+   *correct*. Recapturing goldens without it records whatever the code does
+   that day, regressions included.
+2. Delete the goldens (capture mode writes only files that are **absent**, so
+   recapture is delete-then-run).
+3. Re-run the suite with `URLAB_CAPTURE_GOLDENS=1`.
+4. Review the diff. `CAPTURE.json` is rewritten by capture mode; the `.mjb`
+   files are binary, so the live check in step 1 is the review.
+
+A golden that changes when the MuJoCo version did **not** change is a
+regression, and stops the bump.
+
+### 11. Finish the commit
+
+The whole bump is **one commit**: gitlink, regenerated `Gen/`, the classified
+baseline, any API migrations, any overlay edits, recaptured goldens, any tests.
+An intermediate state where the gitlink moved but call sites still use old
+signatures does not compile, breaks `git bisect`, and leaves the tree
+unbuildable. Step 5 opened that commit because UBT would not build without it;
+amend the rest into it rather than stacking follow-ups.
+
+```bash
+git add -A && git commit --amend --no-edit
+```
+
+## Checklist
+
+- [ ] Changelog slice read, including MJCF changes.
+- [ ] Gitlink staged **before** the third-party build, committed **before** the UE build.
+- [ ] `third_party/build_all.*` **and** `protospec/build.*` both re-run; `third_party/install/protospec/` exists.
+- [ ] `uv run pytest` and `emit --check` green inside `protospec/`.
+- [ ] Every overlay gate answered by editing a table, not by loosening a gate.
+- [ ] Every new attribute classified or waived with a reason; `classified_attrs.json` refreshed **after**.
+- [ ] Every moved documentation anchor read; `doc_anchors.json` refreshed **after**, or the removal waived.
+- [ ] `Scripts/regen_ue_profile.*` re-run; `Gen/` changes committed.
+- [ ] Every upstream citation re-read against the new sources (regenerate the list by grep).
+- [ ] The behavioral assumptions in step 7 retested.
+- [ ] `build_and_test.*` printed the drift-gate line and exited 0.
+- [ ] `corpus_net.*` run, and its allowed-failure list unchanged or deliberately changed.
+- [ ] `URLAB_PROTOSPEC` is 1 (step 9).
+- [ ] Goldens: live parity check green first, then recaptured; `CAPTURE.json` updated.
 - [ ] A representative imported model still loads and simulates in the editor.
-- [ ] `git diff --stat` shows the three snapshot JSONs, the submodule pointer, optionally a handful of codegen-emitted files, and only the rule edits the diagnostics asked for.
 
 ## Related
 
-- [Codegen](codegen.md): the snapshot and generator details.
+- [Architecture: the mjSpec pipeline](../architecture_mjspec.md): what the
+  gates, goldens and hooks in this page are protecting.
 - [Building from Source](building.md): dependency drift checks and the build gate.

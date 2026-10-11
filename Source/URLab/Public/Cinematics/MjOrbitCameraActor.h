@@ -29,16 +29,11 @@ class UCineCameraComponent;
 class UBoxComponent;
 class AMjArticulation;
 class UMjBody;
-class AMjReplayManager;
 
 /**
  * @class AMjOrbitCameraActor
  * @brief A cinematic orbit camera that auto-detects MjArticulations via a box trigger
  *        and smoothly orbits around them. Designed for teaser/showcase video capture.
- *
- * Integrates with the replay system:
- * - During recording, writes camera position/rotation to each replay frame
- * - During playback, reads camera transforms back for consistent framing across scenes
  *
  * Place in the level, resize the box trigger to cover the area where robots operate.
  * When an articulation enters the trigger, the camera locks onto it and orbits.
@@ -126,14 +121,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera")
 	bool bAutoActivate = false;
 
-	/** @brief If true, writes camera transforms to replay frames during recording. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Replay")
-	bool bRecordCameraPath = true;
-
-	/** @brief If true, reads camera transforms from replay frames during playback instead of orbiting live. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Replay")
-	bool bPlaybackCameraPath = true;
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Orbit Camera")
 	bool bIsOrbiting = false;
 
@@ -172,9 +159,6 @@ private:
 	UPROPERTY()
 	UMjBody* TrackedBody = nullptr;
 
-	UPROPERTY()
-	AMjReplayManager* ReplayMgr = nullptr;
-
 	float CurrentAngle = 0.0f;
 
 	UPROPERTY()
@@ -183,9 +167,4 @@ private:
 	/** @brief Computes the desired orbit radius to keep the articulation fully in frame. */
 	float ComputeAutoFrameRadius() const;
 
-	/** @brief Writes current camera transform to the replay manager's latest live frame. */
-	void WriteCameraToReplayFrame();
-
-	/** @brief Tracks the last replay frame index written to, to avoid duplicate writes. */
-	int32 LastCameraWriteFrameIdx = 0;
 };

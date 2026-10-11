@@ -33,12 +33,41 @@ public:
 private:
 	FDelegateHandle ViewportContextMenuExtenderHandle;
 	FDelegateHandle OnObjectModifiedHandle;
+	FDelegateHandle OnActorMovedHandle;
+	FDelegateHandle PostEngineInitHandle;
 	bool bIsAutoParenting = false;
 
 	static TSharedRef<FExtender> OnExtendActorContextMenu(const TSharedRef<FUICommandList> CommandList, const TArray<AActor*> SelectedActors);
 	static void BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TArray<AActor*> SelectedActors);
 	static void ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex);
 
+	/**
+	 * Replace a quick-convert prop with a single-body MuJoCo Articulation.
+	 *
+	 * The tagged actor compiles to one body already; a promotion re-authors that
+	 * same body -- its free joint, its geoms, its mesh assets and contact
+	 * parameters -- into a first-class AMjArticulation the user can then grow
+	 * (add joints, actuators, logic), and takes the source actor away with it.
+	 */
+	static void PromoteToArticulation(TArray<TWeakObjectPtr<AActor>> Actors);
+
 	void OnObjectModified(UObject* Object);
+
+	/**
+	 * Deliver the move hook to a model whose root the engine skips.
+	 *
+	 * `AActor::PostEditMove` calls `PostEditComponentMove` on the root component
+	 * only when the construction script did NOT create it
+	 * (`ActorEditor.cpp:323-327`), and a URLab model's root is exactly such a
+	 * component. So dragging a placed model -- the ordinary level-editor gesture
+	 * -- reached no element hook at all: the per-type scale refusal never ran, and
+	 * a scaled actor drew every geom under it stretched while MuJoCo went on using
+	 * the `size` the gesture never touched.
+	 *
+	 * `USceneComponent::PostEditComponentMove` recurses into every attached child,
+	 * so one call on the root reaches every element. Broadcast once per drag, not
+	 * per delta: `AActor::PostEditMove` fires this only when the move finishes.
+	 */
+	void OnActorMoved(AActor* Actor);
 	static bool AutoParentSCSNode(class USCS_Node* Node, class USimpleConstructionScript* SCS);
 };

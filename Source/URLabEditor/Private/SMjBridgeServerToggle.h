@@ -16,7 +16,7 @@
  *        keep the label in sync; clicking the button forwards to
  *        Start/StopServer on the subsystem.
  *
- *  Sits next to SMjStepModeIndicator in the LevelEditor PlayToolBar.
+ *  Installed in the LevelEditor PlayToolBar.
  */
 class SURLabBridgeServerToggle : public SCompoundWidget
 {

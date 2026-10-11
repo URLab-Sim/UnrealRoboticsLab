@@ -1,0 +1,25 @@
+<mujoco model="macro_replicate">
+<!-- a 3-count replicate macro of a named geom+joint through a default class, beside a plain
+     body the macro does not touch: a macro's inner names are rewritten by the expansion, so
+     the plain body is what carries this model's element identity -->
+  <default>
+    <default class="rep_default">
+      <geom type="capsule" size="0.02" rgba="0.1 0.7 0.3 1"/>
+      <joint type="hinge" damping="0.1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="anchor_body" pos="0 0 2">
+      <joint name="anchor_joint" type="hinge" axis="0 0 1"/>
+      <geom name="anchor_geom" type="capsule" fromto="0 0 0 0.2 0 0" size="0.02"/>
+    </body>
+
+    <replicate count="3" offset="0.3 0 0" sep="_" childclass="rep_default">
+      <body name="rep_body" pos="0 0 1">
+        <joint name="rep_joint" axis="0 0 1"/>
+        <geom name="rep_geom" fromto="0 0 0 0.2 0 0"/>
+      </body>
+    </replicate>
+  </worldbody>
+</mujoco>

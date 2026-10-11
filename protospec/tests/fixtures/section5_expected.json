@@ -1,0 +1,946 @@
+{
+  "col": 1,
+  "elements": [
+    {
+      "children": [
+        {
+          "cardinality": "zero_or_more",
+          "col": 21,
+          "element": "Geom",
+          "line": 81,
+          "name": "geoms"
+        },
+        {
+          "cardinality": "zero_or_more",
+          "col": 21,
+          "element": "Joint",
+          "line": 82,
+          "name": "joints"
+        },
+        {
+          "cardinality": "zero_or_more",
+          "col": 21,
+          "element": "Body",
+          "line": 83,
+          "name": "bodies"
+        },
+        {
+          "cardinality": "zero_or_more",
+          "col": 21,
+          "element": "Frame",
+          "line": 84,
+          "name": "frames"
+        }
+      ],
+      "col": 9,
+      "fields": [
+        {
+          "col": 3,
+          "default": {
+            "col": 22,
+            "kind": "array",
+            "line": 48,
+            "values": [
+              0,
+              0,
+              0
+            ]
+          },
+          "doc": "position offset",
+          "line": 48,
+          "name": "pos",
+          "optional": true,
+          "source_mixin": "Posed",
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 3
+            },
+            "col": 12,
+            "kind": "prim",
+            "line": 48,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 3,
+          "doc": "quat | euler | axisangle",
+          "line": 49,
+          "name": "orient",
+          "optional": true,
+          "source_mixin": "Posed",
+          "type": {
+            "col": 12,
+            "kind": "variant",
+            "line": 49,
+            "target": "Orientation"
+          }
+        },
+        {
+          "col": 3,
+          "line": 78,
+          "name": "name",
+          "optional": true,
+          "type": {
+            "col": 16,
+            "kind": "prim",
+            "line": 78,
+            "prim": "string"
+          }
+        },
+        {
+          "col": 3,
+          "line": 79,
+          "name": "childclass",
+          "optional": true,
+          "type": {
+            "col": 16,
+            "kind": "ref",
+            "line": 79,
+            "target": "Default"
+          }
+        },
+        {
+          "col": 3,
+          "line": 80,
+          "name": "inertial",
+          "optional": true,
+          "type": {
+            "col": 16,
+            "kind": "variant",
+            "line": 80,
+            "target": "InertiaSpec"
+          }
+        }
+      ],
+      "line": 76,
+      "name": "Body",
+      "uses": [
+        "Posed"
+      ]
+    },
+    {
+      "children": [],
+      "col": 9,
+      "fields": [
+        {
+          "col": 20,
+          "line": 45,
+          "name": "name",
+          "optional": true,
+          "type": {
+            "col": 27,
+            "kind": "prim",
+            "line": 45,
+            "prim": "string"
+          }
+        }
+      ],
+      "line": 45,
+      "name": "Default",
+      "uses": []
+    },
+    {
+      "children": [],
+      "col": 9,
+      "fields": [
+        {
+          "col": 3,
+          "default": {
+            "col": 22,
+            "kind": "array",
+            "line": 48,
+            "values": [
+              0,
+              0,
+              0
+            ]
+          },
+          "doc": "position offset",
+          "line": 48,
+          "name": "pos",
+          "optional": true,
+          "source_mixin": "Posed",
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 3
+            },
+            "col": 12,
+            "kind": "prim",
+            "line": 48,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 3,
+          "doc": "quat | euler | axisangle",
+          "line": 49,
+          "name": "orient",
+          "optional": true,
+          "source_mixin": "Posed",
+          "type": {
+            "col": 12,
+            "kind": "variant",
+            "line": 49,
+            "target": "Orientation"
+          }
+        },
+        {
+          "col": 3,
+          "line": 68,
+          "name": "name",
+          "optional": true,
+          "type": {
+            "col": 10,
+            "kind": "prim",
+            "line": 68,
+            "prim": "string"
+          }
+        }
+      ],
+      "line": 66,
+      "name": "Frame",
+      "uses": [
+        "Posed"
+      ]
+    },
+    {
+      "children": [],
+      "col": 9,
+      "fields": [
+        {
+          "col": 3,
+          "default": {
+            "col": 22,
+            "kind": "array",
+            "line": 48,
+            "values": [
+              0,
+              0,
+              0
+            ]
+          },
+          "doc": "position offset",
+          "line": 48,
+          "name": "pos",
+          "optional": true,
+          "source_mixin": "Posed",
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 3
+            },
+            "col": 12,
+            "kind": "prim",
+            "line": 48,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 3,
+          "doc": "quat | euler | axisangle",
+          "line": 49,
+          "name": "orient",
+          "optional": true,
+          "source_mixin": "Posed",
+          "type": {
+            "col": 12,
+            "kind": "variant",
+            "line": 49,
+            "target": "Orientation"
+          }
+        },
+        {
+          "col": 3,
+          "line": 54,
+          "name": "name",
+          "optional": true,
+          "type": {
+            "col": 14,
+            "kind": "prim",
+            "line": 54,
+            "prim": "string"
+          }
+        },
+        {
+          "annotations": {
+            "xml": "class"
+          },
+          "col": 3,
+          "doc": "`class` is reserved in C++",
+          "line": 55,
+          "name": "dclass",
+          "optional": true,
+          "type": {
+            "col": 14,
+            "kind": "ref",
+            "line": 55,
+            "target": "Default"
+          }
+        },
+        {
+          "col": 3,
+          "default": {
+            "col": 25,
+            "kind": "enum",
+            "line": 56,
+            "member": "sphere"
+          },
+          "line": 56,
+          "name": "type",
+          "optional": true,
+          "type": {
+            "category": "enum",
+            "col": 14,
+            "kind": "named",
+            "line": 56,
+            "name": "GeomType"
+          }
+        },
+        {
+          "col": 3,
+          "line": 57,
+          "name": "size",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "range",
+              "max": 3,
+              "min": 0
+            },
+            "col": 14,
+            "kind": "prim",
+            "line": 57,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 3,
+          "line": 58,
+          "name": "shape",
+          "optional": true,
+          "type": {
+            "col": 14,
+            "kind": "variant",
+            "line": 58,
+            "target": "GeomShape"
+          }
+        },
+        {
+          "col": 3,
+          "default": {
+            "col": 27,
+            "kind": "array",
+            "line": 59,
+            "values": [
+              1,
+              0.005,
+              0.0001
+            ]
+          },
+          "line": 59,
+          "name": "friction",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "range",
+              "max": 3,
+              "min": 1
+            },
+            "col": 14,
+            "kind": "prim",
+            "line": 59,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 3,
+          "line": 60,
+          "name": "material",
+          "optional": true,
+          "type": {
+            "col": 14,
+            "kind": "ref",
+            "line": 60,
+            "target": "Material"
+          }
+        },
+        {
+          "col": 3,
+          "line": 61,
+          "name": "mesh",
+          "optional": true,
+          "type": {
+            "col": 14,
+            "kind": "ref",
+            "line": 61,
+            "target": "Mesh"
+          }
+        },
+        {
+          "col": 3,
+          "default": {
+            "col": 23,
+            "kind": "array",
+            "line": 62,
+            "values": [
+              0.5,
+              0.5,
+              0.5,
+              1
+            ]
+          },
+          "line": 62,
+          "name": "rgba",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 4
+            },
+            "col": 14,
+            "kind": "prim",
+            "line": 62,
+            "prim": "float"
+          }
+        },
+        {
+          "col": 3,
+          "line": 63,
+          "name": "user",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "unbounded"
+            },
+            "col": 14,
+            "kind": "prim",
+            "line": 63,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 52,
+      "name": "Geom",
+      "uses": [
+        "Posed"
+      ]
+    },
+    {
+      "children": [],
+      "col": 9,
+      "fields": [
+        {
+          "col": 3,
+          "line": 72,
+          "name": "name",
+          "optional": true,
+          "type": {
+            "col": 10,
+            "kind": "prim",
+            "line": 72,
+            "prim": "string"
+          }
+        },
+        {
+          "col": 3,
+          "doc": "structural: hinge | slide | ball | free",
+          "line": 73,
+          "name": "type",
+          "optional": false,
+          "type": {
+            "col": 10,
+            "kind": "prim",
+            "line": 73,
+            "prim": "string"
+          }
+        }
+      ],
+      "line": 71,
+      "name": "Joint",
+      "uses": []
+    },
+    {
+      "children": [],
+      "col": 9,
+      "fields": [
+        {
+          "col": 20,
+          "line": 43,
+          "name": "name",
+          "optional": true,
+          "type": {
+            "col": 27,
+            "kind": "prim",
+            "line": 43,
+            "prim": "string"
+          }
+        }
+      ],
+      "line": 43,
+      "name": "Material",
+      "uses": []
+    },
+    {
+      "children": [],
+      "col": 9,
+      "fields": [
+        {
+          "col": 20,
+          "line": 44,
+          "name": "name",
+          "optional": true,
+          "type": {
+            "col": 27,
+            "kind": "prim",
+            "line": 44,
+            "prim": "string"
+          }
+        }
+      ],
+      "line": 44,
+      "name": "Mesh",
+      "uses": []
+    }
+  ],
+  "enums": [
+    {
+      "col": 6,
+      "line": 10,
+      "members": [
+        {
+          "col": 3,
+          "line": 11,
+          "name": "sphere",
+          "value": "sphere"
+        },
+        {
+          "col": 3,
+          "line": 12,
+          "name": "capsule",
+          "value": "capsule"
+        },
+        {
+          "col": 3,
+          "line": 13,
+          "name": "box",
+          "value": "box"
+        },
+        {
+          "col": 3,
+          "line": 14,
+          "name": "mesh",
+          "value": "mesh"
+        }
+      ],
+      "name": "GeomType"
+    },
+    {
+      "col": 6,
+      "line": 3,
+      "members": [
+        {
+          "col": 3,
+          "line": 4,
+          "name": "euler",
+          "value": "Euler"
+        },
+        {
+          "col": 3,
+          "line": 5,
+          "name": "implicit",
+          "value": "implicit"
+        },
+        {
+          "col": 3,
+          "line": 6,
+          "name": "implicitfast",
+          "value": "implicitfast"
+        },
+        {
+          "col": 3,
+          "line": 7,
+          "name": "rk4",
+          "value": "RK4"
+        }
+      ],
+      "name": "Integrator"
+    }
+  ],
+  "line": 1,
+  "mixins": [
+    {
+      "col": 7,
+      "fields": [
+        {
+          "col": 3,
+          "default": {
+            "col": 22,
+            "kind": "array",
+            "line": 48,
+            "values": [
+              0,
+              0,
+              0
+            ]
+          },
+          "doc": "position offset",
+          "line": 48,
+          "name": "pos",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 3
+            },
+            "col": 12,
+            "kind": "prim",
+            "line": 48,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 3,
+          "doc": "quat | euler | axisangle",
+          "line": 49,
+          "name": "orient",
+          "optional": true,
+          "type": {
+            "col": 12,
+            "kind": "variant",
+            "line": 49,
+            "target": "Orientation"
+          }
+        }
+      ],
+      "line": 47,
+      "name": "Posed"
+    }
+  ],
+  "mujoco_version": "3.10.0",
+  "structs": [
+    {
+      "col": 8,
+      "fields": [
+        {
+          "col": 20,
+          "line": 19,
+          "name": "axis",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 3
+            },
+            "col": 27,
+            "kind": "prim",
+            "line": 19,
+            "prim": "double"
+          }
+        },
+        {
+          "annotations": {
+            "unit": "angle"
+          },
+          "col": 38,
+          "line": 19,
+          "name": "angle",
+          "optional": true,
+          "type": {
+            "col": 46,
+            "kind": "prim",
+            "line": 19,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 19,
+      "name": "AxisAngle"
+    },
+    {
+      "col": 8,
+      "fields": [
+        {
+          "col": 19,
+          "line": 35,
+          "name": "inertia",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 3
+            },
+            "col": 29,
+            "kind": "prim",
+            "line": 35,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 35,
+      "name": "Diagonal"
+    },
+    {
+      "col": 8,
+      "fields": [
+        {
+          "annotations": {
+            "unit": "angle"
+          },
+          "col": 20,
+          "line": 18,
+          "name": "angles",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 3
+            },
+            "col": 29,
+            "kind": "prim",
+            "line": 18,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 18,
+      "name": "Euler"
+    },
+    {
+      "col": 8,
+      "fields": [
+        {
+          "col": 19,
+          "line": 27,
+          "name": "size",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "range",
+              "max": 3,
+              "min": 0
+            },
+            "col": 26,
+            "kind": "prim",
+            "line": 27,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 27,
+      "name": "Explicit"
+    },
+    {
+      "col": 8,
+      "fields": [
+        {
+          "col": 19,
+          "line": 28,
+          "name": "fromto",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 6
+            },
+            "col": 28,
+            "kind": "prim",
+            "line": 28,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 28,
+      "name": "FromTo"
+    },
+    {
+      "col": 8,
+      "fields": [
+        {
+          "col": 19,
+          "line": 36,
+          "name": "fullinertia",
+          "optional": true,
+          "type": {
+            "arity": {
+              "kind": "fixed",
+              "size": 6
+            },
+            "col": 33,
+            "kind": "prim",
+            "line": 36,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 36,
+      "name": "Full"
+    },
+    {
+      "col": 8,
+      "fields": [
+        {
+          "col": 20,
+          "line": 17,
+          "name": "w",
+          "optional": true,
+          "type": {
+            "col": 24,
+            "kind": "prim",
+            "line": 17,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 32,
+          "line": 17,
+          "name": "x",
+          "optional": true,
+          "type": {
+            "col": 36,
+            "kind": "prim",
+            "line": 17,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 44,
+          "line": 17,
+          "name": "y",
+          "optional": true,
+          "type": {
+            "col": 48,
+            "kind": "prim",
+            "line": 17,
+            "prim": "double"
+          }
+        },
+        {
+          "col": 56,
+          "line": 17,
+          "name": "z",
+          "optional": true,
+          "type": {
+            "col": 60,
+            "kind": "prim",
+            "line": 17,
+            "prim": "double"
+          }
+        }
+      ],
+      "line": 17,
+      "name": "Quat"
+    }
+  ],
+  "unions": [],
+  "variants": [
+    {
+      "arms": [
+        {
+          "col": 3,
+          "line": 31,
+          "tag": "explicit",
+          "type": {
+            "category": "struct",
+            "col": 14,
+            "kind": "named",
+            "line": 31,
+            "name": "Explicit"
+          }
+        },
+        {
+          "col": 3,
+          "line": 32,
+          "tag": "fromto",
+          "type": {
+            "category": "struct",
+            "col": 14,
+            "kind": "named",
+            "line": 32,
+            "name": "FromTo"
+          }
+        }
+      ],
+      "col": 9,
+      "line": 30,
+      "name": "GeomShape"
+    },
+    {
+      "arms": [
+        {
+          "col": 3,
+          "line": 39,
+          "tag": "diagonal",
+          "type": {
+            "category": "struct",
+            "col": 14,
+            "kind": "named",
+            "line": 39,
+            "name": "Diagonal"
+          }
+        },
+        {
+          "col": 3,
+          "line": 40,
+          "tag": "full",
+          "type": {
+            "category": "struct",
+            "col": 14,
+            "kind": "named",
+            "line": 40,
+            "name": "Full"
+          }
+        }
+      ],
+      "col": 9,
+      "line": 38,
+      "name": "InertiaSpec"
+    },
+    {
+      "arms": [
+        {
+          "col": 3,
+          "doc": "unit quaternion (canonical form)",
+          "line": 22,
+          "tag": "quat",
+          "type": {
+            "category": "struct",
+            "col": 15,
+            "kind": "named",
+            "line": 22,
+            "name": "Quat"
+          }
+        },
+        {
+          "col": 3,
+          "doc": "euler angles, sequence from compiler.eulerseq",
+          "line": 23,
+          "tag": "euler",
+          "type": {
+            "category": "struct",
+            "col": 15,
+            "kind": "named",
+            "line": 23,
+            "name": "Euler"
+          }
+        },
+        {
+          "col": 3,
+          "line": 24,
+          "tag": "axisangle",
+          "type": {
+            "category": "struct",
+            "col": 15,
+            "kind": "named",
+            "line": 24,
+            "name": "AxisAngle"
+          }
+        }
+      ],
+      "col": 9,
+      "line": 21,
+      "name": "Orientation"
+    }
+  ]
+}

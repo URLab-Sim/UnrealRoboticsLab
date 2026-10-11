@@ -1,0 +1,38 @@
+<mujoco model="actuators_all">
+<!-- all twelve actuator spellings across joint, tendon, site(+refsite), and body transmissions -->
+  <worldbody>
+    <site name="site_ref" pos="0 0 0"/>
+    <body name="link1" pos="0 0 1">
+      <joint name="j1" type="hinge" axis="0 0 1"/>
+      <geom name="geom_link1" type="capsule" fromto="0 0 0 0.5 0 0" size="0.05"/>
+      <site name="site1" pos="0.5 0 0"/>
+      <body name="link2" pos="0.5 0 0">
+        <joint name="j2" type="hinge" axis="0 1 0"/>
+        <geom name="geom_link2" type="capsule" fromto="0 0 0 0.5 0 0" size="0.05"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <tendon>
+    <fixed name="ftendon">
+      <joint joint="j1" coef="1"/>
+    </fixed>
+  </tendon>
+
+  <actuator>
+    <general name="act_general" tendon="ftendon" gaintype="affine" biastype="affine"
+             gainprm="2 0 0" biasprm="0 -10 -1"/>
+    <motor name="act_motor" joint="j1"/>
+    <position name="act_position" joint="j1" kp="10" dampratio="1"/>
+    <velocity name="act_velocity" joint="j1" kv="0.5"/>
+    <intvelocity name="act_intvelocity" joint="j2" kp="10" kv="0.5" actrange="-1 1"/>
+    <orientation name="act_orientation" site="site1" refsite="site_ref" kp="5" kv="0.5"/>
+    <pid name="act_pid" joint="j2" kp="10" ki="0.5" kv="0.25" imax="1"/>
+    <damper name="act_damper" joint="j1" kv="0.5" ctrlrange="0 1"/>
+    <cylinder name="act_cylinder" joint="j2" timeconst="0.5" area="0.5" diameter="0.25" bias="0 -1 0"/>
+    <muscle name="act_muscle" joint="j1" timeconst="0.01 0.04" range="0.75 1.25" force="1"
+            lengthrange="0.2 0.6"/>
+    <adhesion name="act_adhesion" body="link2" gain="1" ctrlrange="0 1"/>
+    <dcmotor name="act_dcmotor" joint="j2" motorconst="0.5 0.25" resistance="1"/>
+  </actuator>
+</mujoco>

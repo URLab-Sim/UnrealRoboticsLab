@@ -1,0 +1,414 @@
+// Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// --- LEGAL DISCLAIMER ---
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
+// trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
+//
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
+// CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
+
+#include "Utils/MsgpackHelpers.h"
+
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Misc/Base64.h"
+#include "Utils/URLabLogging.h"
+
+// rpclib's msgpack-cxx headers use member functions and templates named
+// `check`, which collides with UE's `check(cond)` assertion macro. Save
+// the macro, undef while including rpclib, and restore afterwards. We do
+// the same for `verify` for safety.
+#pragma push_macro("check")
+#pragma push_macro("verify")
+#undef check
+#undef verify
+
+THIRD_PARTY_INCLUDES_START
+#include "rpc/msgpack.hpp"
+THIRD_PARTY_INCLUDES_END
+
+#pragma pop_macro("verify")
+#pragma pop_macro("check")
+
+// Keys ending in "__b64__" are base64-decoded and emitted as msgpack `bin`;
+// the bridge-side decoder strips the suffix. SetBinaryField packs for callers.
+
+namespace
+{
+constexpr const TCHAR* kBinSuffix = TEXT("__b64__");
+constexpr int32 kBinSuffixLen = 7;
+
+// Fields the wire schema declares as `int` have to reach the peer as a msgpack
+// int, not a float64, or a UE owner and a Python owner can never produce a
+// byte-identical frame and no golden can compare the two.
+//
+// FJsonValue has no integer type, and there is no spare type tag to subclass
+// into: EJson::None is fatal in the JSON writer and the raw-binary carrier
+// already owns EJson::Null. So the int-ness rides BESIDE the value. SetIntField
+// writes the number normally -- every existing reader of the field, JSON clients
+// included, is untouched -- and records the field name in this reserved key,
+// which PackJsonObjectInner consumes and never emits.
+//
+// Deliberately per-field and explicit rather than "pack a whole double as an
+// int": qpos, ctrl and sensor readings are frequently exactly 0.0 or 1.0, and
+// inferring from the value would make their wire type depend on the physics.
+constexpr const TCHAR* kIntKeysField = TEXT("__urlab_ints__");
+
+// FJsonValue carrying raw bytes to pack straight through as msgpack `bin`, with
+// no base64 encode/decode round trip and no intermediate FString. It holds a
+// Keeper that owns the underlying buffer so the bytes stay valid until the reply
+// is packed. It is always stored under a kBinSuffix key, and its Type is set to
+// EJson::Null so PackJsonObjectInner can tell it apart from the legacy base64
+// string form (a msgpack->JSON round trip yields EJson::String there, and no
+// code ever stores a plain null under a __b64__ key). EJson::Null also serialises
+// safely if the reply ever goes out as JSON: the __b64__ field is the
+// msgpack-canonical form and JSON clients read the parallel *_base64 field.
+class FURLabJsonValueBinary : public FJsonValue
+{
+public:
+	FURLabJsonValueBinary(const uint8* InData, int32 InSize,
+		TSharedPtr<const void, ESPMode::ThreadSafe> InKeeper)
+		: Data(InData), Size(InSize), Keeper(MoveTemp(InKeeper))
+	{
+		Type = EJson::Null;
+	}
+
+	const uint8* GetBinaryData() const { return Data; }
+	int32 GetBinarySize() const { return Size; }
+
+protected:
+	virtual FString GetType() const override { return TEXT("URLabBinary"); }
+
+private:
+	const uint8* Data = nullptr;
+	int32 Size = 0;
+	TSharedPtr<const void, ESPMode::ThreadSafe> Keeper;
+};
+
+template <typename Stream>
+void PackString(clmdep_msgpack::packer<Stream>& Packer, const FString& S)
+{
+	FTCHARToUTF8 Conv(*S);
+	Packer.pack_str(Conv.Length());
+	Packer.pack_str_body(Conv.Get(), Conv.Length());
+}
+
+template <typename Stream>
+void PackJsonValue(clmdep_msgpack::packer<Stream>& Packer, const TSharedPtr<FJsonValue>& V);
+
+template <typename Stream>
+void PackJsonObjectInner(clmdep_msgpack::packer<Stream>& Packer,
+	const TSharedPtr<FJsonObject>& Obj)
+{
+	if (!Obj.IsValid())
+	{
+		Packer.pack_map(0);
+		return;
+	}
+	// The declared-int field names for THIS map, and the map size less the
+	// bookkeeping key itself, which is never emitted.
+	TSet<FString> IntKeys;
+	const TArray<TSharedPtr<FJsonValue>>* IntKeyArr = nullptr;
+	if (Obj->TryGetArrayField(kIntKeysField, IntKeyArr) && IntKeyArr)
+	{
+		for (const TSharedPtr<FJsonValue>& K : *IntKeyArr)
+		{
+			FString Name;
+			if (K.IsValid() && K->TryGetString(Name))
+				IntKeys.Add(Name);
+		}
+	}
+
+	Packer.pack_map(Obj->Values.Num() - (IntKeyArr != nullptr ? 1 : 0));
+	for (const auto& Kv : Obj->Values)
+	{
+		const FString& Key = Kv.Key;
+		if (Key.Equals(kIntKeysField, ESearchCase::CaseSensitive))
+			continue;
+
+		// A declared int packs as a msgpack int (msgpack-cxx picks the narrowest
+		// encoding, which is what the Python owner's packer does too).
+		if (IntKeys.Contains(Key))
+		{
+			PackString(Packer, Key);
+			double AsDouble = 0.0;
+			if (Kv.Value.IsValid())
+				Kv.Value->TryGetNumber(AsDouble);
+			Packer.pack(static_cast<int64_t>(AsDouble));
+			continue;
+		}
+		// Keys with kBinSuffix emit real msgpack bin (the suffix is stripped from
+		// the wire field name). The value is either our raw-binary carrier
+		// (EJson::Null, bytes packed directly) or a legacy base64 string (from a
+		// msgpack->JSON round trip, decoded back to bytes).
+		if (Key.EndsWith(kBinSuffix, ESearchCase::CaseSensitive))
+		{
+			PackString(Packer, Key.LeftChop(kBinSuffixLen));
+
+			const FJsonValue* Val = Kv.Value.Get();
+			if (Val && Val->Type == EJson::Null)
+			{
+				// Raw bytes already in hand: pack directly, no base64 round trip.
+				const FURLabJsonValueBinary* Bin = static_cast<const FURLabJsonValueBinary*>(Val);
+				const int32 N = Bin->GetBinarySize();
+				Packer.pack_bin(N);
+				if (N > 0 && Bin->GetBinaryData())
+					Packer.pack_bin_body(reinterpret_cast<const char*>(Bin->GetBinaryData()), N);
+			}
+			else
+			{
+				FString Encoded;
+				if (Val && Kv.Value->TryGetString(Encoded))
+				{
+					TArray<uint8> Decoded;
+					FBase64::Decode(Encoded, Decoded);
+					Packer.pack_bin(Decoded.Num());
+					if (Decoded.Num() > 0)
+						Packer.pack_bin_body(reinterpret_cast<const char*>(Decoded.GetData()), Decoded.Num());
+				}
+				else
+				{
+					Packer.pack_bin(0);
+				}
+			}
+			continue;
+		}
+
+		PackString(Packer, Key);
+		PackJsonValue(Packer, Kv.Value);
+	}
+}
+
+template <typename Stream>
+void PackJsonValue(clmdep_msgpack::packer<Stream>& Packer, const TSharedPtr<FJsonValue>& V)
+{
+	if (!V.IsValid())
+	{
+		Packer.pack_nil();
+		return;
+	}
+
+	switch (V->Type)
+	{
+		case EJson::Null:
+			Packer.pack_nil();
+			return;
+		case EJson::Boolean:
+			Packer.pack(V->AsBool());
+			return;
+		case EJson::Number:
+			// Numbers pack as float64 unless the owning map named the field an int
+			// (see kIntKeysField). Round-trip precision is what the float64 default
+			// protects: state mirrored from MJ must survive the wire unrounded.
+			Packer.pack(V->AsNumber());
+			return;
+		case EJson::String:
+		{
+			FString S;
+			V->TryGetString(S);
+			PackString(Packer, S);
+			return;
+		}
+		case EJson::Array:
+		{
+			const TArray<TSharedPtr<FJsonValue>>& Arr = V->AsArray();
+			Packer.pack_array(Arr.Num());
+			for (const auto& E : Arr)
+				PackJsonValue(Packer, E);
+			return;
+		}
+		case EJson::Object:
+		{
+			PackJsonObjectInner(Packer, V->AsObject());
+			return;
+		}
+		default:
+			Packer.pack_nil();
+			return;
+	}
+}
+} // namespace
+
+void FURLabMsgpackUtil::PackJsonObject(const TSharedPtr<FJsonObject>& Object, TArray<uint8>& OutBuf)
+{
+	OutBuf.Reset();
+	clmdep_msgpack::sbuffer SBuf;
+	clmdep_msgpack::packer<clmdep_msgpack::sbuffer> Packer(SBuf);
+	PackJsonObjectInner(Packer, Object);
+	OutBuf.Append(reinterpret_cast<const uint8*>(SBuf.data()), (int32)SBuf.size());
+}
+
+void FURLabMsgpackUtil::SetBinaryField(TSharedPtr<FJsonObject>& Obj, const FString& Field,
+	const uint8* Data, int32 Size)
+{
+	if (!Obj.IsValid())
+		return;
+	// Own a single copy of the bytes so the caller's buffer need not outlive the
+	// reply, then pack it straight through as msgpack bin (no base64). The __b64__
+	// key suffix tells PackJsonObjectInner to strip the suffix and emit bin.
+	TSharedRef<TArray<uint8>, ESPMode::ThreadSafe> Owned =
+		MakeShared<TArray<uint8>, ESPMode::ThreadSafe>();
+	if (Size > 0 && Data)
+		Owned->Append(Data, Size);
+	Obj->SetField(Field + kBinSuffix,
+		MakeShared<FURLabJsonValueBinary>(Owned->GetData(), Owned->Num(), Owned));
+}
+
+void FURLabMsgpackUtil::SetBinaryFieldShared(TSharedPtr<FJsonObject>& Obj, const FString& Field,
+	const uint8* Data, int32 Size, TSharedPtr<const void, ESPMode::ThreadSafe> Keeper)
+{
+	if (!Obj.IsValid())
+		return;
+	Obj->SetField(Field + kBinSuffix,
+		MakeShared<FURLabJsonValueBinary>(Data, Size, MoveTemp(Keeper)));
+}
+
+const TCHAR* FURLabMsgpackUtil::IntKeysFieldName()
+{
+	return kIntKeysField;
+}
+
+void FURLabMsgpackUtil::SetIntField(TSharedPtr<FJsonObject>& Obj, const FString& Field, int64 Value)
+{
+	if (!Obj.IsValid())
+		return;
+	Obj->SetNumberField(Field, static_cast<double>(Value));
+
+	// Append rather than replace: one map can carry several declared ints, and a
+	// field set twice must not be listed twice.
+	TArray<TSharedPtr<FJsonValue>> Names;
+	const TArray<TSharedPtr<FJsonValue>>* Existing = nullptr;
+	if (Obj->TryGetArrayField(kIntKeysField, Existing) && Existing)
+	{
+		Names = *Existing;
+		for (const TSharedPtr<FJsonValue>& N : Names)
+		{
+			FString Have;
+			if (N.IsValid() && N->TryGetString(Have) && Have.Equals(Field, ESearchCase::CaseSensitive))
+				return;
+		}
+	}
+	Names.Add(MakeShared<FJsonValueString>(Field));
+	Obj->SetArrayField(kIntKeysField, Names);
+}
+
+// =============================================================================
+// Unpack: msgpack -> FJsonObject
+// =============================================================================
+
+namespace
+{
+TSharedPtr<FJsonValue> ConvertMsgpackObject(const clmdep_msgpack::object& O)
+{
+	switch (O.type)
+	{
+		case clmdep_msgpack::type::NIL:
+			return MakeShared<FJsonValueNull>();
+		case clmdep_msgpack::type::BOOLEAN:
+			return MakeShared<FJsonValueBoolean>(O.via.boolean);
+		case clmdep_msgpack::type::POSITIVE_INTEGER:
+			return MakeShared<FJsonValueNumber>((double)O.via.u64);
+		case clmdep_msgpack::type::NEGATIVE_INTEGER:
+			return MakeShared<FJsonValueNumber>((double)O.via.i64);
+		case clmdep_msgpack::type::FLOAT32:
+		case clmdep_msgpack::type::FLOAT64:
+			return MakeShared<FJsonValueNumber>(O.via.f64);
+		case clmdep_msgpack::type::STR:
+		{
+			FString OutStr;
+			FUTF8ToTCHAR Conv(O.via.str.ptr, O.via.str.size);
+			OutStr.AppendChars(Conv.Get(), Conv.Length());
+			return MakeShared<FJsonValueString>(OutStr);
+		}
+		case clmdep_msgpack::type::BIN:
+		{
+			// Surface bin as base64 inside the JSON tree, with the same
+			// __b64__ suffix convention so callers using FJsonObject
+			// round-trip correctly. Note: only relevant when the binary
+			// appears at a value position; binary at a map *value* gets the
+			// suffix tagged onto its key by ConvertMsgpackMap.
+			FString Encoded = FBase64::Encode(reinterpret_cast<const uint8*>(O.via.bin.ptr),
+				(int32)O.via.bin.size);
+			return MakeShared<FJsonValueString>(Encoded);
+		}
+		case clmdep_msgpack::type::ARRAY:
+		{
+			TArray<TSharedPtr<FJsonValue>> Out;
+			Out.Reserve((int32)O.via.array.size);
+			for (uint32 i = 0; i < O.via.array.size; ++i)
+				Out.Add(ConvertMsgpackObject(O.via.array.ptr[i]));
+			return MakeShared<FJsonValueArray>(Out);
+		}
+		case clmdep_msgpack::type::MAP:
+		{
+			TSharedPtr<FJsonObject> Inner = MakeShared<FJsonObject>();
+			for (uint32 i = 0; i < O.via.map.size; ++i)
+			{
+				const auto& K = O.via.map.ptr[i].key;
+				const auto& V = O.via.map.ptr[i].val;
+				if (K.type != clmdep_msgpack::type::STR)
+					continue;
+				FString KeyStr;
+				{
+					FUTF8ToTCHAR Conv(K.via.str.ptr, K.via.str.size);
+					KeyStr.AppendChars(Conv.Get(), Conv.Length());
+				}
+				if (V.type == clmdep_msgpack::type::BIN)
+				{
+					// Tag the key with __b64__ so PackJsonObject re-emits
+					// it as binary on round-trip.
+					FString Encoded = FBase64::Encode(reinterpret_cast<const uint8*>(V.via.bin.ptr),
+						(int32)V.via.bin.size);
+					Inner->SetStringField(KeyStr + kBinSuffix, Encoded);
+				}
+				else
+				{
+					Inner->SetField(KeyStr, ConvertMsgpackObject(V));
+				}
+			}
+			return MakeShared<FJsonValueObject>(Inner);
+		}
+		case clmdep_msgpack::type::EXT:
+		default:
+			return MakeShared<FJsonValueNull>();
+	}
+}
+} // namespace
+
+bool FURLabMsgpackUtil::UnpackToJsonObject(const uint8* Data, int32 Size,
+	TSharedPtr<FJsonObject>& OutObject)
+{
+	if (!Data || Size <= 0)
+		return false;
+	try
+	{
+		clmdep_msgpack::object_handle Oh =
+			clmdep_msgpack::unpack(reinterpret_cast<const char*>(Data), (size_t)Size);
+		const clmdep_msgpack::object& Top = Oh.get();
+		if (Top.type != clmdep_msgpack::type::MAP)
+			return false;
+		TSharedPtr<FJsonValue> V = ConvertMsgpackObject(Top);
+		if (!V.IsValid())
+			return false;
+		OutObject = V->AsObject();
+		return OutObject.IsValid();
+	}
+	catch (...)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("MsgpackHelpers: parse failure in UnpackToJsonObject"));
+		return false;
+	}
+}

@@ -1,0 +1,101 @@
+{
+  "schema_version": 2,
+  "scope": "Denylist only. Retained operations are derived from the typed schema and checked against reachable native dispatch.",
+  "retired_operations": [
+    {
+      "op": "hello",
+      "reason": "obsolete legacy operation removed from the typed contract",
+      "historical_inventory": "Legacy handler and caller references are historical only and do not establish production reachability."
+    },
+    {
+      "op": "meta",
+      "reason": "obsolete legacy operation removed from the typed contract",
+      "historical_inventory": "Legacy handler and caller references are historical only and do not establish production reachability."
+    },
+    {
+      "op": "recording_clear",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "recording_save",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "recording_start",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "recording_stop",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "render_frame",
+      "reason": "retired flat/hybrid render surface; canonical typed render/viewer/interaction workflows replace it",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "render_hello",
+      "reason": "retired flat/hybrid render surface; canonical typed render/viewer/interaction workflows replace it",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "render_load",
+      "reason": "retired flat/hybrid render surface; canonical typed render/viewer/interaction workflows replace it",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "render_perturb",
+      "reason": "retired flat/hybrid render surface; canonical typed render/viewer/interaction workflows replace it",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "replay_list_sessions",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "replay_load",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "replay_set_active",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "replay_start",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "replay_stop",
+      "reason": "recording/replay deferred by product decision; public registrations removed",
+      "historical_inventory": "Previous detailed registration/caller evidence remains in repository history and audit documents; it is not treated as live reachability."
+    },
+    {
+      "op": "set_mode",
+      "reason": "obsolete legacy operation removed from the typed contract",
+      "historical_inventory": "Legacy handler and caller references are historical only and do not establish production reachability."
+    },
+    {
+      "op": "upload_model_chunk",
+      "reason": "obsolete legacy operation removed from the typed contract",
+      "historical_inventory": "Legacy handler and caller references are historical only and do not establish production reachability."
+    },
+    {
+      "op": "upload_model_commit",
+      "reason": "obsolete legacy operation removed from the typed contract",
+      "historical_inventory": "Legacy handler and caller references are historical only and do not establish production reachability."
+    },
+    {
+      "op": "upload_model_manifest",
+      "reason": "obsolete legacy operation removed from the typed contract",
+      "historical_inventory": "Legacy handler and caller references are historical only and do not establish production reachability."
+    }
+  ]
+}

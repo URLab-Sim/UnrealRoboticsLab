@@ -55,7 +55,7 @@ On possession, URLab adds the twist input mapping context and attaches a spring-
 | Q/E | Turn left/right |
 | 1 to 0 | Action keys (a 10-slot bitmask) |
 
-The twist controller publishes its state every physics step: a `<prefix>/twist` topic carrying vx, vy, and yaw rate, and a `<prefix>/actions` topic carrying the pressed-action bitmask. A Python policy can subscribe to these and interpret them as walking direction and speed. See [Python Policies](../python/policies.md).
+The twist controller's state goes out with the rest of the articulation's state, in the msgpack snapshot published every physics step: a `twist` field carrying linear and angular velocity, and an `actions` field carrying the pressed-action bitmask. A Python policy reads them from the snapshot and interprets them as walking direction and speed. See [Python Policies](../python/policies.md).
 
 Tune how much velocity a full keypress produces with the max forward speed, strafe speed, and turn rate. These are editable in the Details panel or, when a twist-controlled articulation is selected, from a locomotion section of sliders in the dashboard.
 

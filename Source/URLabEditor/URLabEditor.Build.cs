@@ -35,6 +35,7 @@ public class URLabEditor : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"URLab",
+			"URLabRos",
 			"UnrealEd",
 			"EditorSubsystem",
 			"AssetTools",
@@ -44,7 +45,6 @@ public class URLabEditor : ModuleRules
 			"PropertyEditor",
 			"Slate",
 			"SlateCore",
-			"XmlParser",
 			"Projects",
 			"LevelEditor",
 			"Json",
@@ -55,9 +55,40 @@ public class URLabEditor : ModuleRules
 		{
 			"InputCore",
 			"RenderCore",
+			"RHI",
+			// Flex/skin replication tests read back UDynamicMeshComponent surfaces
+			// (UDynamicMesh::ProcessMesh / FDynamicMesh3), so the test module links
+			// the geometry runtime directly.
+			"GeometryFramework",
+			"GeometryCore",
+			"MeshDescription",
+			"StaticMeshDescription",
+			"ProceduralMeshComponent",
 			"DesktopPlatform",
 			"Kismet",
-			"ToolMenus"
+			"BlueprintGraph",
+			"ToolMenus",
+			// The Blueprint editor's component tree, whose context menu carries
+			// the convex-decomposition entries (MjDecompositionMenu.cpp).
+			"SubobjectEditor",
+			// Import and generation diagnostics are routed to the editor's
+			// Messages panel; the module owns the listing they land in.
+			"MessageLog",
+			// M_MuJoCo_Master is built from code (MjMasterMaterial.cpp) rather
+			// than hand-authored, so the graph is reviewable and reproducible.
+			"MaterialEditor"
 		});
+
+		// Editor import runs MuJoCo's fatal recursive dependency scanner in a
+		// separate process. The helper is staged beside libmujoco, which URLab's
+		// runtime module already stages in the same binary directory.
+		string HelperName = Target.Platform == UnrealTargetPlatform.Win64
+			? "urlab_mj_deps.exe" : "urlab_mj_deps";
+		string Helper = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..",
+			"third_party", "install", "protospec", "bin", HelperName));
+		if (File.Exists(Helper))
+		{
+			RuntimeDependencies.Add("$(BinaryOutputDir)/" + HelperName, Helper, StagedFileType.NonUFS);
+		}
 	}
 }

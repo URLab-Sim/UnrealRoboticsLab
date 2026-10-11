@@ -144,5 +144,6 @@ For packaged (non-editor) builds, `RuntimeDependencies.Add(...)` in `URLab.Build
 ## Related
 
 - [Installation](../installation.md): basic first-build flow on Windows and Linux.
-- [Codegen](codegen.md): regenerating MuJoCo wrappers, and the build-time drift gate.
+- [Regenerating the Profile](generation.md): the generated MuJoCo element
+  components, and the build-time drift gate.
 - [Bumping MuJoCo](bumping_mujoco.md): moving to a new MuJoCo version end to end.

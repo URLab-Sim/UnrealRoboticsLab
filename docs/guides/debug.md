@@ -44,6 +44,42 @@ When **sleep modulation** is on (default), sleeping bodies are dimmed and desatu
 
 Renders every tendon as a smooth tube. For muscle actuators, both the tube radius and colour track the muscle's activation in real time (relaxed reads thin and dark blue, contracted reads thick and bright red). Limited tendons without a muscle driver colour by their normalised length; neutral tendons read mid-purple. The path follows MuJoCo's post-kinematics tendon route, curving around any wrapping geoms. Tune `TendonTubeRadius` and `TendonArcSubdivisions` in the Details panel.
 
+## Overlays on a render server
+
+A consumer renderer — an instance with `-URLabDrive=subscribe:` or `request`, described in
+[render roles](../concepts/render_roles.md) — runs no physics, so it has no `mjData`
+of its own to derive overlays from. It can still draw them, and how much it can draw
+depends on where the data comes from.
+
+Anything derivable from the streamed transforms plus the static model is free: body,
+geom and site frames, camera and light glyphs, inertia boxes and bounding volumes.
+Anything that lives in `mjData` — contacts, contact forces, constraint and sensor
+decor, subtree centres of mass, actuator colouring, tendon wrap paths — has to be
+sent by the owner, and the owner only serialises it for subscribers that asked.
+
+Two things control this at boot:
+
+- `-URLabScene=overlay=<mask>` takes an `mjVIS_*` bitmask, decimal or `0x`-hex. It
+  seeds the `mj.RenderOverlayMask` console variable, which selects which overlays the
+  subscriber draws, and it tells the subscriber to negotiate the owner's debug tier so the
+  owner-side data actually arrives.
+- `-URLabScene=maxcontacts=<n>` caps how many contact points the **owner** puts on
+  each frame. It is a bandwidth control rather than a drawing limit, and `0` or
+  absent means uncapped.
+
+`mj.RenderOverlayMask` is an ordinary console variable, so an operator can change
+the mask at runtime without relaunching; the negotiation with the owner, however,
+happens once at subscribe time.
+
+Overlays are drawn by `UMjOverlayRenderer` through pooled instanced static meshes —
+one pool per unit primitive, with per-instance colour and alpha in custom data
+feeding a single master material — rather than through immediate-mode debug drawing,
+so hundreds of contacts cost a handful of draw calls. The master material is
+`/UnrealRoboticsLab/Materials/M_MjOverlay`; if it is missing from a cooked build the
+renderer degrades to opaque per-colour pools, which is usually the first sign that a
+packaged server did not cook the plugin's materials. See
+[packaging a render server](render_server_packaging.md) for the fix.
+
 ## Next steps
 
 - [Geometry & Collision](geometry.md) for contact filtering and what the collision overlay shows.

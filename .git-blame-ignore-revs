@@ -6,3 +6,6 @@
 
 # style: adopt Epic clang-format + codegen format-step + repo reformat
 1a57be12debd08eb60a2db0a5503b0a64c8ad678
+
+# style: reformat hand-written sources and pin line endings to LF
+3381d8597bbb3106d826d6ffb369a82fce531ffb

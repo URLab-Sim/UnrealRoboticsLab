@@ -1,0 +1,26 @@
+<mujoco model="ros_maps_test">
+  <compiler angle="radian"/>
+
+  <worldbody>
+    <light directional="true" pos="3 3 5" dir="-0.6 -0.6 -1"/>
+
+    <!-- Static box: 1m x 2m x 0.5m centred at (2, 0, 0.5) —
+         easy to spot in the point cloud and occupancy grid as a 1x2 blob at x=2,y=0 -->
+    <body name="test_box" pos="2 0 0.5">
+      <geom name="test_box_geom" type="box" size="0.5 1.0 0.5" rgba="1 0 0 1"/>
+    </body>
+
+    <!-- Sphere: r=0.3 at (0, 2, 0.3) — compact cluster in point cloud -->
+    <body name="test_sphere" pos="0 2 0.3">
+      <geom name="test_sphere_geom" type="sphere" size="0.3" rgba="0 1 0 1"/>
+    </body>
+
+    <!-- Cylinder: r=0.2, h=0.8 at (-1, -1, 0.4) — vertical-ish in the grid -->
+    <body name="test_cylinder" pos="-1 -1 0.4">
+      <geom name="test_cylinder_geom" type="cylinder" size="0.2 0.4" rgba="0 0 1 1"/>
+    </body>
+
+    <!-- Ground plane — filtered by the 1m extent cap so not in point cloud/grid -->
+    <geom name="floor" type="plane" size="10 10 0.1" rgba="0.8 0.8 0.8 1"/>
+  </worldbody>
+</mujoco>

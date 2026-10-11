@@ -135,28 +135,89 @@ bool FMjBridgeServerProviderInstalled::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 5. Manager test session: the FMjUESession test helper bypasses BeginPlay
-//    so its server is always manager-owned. The sub-instantiated server in
-//    the editor must NOT have its lifetime affected by that test session.
+// 6. Cooperative lease: acquire / contended acquire / release (right + wrong
+//    id) / re-acquire, and IsLeaseHeld tracks state.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjBridgeServerOwnershipFlag,
-	"URLab.BridgeServer.OwnershipFlag",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjBridgeServerLeaseAcquireRelease,
+	"URLab.BridgeServer.LeaseAcquireRelease",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjBridgeServerOwnershipFlag::RunTest(const FString& Parameters)
+bool FMjBridgeServerLeaseAcquireRelease::RunTest(const FString& Parameters)
 {
-	// Manager-owned (test path uses NewObject directly so bOwnedByManager
-	// stays at its default false; but the editor subsystem-owned server
-	// also defaults to false. Provenance is set by the BeginPlay branch
-	// at runtime; this test just exercises the getter/setter contract.)
 	UURLabBridgeServer* Server = NewObject<UURLabBridgeServer>();
 	Server->AddToRoot();
 
-	TestFalse(TEXT("Default not owned-by-manager"), Server->IsOwnedByManager());
-	Server->SetOwnedByManager(true);
-	TestTrue(TEXT("Setter flips on"), Server->IsOwnedByManager());
-	Server->SetOwnedByManager(false);
-	TestFalse(TEXT("Setter flips off"), Server->IsOwnedByManager());
+	TestFalse(TEXT("No lease held initially"), Server->IsLeaseHeld());
+	TestTrue(TEXT("Lease id empty initially"), Server->GetLeaseId().IsEmpty());
+
+	// Acquire succeeds and returns a non-empty lease id.
+	FString LeaseId, ExistingId;
+	const bool bAcquired = Server->TryAcquireLease(TEXT("client-a"), 60.0, LeaseId, ExistingId);
+	TestTrue(TEXT("First acquire succeeds"), bAcquired);
+	TestFalse(TEXT("Acquired lease id non-empty"), LeaseId.IsEmpty());
+	TestTrue(TEXT("IsLeaseHeld true after acquire"), Server->IsLeaseHeld());
+	TestEqual(TEXT("GetLeaseId matches acquired id"), Server->GetLeaseId(), LeaseId);
+
+	// Second acquire while held fails and returns the current lease id.
+	FString LeaseId2, ExistingId2;
+	const bool bAcquired2 = Server->TryAcquireLease(TEXT("client-b"), 60.0, LeaseId2, ExistingId2);
+	TestFalse(TEXT("Second acquire fails while held"), bAcquired2);
+	TestEqual(TEXT("Busy reports the current lease id"), ExistingId2, LeaseId);
+
+	// Release with a wrong id errors and leaves the lease held.
+	TestFalse(TEXT("Release with wrong id fails"), Server->ReleaseLease(TEXT("not-the-id")));
+	TestTrue(TEXT("Lease still held after wrong-id release"), Server->IsLeaseHeld());
+
+	// Release with the correct id succeeds and frees the lease.
+	TestTrue(TEXT("Release with correct id succeeds"), Server->ReleaseLease(LeaseId));
+	TestFalse(TEXT("IsLeaseHeld false after release"), Server->IsLeaseHeld());
+	TestTrue(TEXT("Lease id empty after release"), Server->GetLeaseId().IsEmpty());
+
+	// A subsequent acquire succeeds again.
+	FString LeaseId3, ExistingId3;
+	TestTrue(TEXT("Re-acquire succeeds after release"),
+		Server->TryAcquireLease(TEXT("client-c"), 60.0, LeaseId3, ExistingId3));
+	TestFalse(TEXT("Re-acquired id non-empty"), LeaseId3.IsEmpty());
+
+	Server->RemoveFromRoot();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Lazy TTL expiry frees an idle lease. Time is injected so the check is
+//    deterministic without sleeping.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjBridgeServerLeaseTtlExpiry,
+	"URLab.BridgeServer.LeaseTtlExpiry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjBridgeServerLeaseTtlExpiry::RunTest(const FString& Parameters)
+{
+	UURLabBridgeServer* Server = NewObject<UURLabBridgeServer>();
+	Server->AddToRoot();
+
+	// Pin the lease clock so TTL expiry is deterministic.
+	Server->SetLeaseClockForTest(100.0);
+
+	// Acquire at t=100 with a 5s TTL.
+	FString LeaseId, ExistingId;
+	TestTrue(TEXT("Acquire at t=100 succeeds"),
+		Server->TryAcquireLease(TEXT("client-a"), 5.0, LeaseId, ExistingId));
+
+	// Still within TTL at t=104: held.
+	Server->SetLeaseClockForTest(104.0);
+	TestTrue(TEXT("Held within TTL"), Server->IsLeaseHeld());
+
+	// Past TTL at t=106 (>100+5): lazily expired.
+	Server->SetLeaseClockForTest(106.0);
+	TestFalse(TEXT("Auto-released past TTL"), Server->IsLeaseHeld());
+
+	// After expiry a fresh acquire succeeds.
+	Server->SetLeaseClockForTest(107.0);
+	FString LeaseId2, ExistingId2;
+	TestTrue(TEXT("Acquire succeeds after TTL expiry"),
+		Server->TryAcquireLease(TEXT("client-b"), 5.0, LeaseId2, ExistingId2));
+	TestNotEqual(TEXT("New lease id differs from the expired one"), LeaseId2, LeaseId);
 
 	Server->RemoveFromRoot();
 	return true;

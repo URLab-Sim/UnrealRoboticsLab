@@ -1,0 +1,7 @@
+# Collapse machine-produced files in review diffs; they are verified
+# mechanically (emit --check / extractor re-runs), not read by humans.
+lib/generated/** linguist-generated=true
+lib/python/generated/** linguist-generated=true
+snapshots/** linguist-generated=true
+uv.lock linguist-generated=true
+lib/third_party/** linguist-vendored=true linguist-generated=true

@@ -1,0 +1,38 @@
+<mujoco model="defaults_nested">
+  <default>
+    <default class="top">
+      <default class="mid">
+        <default class="leaf">
+          <joint damping="2"/>
+          <geom size="0.025 0.025 0.025" rgba="0.2 0.2 0.8 1"/>
+          <position kp="40"/>
+        </default>
+        <joint damping="1"/>
+        <geom size="0.05 0.05 0.05" rgba="0.2 0.8 0.2 1"/>
+        <position kp="20"/>
+      </default>
+      <joint type="hinge" damping="0.5"/>
+      <geom type="box" size="0.1 0.1 0.1" rgba="0.8 0.2 0.2 1"/>
+      <position kp="10"/>
+    </default>
+  </default>
+  <worldbody>
+    <body name="body_top" childclass="top" pos="0 0 1">
+      <geom name="geom_top"/>
+      <joint name="joint_top" axis="0 0 1"/>
+      <body name="body_mid" childclass="mid" pos="0.5 0 0">
+        <geom name="geom_mid"/>
+        <joint name="joint_mid" axis="0 1 0"/>
+        <body name="body_leaf" pos="0.25 0 0">
+          <geom name="geom_leaf" class="leaf"/>
+          <joint name="joint_leaf" class="leaf" axis="1 0 0"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="act_top" class="top" joint="joint_top"/>
+    <position name="act_mid" class="mid" joint="joint_mid"/>
+    <position name="act_leaf" class="leaf" joint="joint_leaf"/>
+  </actuator>
+</mujoco>

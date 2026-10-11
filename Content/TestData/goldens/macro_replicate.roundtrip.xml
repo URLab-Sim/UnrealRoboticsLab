@@ -1,0 +1,20 @@
+<mujoco model="macro_replicate">
+  <default>
+    <default class="rep_default">
+      <joint type="hinge" damping="0.1"/>
+      <geom type="capsule" size="0.02" rgba="0.1 0.7 0.3 1"/>
+    </default>
+  </default>
+  <worldbody>
+    <body name="anchor_body" pos="0 0 2">
+      <joint name="anchor_joint" type="hinge" axis="0 0 1"/>
+      <geom name="anchor_geom" type="capsule" size="0.02 0.1" pos="0.1 0 0" quat="0.7071067811865476 0 -0.7071067811865476 0"/>
+    </body>
+    <replicate count="3" offset="0.3 0 0" sep="_" childclass="rep_default">
+      <body name="rep_body" pos="0 0 1">
+        <joint name="rep_joint" axis="0 0 1"/>
+        <geom name="rep_geom" size="0.02 0.1" pos="0.1 0 0" quat="0.7071067811865476 0 -0.7071067811865476 0"/>
+      </body>
+    </replicate>
+  </worldbody>
+</mujoco>

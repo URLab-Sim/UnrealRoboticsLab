@@ -6,55 +6,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "UObject/Object.h"
+#include "Transport/TransportBase.h"
 #include "SubscribeTransport.generated.h"
-
-class UURLabBridgeServer;
 
 /**
  * @class UURLabSubscribeTransport
- * @brief Abstract base for client -> server streaming transports.
+ * @brief Server-side control ingress: the inbound leg of the non-camera stream.
  *
- * Folds in `UURLabZmqSubscribeTransport` (xfrc / external-control SUB
- * channel). Future ROS analogue: `rclcpp::Subscription`.
+ * Drains whatever an external controller sent since the last step and applies
+ * it to the authoritative mjData just before mj_step. That is why it lives on
+ * the physics thread's PreStep and has no worker of its own.
  *
- * Concrete transports own a worker thread that pumps inbound messages
- * onto a per-topic delegate. The bridge wires `Subscribe(topic, cb)`
- * once per topic; the callback fires from the worker thread, so
- * implementations must not assume game-thread context.
+ * Distinct from `UURLabClientSubscribeTransport`, which is a client-side render
+ * sink with no bridge, no step hooks and no authority over the sim.
  */
 UCLASS(Abstract)
-class URLAB_API UURLabSubscribeTransport : public UObject
+class URLAB_API UURLabSubscribeTransport : public UURLabTransportBase
 {
 	GENERATED_BODY()
-
-public:
-	/** Per-message delegate: topic + raw bytes. Callback runs on the
-	 *  transport's worker thread. */
-	DECLARE_DELEGATE_TwoParams(FOnMessage, const FString& /*Topic*/,
-		const TArray<uint8>& /*Bytes*/);
-
-	void SetOwningBridge(UURLabBridgeServer* Bridge);
-	UURLabBridgeServer* GetOwningBridge() const { return OwningBridge.Get(); }
-
-	/** Register a callback for `Topic`. Backends route inbound messages
-	 *  on that topic to the supplied delegate. Calling Subscribe twice
-	 *  on the same topic replaces the prior callback. */
-	virtual void Subscribe(const FString& Topic,
-		FOnMessage Callback) PURE_VIRTUAL(UURLabSubscribeTransport::Subscribe, );
-
-	virtual bool TransportInit() PURE_VIRTUAL(UURLabSubscribeTransport::TransportInit, return false;);
-	virtual void TransportShutdown() PURE_VIRTUAL(UURLabSubscribeTransport::TransportShutdown, );
-	virtual FString GetTransportName() const PURE_VIRTUAL(UURLabSubscribeTransport::GetTransportName, return FString(););
-
-	// --- Per-step physics hooks (Async thread) ----------------------------
-	// Default-empty. Concrete subscribe transports that drain inbound
-	// messages into mjData on each step (e.g. UURLabZmqSubscribeTransport)
-	// override PreStep to apply control / xfrc just before mj_step.
-
-	virtual void PreStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
-	virtual void PostStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
-
-protected:
-	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
 };

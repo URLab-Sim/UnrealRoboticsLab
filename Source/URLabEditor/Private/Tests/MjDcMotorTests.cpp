@@ -23,7 +23,7 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Actuators/MjDcMotorActuator.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjDcMotor.gen.h"
 #include "mujoco/mujoco.h"
 
 namespace
@@ -52,7 +52,10 @@ const TCHAR* kDcMotorArmXml = TEXT(R"(<mujoco>
 
 // ============================================================================
 // URLab.DcMotor.Import_CreatesDcMotorComponents
-//   The XML parser maps <dcmotor> elements onto UMjDcMotorActuator components.
+//   The reader maps <dcmotor> elements onto UMjDcMotor elements. The element
+//   class IS the actuator kind now -- a <dcmotor> is a different element from a
+//   <motor> -- so finding the template under that class is the type assertion,
+//   and the attributes are TOptionals whose presence is what "authored" means.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjDcMotorImportCreatesComponents,
 	"URLab.DcMotor.Import_CreatesDcMotorComponents",
@@ -67,32 +70,32 @@ bool FMjDcMotorImportCreatesComponents::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjDcMotorActuator* DcBias = S.FindTemplate<UMjDcMotorActuator>(TEXT("dc_bias"));
-	UMjDcMotorActuator* DcLugre = S.FindTemplate<UMjDcMotorActuator>(TEXT("dc_lugre"));
+	UMjDcMotor* DcBias = S.FindTemplate<UMjDcMotor>(TEXT("dc_bias"));
+	UMjDcMotor* DcLugre = S.FindTemplate<UMjDcMotor>(TEXT("dc_lugre"));
 
-	TestNotNull(TEXT("dc_bias component"), DcBias);
-	TestNotNull(TEXT("dc_lugre component"), DcLugre);
+	TestNotNull(TEXT("dc_bias element"), DcBias);
+	TestNotNull(TEXT("dc_lugre element"), DcLugre);
 
 	if (DcBias)
 	{
-		TestTrue(TEXT("dc_bias: Type == DcMotor"), DcBias->Type == EMjActuatorType::DcMotor);
-		TestTrue(TEXT("dc_bias: motorconst overridden"), DcBias->bOverride_motorconst);
-		if (DcBias->bOverride_motorconst && DcBias->motorconst.Num() >= 1)
+		TestTrue(TEXT("dc_bias: motorconst authored"), DcBias->Motorconst.IsSet());
+		if (DcBias->Motorconst.IsSet() && DcBias->Motorconst.GetValue().Num() >= 1)
 		{
-			TestEqual(TEXT("dc_bias: motorconst[0]"), DcBias->motorconst[0], 2.0f);
+			TestEqual(TEXT("dc_bias: motorconst[0]"), DcBias->Motorconst.GetValue()[0], 2.0);
 		}
-		TestTrue(TEXT("dc_bias: resistance overridden"), DcBias->bOverride_resistance);
-		TestEqual(TEXT("dc_bias: resistance"), DcBias->resistance, 0.5f);
+		TestTrue(TEXT("dc_bias: resistance authored"), DcBias->Resistance.IsSet());
+		TestEqual(TEXT("dc_bias: resistance"), DcBias->GetResistance(), 0.5);
 	}
 
 	if (DcLugre)
 	{
-		TestTrue(TEXT("dc_lugre: lugre overridden"), DcLugre->bOverride_lugre);
-		TestEqual(TEXT("dc_lugre: lugre length"), DcLugre->lugre.Num(), 5);
-		if (DcLugre->lugre.Num() == 5)
+		TestTrue(TEXT("dc_lugre: lugre authored"), DcLugre->Lugre.IsSet());
+		const TArray<double> Lugre = DcLugre->GetLugre();
+		TestEqual(TEXT("dc_lugre: lugre length"), Lugre.Num(), 5);
+		if (Lugre.Num() == 5)
 		{
-			TestEqual(TEXT("dc_lugre: lugre[0]"), DcLugre->lugre[0], 1.0e4f);
-			TestEqual(TEXT("dc_lugre: lugre[4]"), DcLugre->lugre[4], 0.1f);
+			TestEqual(TEXT("dc_lugre: lugre[0]"), Lugre[0], 1.0e4);
+			TestEqual(TEXT("dc_lugre: lugre[4]"), Lugre[4], 0.1);
 		}
 	}
 

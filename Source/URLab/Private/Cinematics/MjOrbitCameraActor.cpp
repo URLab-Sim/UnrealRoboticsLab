@@ -22,11 +22,9 @@
 #include "Cinematics/MjOrbitCameraActor.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "Replay/MjReplayManager.h"
+#include "MuJoCo/Elements/MjBody.h"
 #include "CineCameraComponent.h"
 #include "Components/BoxComponent.h"
-#include "Kismet/GameplayStatics.h"
 #include "Utils/URLabLogging.h"
 
 AMjOrbitCameraActor::AMjOrbitCameraActor()
@@ -64,10 +62,6 @@ void AMjOrbitCameraActor::BeginPlay()
 	}
 
 	CachedPC = GetWorld()->GetFirstPlayerController();
-
-	// Find replay manager
-	ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
 
 	if (bAutoActivate)
 	{
@@ -120,7 +114,7 @@ void AMjOrbitCameraActor::SetTarget(AMjArticulation* NewTarget)
 		UMjBody* FirstNonDefault = nullptr;
 		for (UMjBody* B : Bodies)
 		{
-			if (B->bIsDefault)
+			if (false)
 				continue;
 			if (!FirstNonDefault)
 				FirstNonDefault = B;
@@ -210,109 +204,12 @@ float AMjOrbitCameraActor::ComputeAutoFrameRadius() const
 	return FMath::Max(RequiredDistance, MinOrbitRadius);
 }
 
-void AMjOrbitCameraActor::WriteCameraToReplayFrame()
-{
-	if (!bRecordCameraPath)
-		return;
-
-	// Lazy lookup — ReplayManager may be auto-created after our BeginPlay
-	if (!ReplayMgr)
-	{
-		ReplayMgr = Cast<AMjReplayManager>(
-			UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
-	}
-	if (!ReplayMgr || !ReplayMgr->bIsRecording)
-		return;
-
-	TArray<FMjReplayFrame>& LiveFrames = ReplayMgr->Sessions.FindOrAdd(AMjReplayManager::LiveSessionName).Frames;
-	if (LiveFrames.Num() == 0)
-	{
-		LastCameraWriteFrameIdx = 0;
-		return;
-	}
-
-	// Reset if recording restarted (frame count dropped)
-	if (LiveFrames.Num() < LastCameraWriteFrameIdx)
-		LastCameraWriteFrameIdx = 0;
-
-	FVector CamPos = GetCurrentCameraPosition();
-	FRotator CamRot = GetCurrentCameraRotation();
-
-	// Fill all frames since the last write (physics runs faster than game tick)
-	int32 StartIdx = FMath::Max(LastCameraWriteFrameIdx, 0);
-	for (int32 i = StartIdx; i < LiveFrames.Num(); ++i)
-	{
-		LiveFrames[i].CameraPosition = CamPos;
-		LiveFrames[i].CameraRotation = CamRot;
-		LiveFrames[i].bHasCameraData = true;
-	}
-	LastCameraWriteFrameIdx = LiveFrames.Num();
-}
-
 void AMjOrbitCameraActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
 	if (!CineCamera)
 		return;
-
-	// --- Playback mode: read camera transforms from replay ---
-	if (bPlaybackCameraPath && ReplayMgr && ReplayMgr->bIsReplaying)
-	{
-		TArray<FMjReplayFrame>& Frames = ReplayMgr->Sessions.FindOrAdd(ReplayMgr->ActiveSessionName).Frames;
-		if (Frames.Num() > 0)
-		{
-			// Find frame at current playback time (same logic as OnReplayStep)
-			double StartTime = Frames[0].Timestamp;
-			double TargetTime = StartTime + (double)ReplayMgr->PlaybackTime;
-
-			int32 FoundIdx = 0;
-			for (int32 i = 1; i < Frames.Num(); ++i)
-			{
-				if (Frames[i].Timestamp >= TargetTime)
-					break;
-				FoundIdx = i;
-			}
-
-			const FMjReplayFrame& Frame = Frames[FoundIdx];
-			if (Frame.bHasCameraData)
-			{
-				FVector TargetCamPos = Frame.CameraPosition;
-
-				// Apply RelPos offset if the target articulation has one
-				// This shifts the camera the same way the robot position is shifted
-				if (CurrentTarget)
-				{
-					TArray<FReplayArticulationBinding>& Bindings = ReplayMgr->GetArticulationBindings();
-					for (const FReplayArticulationBinding& B : Bindings)
-					{
-						if (B.Articulation == CurrentTarget && B.bRelativePosition && B.bInitialsCaptured)
-						{
-							FVector Offset(
-								B.InitialMjPosition.X - B.CsvStartPosition.X,
-								B.InitialMjPosition.Y - B.CsvStartPosition.Y,
-								B.InitialMjPosition.Z - B.CsvStartPosition.Z);
-							// Convert MuJoCo meters offset to Unreal cm (x100)
-							TargetCamPos += Offset * 100.0;
-							break;
-						}
-					}
-				}
-
-				FVector CurrentPos = CineCamera->GetComponentLocation();
-				FRotator CurrentRot = CineCamera->GetComponentRotation();
-
-				FVector NewPos = FMath::VInterpTo(CurrentPos, TargetCamPos, DeltaTime, SmoothingSpeed);
-				FRotator NewRot = FMath::RInterpTo(CurrentRot, Frame.CameraRotation, DeltaTime, SmoothingSpeed);
-
-				CineCamera->SetWorldLocationAndRotation(NewPos, NewRot);
-
-				CineCamera->CurrentFocalLength = FocalLength;
-				CineCamera->CurrentAperture = Aperture;
-				return; // Skip live orbit computation
-			}
-		}
-	}
 
 	// --- Retry target acquisition if we don't have one yet ---
 	if (!CurrentTarget)
@@ -333,8 +230,6 @@ void AMjOrbitCameraActor::Tick(float DeltaTime)
 	// --- Live orbit mode ---
 	if (!bIsOrbiting || !TrackedBody)
 	{
-		// Still write camera data even if not orbiting (records whatever view is active)
-		WriteCameraToReplayFrame();
 		return;
 	}
 
@@ -354,7 +249,7 @@ void AMjOrbitCameraActor::Tick(float DeltaTime)
 			FVector Min(FLT_MAX), Max(-FLT_MAX);
 			for (UMjBody* B : Bodies)
 			{
-				if (!B->bIsDefault)
+				if (!false)
 				{
 					FVector Loc = B->GetComponentLocation();
 					Min = Min.ComponentMin(Loc);
@@ -396,7 +291,4 @@ void AMjOrbitCameraActor::Tick(float DeltaTime)
 
 	CineCamera->CurrentFocalLength = FocalLength;
 	CineCamera->CurrentAperture = Aperture;
-
-	// Write camera path AFTER position is computed
-	WriteCameraToReplayFrame();
 }

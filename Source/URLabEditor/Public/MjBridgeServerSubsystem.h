@@ -46,8 +46,8 @@ public:
 	/** Active server, may be null when stopped. */
 	UURLabBridgeServer* GetBridgeServer() const { return Server; }
 
-	/** Current config (in-memory). To persist edits, write to the INI via
-	 *  URLabBridgeServerConfigUtils::SaveToIni and call ReloadConfig. */
+	/** Current config (in-memory). The INI is read-only to this plugin: edit
+	 *  the file, then call ReloadConfig. */
 	const FURLabBridgeServerConfig& GetConfig() const { return Config; }
 
 	/** Re-read the INI. Does NOT restart the server; caller decides. */
@@ -58,4 +58,8 @@ private:
 	TObjectPtr<UURLabBridgeServer> Server;
 
 	FURLabBridgeServerConfig Config;
+
+	// The discovery registry entry (write + heartbeat + removal) is owned by
+	// UURLabBridgeServer's Start/Stop lifecycle so cooked/packaged builds
+	// register too; this subsystem does not manage it directly.
 };

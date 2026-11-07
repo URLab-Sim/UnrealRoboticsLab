@@ -93,7 +93,7 @@ private:
 	/** @brief (Re-)applies the FSlateBrush to FeedImage using the current render target. */
 	void RefreshBrush();
 
-	/** @brief Depth mode: CPU-copy the R32f RT into DepthPreviewTexture as
+	/** @brief Depth mode: CPU-copy the RGBA32f RT (depth in R) into DepthPreviewTexture as
 	 *         grayscale, normalised by the camera's DepthNear/Far range. */
 	void UpdateDepthPreview();
 

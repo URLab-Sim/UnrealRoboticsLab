@@ -93,7 +93,8 @@ bool FMjCameraRealModeConfig::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Camera.DepthMode_ConfiguresSceneDepthFloat
-//   Depth mode → RT is R32f, CaptureSource is SCS_SceneDepth, near clip overridden.
+//   Depth mode → RT is RGBA32f (cross-RHI float readback; depth is in R),
+//   CaptureSource is SCS_SceneDepth, near clip overridden.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraDepthModeConfig,
 	"URLab.Camera.DepthMode_ConfiguresSceneDepthFloat",
@@ -120,7 +121,8 @@ bool FMjCameraDepthModeConfig::RunTest(const FString& Parameters)
 		S.Cleanup();
 		return false;
 	}
-	TestEqual(TEXT("RT format"), (int32)Cam->RenderTarget->RenderTargetFormat, (int32)ETextureRenderTargetFormat::RTF_R32f);
+	TestEqual(TEXT("RT format"), (int32)Cam->RenderTarget->RenderTargetFormat, (int32)ETextureRenderTargetFormat::RTF_RGBA32f);
+	TestEqual(TEXT("pixel format"), (int32)Cam->RenderTarget->GetFormat(), (int32)PF_A32B32G32R32F);
 
 	if (TestNotNull(TEXT("capture component"), Cam->CaptureComponent))
 	{
@@ -143,7 +145,7 @@ bool FMjCameraDepthModeConfig::RunTest(const FString& Parameters)
 // ============================================================================
 // URLab.Camera.ModeCycle_RebuildsRenderTarget
 //   Toggling streaming off then on after a mode change rebuilds the RT with
-//   the new format. Real → Depth should switch RTF_RGBA8 → RTF_R32f.
+//   the new format. Real → Depth should switch RTF_RGBA8 → RTF_RGBA32f.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraModeCycleRebuildsRT,
 	"URLab.Camera.ModeCycle_RebuildsRenderTarget",
@@ -176,7 +178,8 @@ bool FMjCameraModeCycleRebuildsRT::RunTest(const FString& Parameters)
 		S.Cleanup();
 		return false;
 	}
-	TestEqual(TEXT("new format"), (int32)Cam->RenderTarget->RenderTargetFormat, (int32)ETextureRenderTargetFormat::RTF_R32f);
+	TestEqual(TEXT("new format"), (int32)Cam->RenderTarget->RenderTargetFormat, (int32)ETextureRenderTargetFormat::RTF_RGBA32f);
+	TestEqual(TEXT("new pixel format"), (int32)Cam->RenderTarget->GetFormat(), (int32)PF_A32B32G32R32F);
 
 	S.Cleanup();
 	return true;

@@ -66,7 +66,7 @@ void UMjCameraFeedEntry::RefreshBrush()
 					  ? W * static_cast<float>(BoundCamera->resolution[1]) / static_cast<float>(BoundCamera->resolution[0])
 					  : W * 0.75f;
 
-	// Depth RT is R32f — slate can't display it directly. Build (or reuse)
+	// Depth RT is RGBA32f (linear depth in R) — slate can't display it directly. Build (or reuse)
 	// a BGRA UTexture2D preview and bind THAT as the brush. For all other
 	// modes the RT is BGRA8 and we can bind it directly.
 	UObject* BrushResource = nullptr;

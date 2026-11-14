@@ -22,7 +22,7 @@
 #include "Cinematics/MjOrbitCameraActor.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCoSpec/MJSceneComponents.h"
 #include "CineCameraComponent.h"
 #include "Components/BoxComponent.h"
 #include "Utils/URLabLogging.h"
@@ -107,12 +107,12 @@ void AMjOrbitCameraActor::SetTarget(AMjArticulation* NewTarget)
 
 	if (NewTarget)
 	{
-		TArray<UMjBody*> Bodies;
-		NewTarget->GetComponents<UMjBody>(Bodies);
+		TArray<UMJBodyComponent*> Bodies;
+		NewTarget->GetComponents<UMJBodyComponent>(Bodies);
 
 		// Prefer the root body (attached directly to the articulation root, not to another MjBody)
-		UMjBody* FirstNonDefault = nullptr;
-		for (UMjBody* B : Bodies)
+		UMJBodyComponent* FirstNonDefault = nullptr;
+		for (UMJBodyComponent* B : Bodies)
 		{
 			if (false)
 				continue;
@@ -121,7 +121,7 @@ void AMjOrbitCameraActor::SetTarget(AMjArticulation* NewTarget)
 
 			// Root body = its parent component is NOT an MjBody (it's the scene root or articulation root)
 			USceneComponent* Parent = B->GetAttachParent();
-			if (Parent && !Cast<UMjBody>(Parent))
+			if (Parent && !Cast<UMJBodyComponent>(Parent))
 			{
 				TrackedBody = B;
 				UE_LOG(LogURLab, Log, TEXT("MjOrbitCamera: Selected root body '%s'"), *B->GetName());
@@ -242,12 +242,12 @@ void AMjOrbitCameraActor::Tick(float DeltaTime)
 	// Compute center from actual MjBody component positions (actor origin doesn't move)
 	FVector TargetPos = TrackedBody->GetComponentLocation();
 	{
-		TArray<UMjBody*> Bodies;
-		CurrentTarget->GetComponents<UMjBody>(Bodies);
+		TArray<UMJBodyComponent*> Bodies;
+		CurrentTarget->GetComponents<UMJBodyComponent>(Bodies);
 		if (Bodies.Num() > 1)
 		{
 			FVector Min(FLT_MAX), Max(-FLT_MAX);
-			for (UMjBody* B : Bodies)
+			for (UMJBodyComponent* B : Bodies)
 			{
 				if (!false)
 				{

@@ -114,12 +114,12 @@ PLUGIN_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 # schema now says. The generator ships inside the MuJoCo submodule, so this is
 # skipped when the submodule is not checked out: the gate is best-effort
 # locally and enforced in CI.
-REGEN="$PLUGIN_ROOT/Scripts/regen_ue_profile.sh"
-PROTOSPEC_GEN="$PLUGIN_ROOT/protospec/protospec_gen"
-if [[ -f "$REGEN" && -d "$PROTOSPEC_GEN" ]] && command -v uv >/dev/null 2>&1; then
-    echo ">>> Profile drift gate: regen_ue_profile.sh --check"
-    if ! bash "$REGEN" --check; then
-        echo "ERROR: generated profile drift detected. Re-run 'Scripts/regen_ue_profile.sh', then re-run this script." >&2
+CODEGEN="$PLUGIN_ROOT/Tools/SpecCodegen/generate_ue_spec.py"
+MUJOCO_SRC="$PLUGIN_ROOT/third_party/MuJoCo/src"
+if [[ -f "$CODEGEN" && -d "$MUJOCO_SRC" ]] && command -v python3 >/dev/null 2>&1; then
+    echo ">>> SpecCodegen drift gate: generate_ue_spec.py --check"
+    if ! python3 "$CODEGEN" --check; then
+        echo "ERROR: generated SpecCodegen drift detected. Re-run 'python3 Tools/SpecCodegen/generate_ue_spec.py', then re-run this script." >&2
         exit 4
     fi
 fi

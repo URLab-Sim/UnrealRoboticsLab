@@ -21,7 +21,6 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MjArticulationFactory.h"
-#include "MujocoGenerationAction.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Engine/Blueprint.h"
@@ -50,10 +49,6 @@ UObject* UMjArticulationFactory::FactoryCreateNew(UClass* InClass, UObject* InPa
 
 	if (NewBP)
 	{
-		// Pre-populate with organizational roots and a main body
-		UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
-		Generator->SetupEmptyArticulation(NewBP);
-
 		// Final compile
 		FKismetEditorUtilities::CompileBlueprint(NewBP);
 	}

@@ -1,22 +1,17 @@
 // Copyright (c) 2026 Jonathan Embley-Riches. Licensed under the Apache License, Version 2.0.
 
 #include "MuJoCo/Authoring/MjAuthoringCompiler.h"
-
-#include "EngineUtils.h"
-#include "Components/ActorComponent.h"
+#include "MuJoCo/Authoring/MjSceneContributor.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Elements/MjCamera.h"
-#include "MuJoCo/Spec/MjAssetFiles.h"
-#include "MuJoCo/Spec/MjBinding.h"
-#include "MuJoCo/Spec/MjGenHooks.h"
-#include "MuJoCo/Spec/MjNodeComponent.h"
-#include "MuJoCo/Spec/MjSceneAssembly.h"
-#include "MuJoCo/Spec/MjSceneContributor.h"
-#include "MuJoCo/Spec/MjSceneSpec.h"
-#include "MuJoCo/Spec/MjSourceBundle.h"
-#include "MuJoCo/Spec/MjSpecNodes.h"
-#include "Utils/CoordinateConversion.h"
+#include "MuJoCo/Core/MjSceneOptions.h"
+#include "MuJoCoSpec/MJAssetLibrary.h"
+#include "MuJoCoSpec/MJModelComponent.h"
+#include "MuJoCoSpec/MJSceneComponents.h"
+#include "MuJoCoSpec/MJSpecHandle.h"
+#include "MuJoCoSpec/MJUnitConverter.h"
+#include "MuJoCoSpec/MJActorComponents.h"
+#include "EngineUtils.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -24,18 +19,6 @@ THIRD_PARTY_INCLUDES_END
 
 namespace
 {
-void AddParticipant(FSceneAssembly& Scene, const FSpecRef& Spec, const FString& Prefix,
-	const FTransform& Placement, TOptional<EMjConflict> Conflict = {})
-{
-	if (!Spec.IsValid()) return;
-	double MjPos[3] = {0.0, 0.0, 0.0};
-	double MjQuat[4] = {1.0, 0.0, 0.0, 0.0};
-	URLabCoordinateConversion::UnrealCentimetresPositionToRightHandedMetres(Placement.GetLocation(), MjPos);
-	URLabCoordinateConversion::UnrealQuaternionToRightHandedWxyz(Placement.GetRotation(), MjQuat);
-	Scene.Add(Spec, Prefix, FVector(MjPos[0], MjPos[1], MjPos[2]),
-		FQuat(MjQuat[1], MjQuat[2], MjQuat[3], MjQuat[0]), Conflict);
-}
-
 TArray<UObject*> GatherContributors(UWorld& World)
 {
 	TArray<UObject*> Out;
@@ -52,57 +35,51 @@ TArray<UObject*> GatherContributors(UWorld& World)
 	return Out;
 }
 
-void PublishAuthoringBinding(UWorld& World, const FMjBinding& Binding)
+void RefreshActorComponentIds(AActor* Actor, const mjModel* Model, const FString& Prefix)
 {
-	// Bound ids are authoring feedback only. Runtime receives neither these
-	// components nor this binding.
-	for (TActorIterator<AActor> It(&World); It; ++It)
-	{
-		TArray<UMjNodeComponent*> Nodes;
-		It->GetComponents(Nodes);
-		for (UMjNodeComponent* Node : Nodes)
-		{
-			if (Node) Node->Unbind();
-		}
-	}
-	for (const FMjBinding::FEntry& Entry : Binding.GetEntries())
-	{
-		if (Entry.Node && Entry.Id >= 0)
-		{
-			const_cast<UMjNodeComponent*>(Entry.Node)->BindTo(Entry.Id);
-		}
-	}
-}
+	if (!Actor || !Model) return;
 
-FMjResolvedRenderCameraOverrides ResolveCameraOverrides(const FMjBinding& Binding)
-{
-	FMjResolvedRenderCameraOverrides Out;
-	for (const FMjBinding::FEntry& Entry : Binding.GetEntries())
+	auto ResolveId = [Model, &Prefix](mjtObj Type, const FString& Name) -> int32
 	{
-		UMjCamera* Camera = Entry.ObjType == mjOBJ_CAMERA
-			? Cast<UMjCamera>(const_cast<UMjNodeComponent*>(Entry.Node)) : nullptr;
-		if (!Camera || Entry.Id < 0) continue;
-		FMjResolvedRenderCameraOverride& Override = Out.FindOrAdd(Entry.Id);
-		Override.Capture = Camera->ExportCaptureSettings();
-		Override.bEnableZmq = Camera->bEnableZmqBroadcast;
-		Override.bEnableShm = Camera->bEnableShmBroadcast;
-		Override.ZmqEndpoint = Camera->ZmqEndpoint;
-		Override.CustomNearClipCm = Camera->CustomNearClipCm;
-		Override.CustomFarClipCm = Camera->CustomFarClipCm;
+		const FString FullName = Prefix.IsEmpty() ? Name : Prefix + Name;
+		return mj_name2id(Model, Type, TCHAR_TO_UTF8(*FullName));
+	};
+
+	TArray<UMJBodyComponent*> Bodies;
+	Actor->GetComponents<UMJBodyComponent>(Bodies);
+	for (UMJBodyComponent* B : Bodies)
+	{
+		if (B) B->BodyId = ResolveId(mjOBJ_BODY, B->GetMJName());
 	}
-	return Out;
+
+	TArray<UMJGeomComponent*> Geoms;
+	Actor->GetComponents<UMJGeomComponent>(Geoms);
+	for (UMJGeomComponent* G : Geoms)
+	{
+		if (G) G->GeomId = ResolveId(mjOBJ_GEOM, G->GetMJName());
+	}
+
+	TArray<UMJJointComponent*> Joints;
+	Actor->GetComponents<UMJJointComponent>(Joints);
+	for (UMJJointComponent* J : Joints)
+	{
+		if (J) J->JointId = ResolveId(mjOBJ_JOINT, J->GetMJName());
+	}
+
+	TArray<UMJSiteComponent*> Sites;
+	Actor->GetComponents<UMJSiteComponent>(Sites);
+	for (UMJSiteComponent* S : Sites)
+	{
+		if (S) S->SiteId = ResolveId(mjOBJ_SITE, S->GetMJName());
+	}
 }
-}
+} // namespace
 
 FMjAuthoredSimulationPackage FMjAuthoringCompiler::Compile(AAMjManager& SceneRoot)
 {
 	FMjAuthoredSimulationPackage Out;
 	check(IsInGameThread());
 
-#if !URLAB_MJ_GEN
-	Out.Error = TEXT("built without the generated MuJoCo profile");
-	return Out;
-#else
 	UWorld* World = SceneRoot.GetWorld();
 	if (!World)
 	{
@@ -118,16 +95,88 @@ FMjAuthoredSimulationPackage FMjAuthoringCompiler::Compile(AAMjManager& SceneRoo
 		}
 	}
 
-	FSceneAssembly Assembly;
-	Assembly.SetSceneRoot(SceneRoot.GetSceneSpec());
-	for (TActorIterator<AMjArticulation> It(World); It; ++It)
+	FMJSpecHandle SceneSpec(mj_makeSpec());
+	if (!SceneSpec)
 	{
-		AMjArticulation* Articulation = *It;
-		if (Articulation)
+		Out.Error = TEXT("mj_makeSpec failed");
+		return Out;
+	}
+	MjApplySceneOptionDefaults(SceneSpec.Get());
+
+	FMJVFSHandle Vfs;
+	Vfs.Init();
+
+	if (SceneRoot.SceneModel && SceneRoot.SceneModel->AssetLibrary)
+	{
+		SceneRoot.SceneModel->AssetLibrary->PopulateVFS(Vfs.Get());
+	}
+
+	mjsBody* WorldBody = mjs_findBody(SceneSpec.Get(), "world");
+	if (!WorldBody)
+	{
+		Out.Error = TEXT("scene spec has no world body");
+		return Out;
+	}
+
+	struct FAttachedParticipant
+	{
+		AActor* Actor = nullptr;
+		FString Prefix;
+	};
+	TArray<FAttachedParticipant> AttachedParticipants;
+
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor || Actor == &SceneRoot || Actor->IsActorBeingDestroyed())
 		{
-			AddParticipant(Assembly, Articulation->GetSpec(), Articulation->GetCompiledPrefix(),
-				Articulation->GetActorTransform(), Articulation->AttachConflict);
+			continue;
 		}
+
+		UMJModelComponent* ModelComp = Actor->FindComponentByClass<UMJModelComponent>();
+		if (!ModelComp)
+		{
+			continue;
+		}
+
+		if (ModelComp->AssetLibrary)
+		{
+			ModelComp->AssetLibrary->PopulateVFS(Vfs.Get());
+		}
+
+		FString BuildError;
+		if (!ModelComp->BuildSpecFromActor(BuildError))
+		{
+			Out.Error = BuildError;
+			return Out;
+		}
+
+		mjSpec* ChildSpec = ModelComp->GetSpec();
+		if (!ChildSpec)
+		{
+			continue;
+		}
+
+		FString Prefix;
+		if (AMjArticulation* Art = Cast<AMjArticulation>(Actor))
+		{
+			Prefix = Art->GetCompiledPrefix();
+		}
+
+		mjsFrame* Frame = mjs_addFrame(WorldBody, nullptr);
+		if (Frame)
+		{
+			FMJUnitConverter::UETransformToMJ(Actor->GetActorTransform(), Frame->pos, Frame->quat);
+			FTCHARToUTF8 PrefixUtf8(*Prefix);
+			if (!mjs_attach(Frame->element, ChildSpec->element, PrefixUtf8.Get(), ""))
+			{
+				const char* Err = mjs_getError(SceneSpec.Get());
+				Out.Error = UTF8_TO_TCHAR(Err && Err[0] ? Err : "mjs_attach failed");
+				return Out;
+			}
+		}
+
+		AttachedParticipants.Add({Actor, Prefix});
 	}
 
 	const TArray<UObject*> Contributors = GatherContributors(*World);
@@ -136,80 +185,33 @@ FMjAuthoredSimulationPackage FMjAuthoringCompiler::Compile(AAMjManager& SceneRoo
 		IMjSceneContributor* Contributor = Cast<IMjSceneContributor>(Object);
 		if (!Contributor) continue;
 		FString ContributorError;
-		if (!Contributor->AuthorSceneSpec(ContributorError))
+		if (!Contributor->ContributeToSpec(SceneSpec.Get(), Contributor->GetScenePrefix(), ContributorError))
 		{
 			Out.Error = ContributorError.IsEmpty()
 				? FString::Printf(TEXT("scene contributor '%s' failed to author its spec"), *Object->GetName())
 				: ContributorError;
 			return Out;
 		}
-		AddParticipant(Assembly, Contributor->GetSceneSpec(), Contributor->GetScenePrefix(),
-			Contributor->GetScenePlacement());
 	}
 
-	const FSpecRef RootSpec = SceneRoot.GetSceneSpec();
-	auto PrepareResources = [&Out](const FSpecRef& Spec) -> bool {
-#if WITH_EDITOR
-		FString ReferenceError;
-		if (!urlab::spec::MjSynchronizeReferenceBindings(Spec, ReferenceError))
-		{
-			Out.Error = ReferenceError;
-			return false;
-		}
-		for (UMjNodeComponent* Node : urlab::spec::MjSpecNodesOf(Spec).Nodes)
-		{
-			if (!Node) continue;
-			FString Error;
-			if (!MjPrepareAssetResource(*Node, Error))
-			{
-				Out.Error = Error;
-				return false;
-			}
-		}
-#endif
-		return true;
-	};
-	if (!PrepareResources(RootSpec)) return Out;
-	urlab::spec::FMjSceneSpecBuilder Builder;
-	Builder.SetSceneRoot(RootSpec);
-	for (const FMjSceneParticipant& Participant : Assembly.GetParticipants())
+	FMJModelHandle CompiledModel(mj_compile(SceneSpec.Get(), Vfs.Get()));
+	if (!CompiledModel)
 	{
-		if (!PrepareResources(Participant.Spec)) return Out;
-		urlab::spec::FMjSceneSpecParticipant Placed;
-		Placed.Spec = Participant.Spec;
-		Placed.Prefix = Participant.Prefix;
-		Placed.MjPos = Participant.MjPos;
-		Placed.MjQuat = Participant.MjQuat;
-		Placed.Conflict = Participant.Conflict;
-		Builder.AddParticipant(Placed);
-	}
-
-	urlab::spec::FMjCompiledScene Compiled = Builder.Compile();
-	for (const FMjSpecDiagnostic& Warning : Compiled.Warnings)
-		Out.Warnings.Add(Warning.ToString());
-	for (const FMjSpecDiagnostic& Info : Compiled.Infos)
-		Out.Infos.Add(Info.ToString());
-	if (!Compiled.IsValid())
-	{
-		TArray<FString> Reasons;
-		for (const FMjSpecDiagnostic& Error : Compiled.Errors) Reasons.Add(Error.ToString());
-		Out.Error = Reasons.Num() ? FString::Join(Reasons, TEXT("; "))
-			: TEXT("the authored scene did not compile");
+		const char* Err = mjs_getError(SceneSpec.Get());
+		Out.Error = UTF8_TO_TCHAR(Err && Err[0] ? Err : "mj_compile failed");
 		return Out;
 	}
 
-	const FMjBinding Binding = MjBindingOf(Compiled);
-	PublishAuthoringBinding(*World, Binding);
+	for (const FAttachedParticipant& Participant : AttachedParticipants)
+	{
+		RefreshActorComponentIds(Participant.Actor, CompiledModel.Get(), Participant.Prefix);
+	}
 	for (UObject* Object : Contributors)
 	{
 		if (IMjSceneContributor* Contributor = Cast<IMjSceneContributor>(Object))
 			Contributor->OnSceneBound();
 	}
 
-	Out.Presentation.CameraOverrides = ResolveCameraOverrides(Binding);
-	// Participant placement is already authored in world coordinates, matching
-	// the legacy compiled-view path. Applying the manager transform again would
-	// double-transform articulations and world-sampled contributors.
 	Out.Presentation.SceneOptions.SceneTransform = FTransform::Identity;
 	Out.Presentation.SceneOptions.bPersistentEditorActors = false;
 	Out.Presentation.SceneOptions.bInitiallyVisible = true;
@@ -217,10 +219,9 @@ FMjAuthoredSimulationPackage FMjAuthoringCompiler::Compile(AAMjManager& SceneRoo
 	Out.Presentation.bIncludeUserCamera = false;
 
 	const FString Label = FString::Printf(TEXT("authored:%s"), *World->GetPathName());
-	if (!FMjOwnedModelCandidate::CopyCompiled(Compiled.Model, Out.Candidate, Out.Error, Label))
+	if (!FMjOwnedModelCandidate::CopyCompiled(CompiledModel.Get(), Out.Candidate, Out.Error, Label))
 	{
 		return Out;
 	}
 	return Out;
-#endif
 }

@@ -743,7 +743,14 @@ bool CompileFileToMjb(const FString& Path, const FString& Format,
 		return false;
 	}
 
-	const int32 Size = mj_sizeModel(Model);
+	const mjtSize WideSize = mj_sizeModel(Model);
+	if (WideSize <= 0 || WideSize > MAX_int32)
+	{
+		mj_deleteModel(Model);
+		OutError = TEXT("compiled model size exceeds TArray limits");
+		return false;
+	}
+	const int32 Size = static_cast<int32>(WideSize);
 	OutMjb.SetNumUninitialized(Size);
 	mj_saveModel(Model, nullptr, OutMjb.GetData(), Size);
 	mj_deleteModel(Model);

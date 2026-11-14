@@ -112,8 +112,7 @@ bool FMjRenderHeightfieldResourceTest::RunTest(const FString&)
 				&& Rejection.Contains(TEXT("sample slice"));
 		}));
 
-	// Native MuJoCo accepts positive dimensions with a one-sample axis. URLab's
-	// neutral renderer reports those unsupported visual grids explicitly.
+	// MuJoCo 4.x rejects heightfield grids with fewer than 2 rows or 2 columns at compile time.
 	const struct FDegenerateGrid
 	{
 		int32 Rows;
@@ -135,26 +134,12 @@ bool FMjRenderHeightfieldResourceTest::RunTest(const FString&)
 		DegenerateBytes.Append(reinterpret_cast<const uint8*>(DegenerateUtf8Xml.Get()), DegenerateUtf8Xml.Length());
 		FMjOwnedModelCandidate DegenerateModel;
 		FString DegenerateError;
-		if (!TestTrue(FString::Printf(TEXT("native MuJoCo compiles %s"), *HfieldName),
+		TestFalse(FString::Printf(TEXT("native MuJoCo rejects %s"), *HfieldName),
 			FMjOwnedModelCandidate::FromBytes(EMjModelSourceKind::XmlWithAssets,
-				DegenerateBytes, {}, DegenerateModel, DegenerateError, HfieldName)))
-		{
-			AddError(DegenerateError);
-			continue;
-		}
-		FRenderScene DegenerateScene;
-		FRenderSceneResources DegenerateResources;
-		const bool bDegenerateExtracted = DegenerateModel.VisitPrepared([&](const mjModel_* Native,
-			const mjData* Data)
-		{
-			return Adapter.Extract(Native, Data, HfieldName,
-				7, -1, false, nullptr, DegenerateScene, DegenerateResources, DegenerateError);
-		});
-		TestFalse(FString::Printf(TEXT("renderer rejects unsupported %s grid"), *HfieldName), bDegenerateExtracted);
-		TestTrue(FString::Printf(TEXT("renderer error names %s and its dimensions"), *HfieldName),
+				DegenerateBytes, {}, DegenerateModel, DegenerateError, HfieldName));
+		TestTrue(FString::Printf(TEXT("compile error names %s and at least 2"), *HfieldName),
 			DegenerateError.Contains(HfieldName)
-				&& DegenerateError.Contains(FString::Printf(TEXT("%dx%d"), Grid.Rows, Grid.Cols))
-				&& DegenerateError.Contains(TEXT("at least 2 rows and 2 columns")));
+				&& DegenerateError.Contains(TEXT("at least 2")));
 	}
 	return !HasAnyErrors();
 }

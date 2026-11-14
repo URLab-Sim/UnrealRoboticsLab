@@ -27,11 +27,10 @@
 #include "Components/BoxComponent.h"
 #include "Components/LineBatchComponent.h"
 
-#include "MuJoCo/Spec/MjSceneContributor.h"
+#include "MuJoCo/Authoring/MjSceneContributor.h"
 
 #include "AMjHeightfieldActor.generated.h"
 
-class UMjModel;
 
 /**
  * A box-bounded sampler that turns level geometry into a MuJoCo heightfield.
@@ -148,8 +147,6 @@ public:
 	 * node with no MuJoCo parent, which the box being a plain scene component
 	 * leaves true.
 	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Heightfield")
-	TObjectPtr<UMjModel> Spec;
 
 	// -------------------------------------------------------------------------
 	// Scene contribution
@@ -162,15 +159,9 @@ public:
 	 * Idempotent: the previous pass's elements are destroyed first, so a
 	 * recompile leaves one heightfield rather than a stack of them.
 	 */
-	virtual bool AuthorSceneSpec(FString& OutError) override;
-	virtual FSpecRef GetSceneSpec() const override;
+	virtual bool ContributeToSpec(mjSpec* SceneSpec, const FString& Prefix, FString& OutError) override;
 	virtual FString GetScenePrefix() const override;
 
-	/** The sampled `<hfield>` element, once one has been authored. */
-	UMjNodeComponent* GetHfieldElement() const { return HfieldElement; }
-
-	/** The `<geom type="hfield">` that places the sampled field in the world. */
-	UMjNodeComponent* GetHfieldGeomElement() const { return HfieldGeomElement; }
 
 protected:
 	virtual void OnConstruction(const FTransform& Transform) override;
@@ -194,12 +185,6 @@ private:
 	bool SampleElevation(TArray<float>& OutNormHeights, float& OutMinHeightCm, float& OutRangeCm,
 		FString& OutError) const;
 
-	/** The elements the last authoring pass produced. Rebuilt, never patched. */
-	UPROPERTY(Transient)
-	TObjectPtr<UMjNodeComponent> HfieldElement;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UMjNodeComponent> HfieldGeomElement;
 
 	/** Where this heightfield's cache file lives. */
 	FString GetCacheFilePath() const;

@@ -23,7 +23,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MuJoCo/Gen/MjEnums.gen.h"
+#include "MuJoCoSpec/Generated/MJSpecEnums.h"
 #include "MuJoCo/Contracts/MjSensorSemantic.h"
 
 /**
@@ -55,7 +55,7 @@ struct FMjClock
 struct FMjJointState
 {
 	FName Name;
-	EMjJointType Type = EMjJointType::hinge;
+	EMJJoint Type = EMJJoint::Hinge;
 	TArray<double> QPos;
 	TArray<double> QVel;
 	/** The joint's qpos0 (reference) slice. Filled for 1-DOF joints (hinge/slide)

@@ -32,7 +32,7 @@
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 
-#include "MuJoCo/Spec/MjAssetResolve.h"
+#include "MuJoCo/Entity/MjGeomAppearance.h"
 #include "URLabEditorLogging.h"
 
 namespace urlab::editor

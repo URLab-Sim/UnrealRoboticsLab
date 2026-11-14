@@ -28,7 +28,7 @@
 class UCineCameraComponent;
 class UBoxComponent;
 class AMjArticulation;
-class UMjBody;
+class UMJBodyComponent;
 
 /**
  * @class AMjOrbitCameraActor
@@ -157,7 +157,7 @@ private:
 	AMjArticulation* CurrentTarget = nullptr;
 
 	UPROPERTY()
-	UMjBody* TrackedBody = nullptr;
+	UMJBodyComponent* TrackedBody = nullptr;
 
 	float CurrentAngle = 0.0f;
 

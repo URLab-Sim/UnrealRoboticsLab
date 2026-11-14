@@ -25,14 +25,11 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 
-#include "MuJoCo/Spec/MjSceneContributor.h"
+#include "MuJoCo/Authoring/MjSceneContributor.h"
 
 #include "MjQuickConvertComponent.generated.h"
 
 class AActor;
-class UMjBodyBase;
-class UMjModel;
-class UMjNodeComponent;
 
 /**
  * The settings and the runtime coupling for an actor whose physics comes from
@@ -140,11 +137,11 @@ public:
 	 * the body element, or null when the actor had nothing convertible on it; an
 	 * error string distinguishes that case from an export failure.
 	 */
-	static UMjBodyBase* AuthorConvertedBody(
+	static bool AuthorConvertedBody(
 		AActor& SourceActor,
-		UMjModel& Root,
+		mjSpec* SceneSpec,
+		const FString& Prefix,
 		const FConvertSettings& Settings,
-		TArray<TObjectPtr<UMjNodeComponent>>& OutGeoms,
 		FString& OutError);
 
 	// --- Scene contribution -------------------------------------------------- //
@@ -156,17 +153,11 @@ public:
 	 * recompile leaves one body rather than a stack of them. Geometry is rebuilt
 	 * from the current StaticMesh and Chaos collision input each time.
 	 */
-	virtual bool AuthorSceneSpec(FString& OutError) override;
-	virtual FSpecRef GetSceneSpec() const override;
+	virtual bool ContributeToSpec(mjSpec* SceneSpec, const FString& Prefix, FString& OutError) override;
 	virtual FString GetScenePrefix() const override;
 	virtual FTransform GetScenePlacement() const override;
 	virtual void OnSceneBound() override;
 
-	/** The converted body element, once one has been authored. */
-	UMjNodeComponent* GetBodyElement() const;
-
-	/** The collision and visual geoms the conversion produced, in spec order. */
-	const TArray<TObjectPtr<UMjNodeComponent>>& GetGeomElements() const { return m_GeomElements; }
 
 	/** Pushes the actor's transform into the engine when Unreal drives it. */
 
@@ -195,26 +186,6 @@ protected:
 
 
 private:
-	/** Create the spec root on the owning actor if it does not have one. */
-	UMjModel* EnsureSpecRoot();
-
-	/**
-	 * The spec root, held on the owning actor.
-	 *
-	 * Attached under whatever the actor's root already is rather than becoming
-	 * it: quick convert is added to somebody else's actor and must not rearrange
-	 * its component hierarchy.
-	 */
-	UPROPERTY()
-	TObjectPtr<UMjModel> Spec;
-
-	/** The body this component converted its actor into, once one exists. */
-	UPROPERTY(Transient)
-	TObjectPtr<UMjBodyBase> m_CreatedBody;
-
-	/** The geoms of that body, in the order they were authored. */
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UMjNodeComponent>> m_GeomElements;
 
 	FString m_BodyName;
 };

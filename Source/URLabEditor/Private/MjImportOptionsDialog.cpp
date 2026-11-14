@@ -8,7 +8,7 @@
 
 #include "MjImportOptionsDialog.h"
 
-#include "MuJoCo/Spec/MjSpecRef.h"
+#include "MujocoImportFactory.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Misc/Paths.h"

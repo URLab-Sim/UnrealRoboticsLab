@@ -23,31 +23,17 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Authoring/MjAuthoringCompiler.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Entity/MjAppearanceStore.h"
 #include "MuJoCo/Entity/MjSceneVisuals.h"
-#include "MuJoCo/Spec/MjNodeComponent.h"
-#include "MuJoCo/Elements/MjBody.h"
-#include "Render/RenderCameraComponent.h"
 #include "MuJoCo/Render/MjRendererBoot.h"
 #include "MuJoCo/Runtime/MjSimulationWorldSubsystem.h"
-#include "MuJoCo/Spec/MjSpecRef.h"
-#include "MuJoCo/Gen/Elements/Options/MjCompiler.gen.h"
-#include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
-#include "MuJoCo/Gen/Elements/MjModel.gen.h"
-#include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
+#include "MuJoCoSpec/MJModelComponent.h"
+#include "Render/RenderCameraComponent.h"
 #include "EngineUtils.h"
-
-#include "Blueprint/UserWidget.h"
 #include "Utils/URLabLogging.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/BridgeSubsystem.h"
-// Not editor-only: the by-path asset names are read on the cooked runtime path too
-// (WidgetBPPath below). Guarding this include compiled in the editor and broke the
-// cook, which is the one build that proves the paths cook at all.
-#include "MuJoCo/Core/MjContentPaths.h"
-#if WITH_EDITOR
-#include "Misc/MessageDialog.h"
-#endif
 
 AAMjManager* AAMjManager::Instance = nullptr;
 
@@ -55,36 +41,11 @@ AAMjManager::AAMjManager()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// This actor is source data. The installed simulation is owned by the world
-	// subsystem, so a game-world manager never constructs the legacy engine.
+	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	RootComponent = SceneRoot;
 
-	// The scene is one MuJoCo spec and this is its root. Sections hang off
-	// it rather than off the actor directly, because a spec with two roots
-	// is not a spec -- and the writer walks exactly this tree.
-	SceneSpec = CreateDefaultSubobject<UMjModel>(TEXT("SceneSpec"));
-	SceneOption = CreateDefaultSubobject<UMjOption>(TEXT("SceneOption"));
-	SceneFlags = CreateDefaultSubobject<UMjFlag>(TEXT("SceneFlags"));
-	SceneCompiler = CreateDefaultSubobject<UMjCompiler>(TEXT("SceneCompiler"));
-	SceneOption->SetupAttachment(SceneSpec);
-	SceneFlags->SetupAttachment(SceneOption);
-	SceneCompiler->SetupAttachment(SceneSpec);
-	if (RootComponent == nullptr)
-	{
-		RootComponent = SceneSpec;
-	}
-
-	// URLab's two departures from MuJoCo's own defaults, authored rather than
-	// hard-coded so they show up in the details panel and in written MJCF.
-	// Everything else stays unset, which is what leaves MuJoCo's default in
-	// place: a value written here is written into every scene, and MuJoCo is
-	// free to change its own mind between versions.
-	SceneOption->Integrator = EMjIntegrator::implicitfast;
-	SceneCompiler->Conflict = EMjConflict::merge;
-}
-
-FSpecRef AAMjManager::GetSceneSpec() const
-{
-	return FSpecRef::OverActor(const_cast<AAMjManager&>(*this));
+	SceneModel = CreateDefaultSubobject<UMJModelComponent>(TEXT("SceneModel"));
+	SceneModel->ModelName = TEXT("URLabScene");
 }
 
 void AAMjManager::Compile()
@@ -104,10 +65,6 @@ void AAMjManager::Compile()
 
 void AAMjManager::BeginPlay()
 {
-	// Compile source objects before component BeginPlay can run any old runtime
-	// hook. The resolved boot plan is the sole workflow decision: viewer and
-	// render-server worlds do not acquire a simulation because a manager was
-	// placed in their map.
 	const FMjRendererBootPlan Boot = FMjRendererBoot::FromCommandLine();
 	if (!Boot.AllowsAuthoredSimulationSource())
 	{
@@ -116,8 +73,13 @@ void AAMjManager::BeginPlay()
 	}
 
 	UWorld* World = GetWorld();
-	UMjSimulationWorldSubsystem* RuntimeOwner =
-		World ? World->GetSubsystem<UMjSimulationWorldSubsystem>() : nullptr;
+	if (!World)
+	{
+		Super::BeginPlay();
+		return;
+	}
+
+	UMjSimulationWorldSubsystem* RuntimeOwner = World->GetSubsystem<UMjSimulationWorldSubsystem>();
 	FString StartError;
 	if (!RuntimeOwner || !RuntimeOwner->ActivateRuntime(StartError))
 	{
@@ -136,6 +98,7 @@ void AAMjManager::BeginPlay()
 		Super::BeginPlay();
 		return;
 	}
+
 	if (FMjRendererBoot::WantsBridge(Boot, Boot.Drive, /*bHasBus=*/false))
 	{
 		if (!RuntimeOwner->AttachBridge(StartError))
@@ -152,6 +115,7 @@ void AAMjManager::BeginPlay()
 				Boot, EMjPermissionProfile::Simulation));
 		}
 	}
+
 	if (Boot.HasNativeSimulationSource())
 	{
 		AuthoringCompileError = TEXT("competing simulation sources: the world contains an authored scene root and -URLabSimulationSource configures a native source");
@@ -193,8 +157,6 @@ void AAMjManager::BeginPlay()
 			*Installed.Error);
 	}
 
-	// The subsystem has synchronously copied every renderer input it needs.
-	// Authoring actors can now retire without affecting simulation or rendering.
 	Super::BeginPlay();
 	for (TActorIterator<AActor> It(World); It; ++It)
 	{
@@ -215,8 +177,6 @@ void AAMjManager::BeginPlay()
 
 void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	// Runtime and neutral-scene lifetime belong to UMjSimulationWorldSubsystem.
-	// Retiring this authoring actor must not detach or shut either one down.
 	Super::EndPlay(EndPlayReason);
 	if (Instance == this) Instance = nullptr;
 }
@@ -256,18 +216,12 @@ bool AAMjManager::CompileModel()
 
 UMjAppearanceStore* AAMjManager::GetAppearanceStore()
 {
-	// The store belongs to the WORLD, not to this manager: appearance is a render
-	// property and the no-manager render paths drive the very same components, so
-	// two stores would fight and only one would be re-driven after a rebuild. Bind
-	// ourselves into it so a geom name still resolves to a compiled physics id.
 	if (UMjSceneVisualsSubsystem* Visuals = UMjSceneVisualsSubsystem::Get(GetWorld()))
 	{
 		UMjAppearanceStore* Store = Visuals->Appearance();
 		Store->Init(this);
 		return Store;
 	}
-	// No world subsystem (a manager outside a live world, e.g. in a test): keep a
-	// private store so callers never get null.
 	if (AppearanceStore == nullptr)
 	{
 		AppearanceStore = NewObject<UMjAppearanceStore>(this);
@@ -278,18 +232,13 @@ UMjAppearanceStore* AAMjManager::GetAppearanceStore()
 
 void AAMjManager::CollectCameras(TArray<URenderCameraComponent*>& Out) const
 {
-	// Global (manager-owned) cameras: attached directly to the manager actor, not to any
-	// articulation or the render view. Always included.
+	TArray<URenderCameraComponent*> GlobalCameras;
+	GetComponents<URenderCameraComponent>(GlobalCameras);
+	for (URenderCameraComponent* Cam : GlobalCameras)
 	{
-		TArray<URenderCameraComponent*> GlobalCameras;
-		GetComponents<URenderCameraComponent>(GlobalCameras);
-		for (URenderCameraComponent* Cam : GlobalCameras)
+		if (Cam)
 		{
-			if (Cam)
-			{
-				Out.Add(Cam);
-			}
+			Out.Add(Cam);
 		}
 	}
-
 }

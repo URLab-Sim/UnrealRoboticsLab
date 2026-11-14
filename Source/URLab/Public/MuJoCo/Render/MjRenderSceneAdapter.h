@@ -81,8 +81,17 @@ private:
 		FTransform BodyLocalCaptureTransform = FTransform::Identity;
 		bool bRequiresExplicitWorldPose = false;
 	};
+	struct FMjDeformableBinding
+	{
+		int32 ObjectIndex = INDEX_NONE;
+		bool bIsSkin = false;
+		int32 SliceIndex = INDEX_NONE;
+		int32 FaceOffset = 0;
+		int32 FaceCount = 0;
+	};
 	TArray<FCameraMountPlan> CameraMountPlans;
 	TArray<FRenderDeformableDesc> Deformables;
+	TArray<FMjDeformableBinding> DeformableBindings;
 	/** Installed neutral feature selection, including owner-authorized patches. */
 	FRenderVisualizationConfig Visualization;
 	int32 NumLights = 0;

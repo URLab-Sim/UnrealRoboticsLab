@@ -151,16 +151,4 @@ else
 fi
 cd "$ROOT_DIR"
 
-# 5. ProtoSpec. Built here rather than standalone so it inherits the toolchain +
-# --sysroot env set above: its static libs (tinyxml2, protospec_*) are linked
-# straight into the plugin .so, so they must target UE's glibc exactly. Needs
-# MuJoCo's headers, staged by step 2 above.
-echo -e "\n\e[33m--- Building ProtoSpec ---\e[0m"
-if [ -f "$ROOT_DIR/../protospec/build.sh" ]; then
-    bash "$ROOT_DIR/../protospec/build.sh" "$INSTALL_DIR" "$BUILD_TYPE"
-else
-    echo "Warning: protospec/build.sh not found (skipping)."
-fi
-cd "$ROOT_DIR"
-
 echo -e "\n\e[32mAll builds completed! check the 'install' folder.\e[0m"

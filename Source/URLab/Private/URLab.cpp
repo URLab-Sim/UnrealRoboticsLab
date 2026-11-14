@@ -36,18 +36,7 @@
 #include <dlfcn.h>
 #endif
 
-#include "MuJoCo/Spec/MjGenHooks.h"
-#include "MuJoCo/Elements/MjBody.h"
-#include "MuJoCo/Elements/MjCamera.h"
-#include "MuJoCo/Elements/MjFlexcomp.h"
-#include "MuJoCo/Elements/MjGeom.h"
-#include "MuJoCo/Elements/MjMesh.h"
-#include "MuJoCo/Elements/MjModelAsset.h"
-#include "MuJoCo/Elements/MjTexture.h"
 
-#if URLAB_MJ_GEN
-#include "MuJoCo/Spec/MjNodeFactories.h"
-#endif
 
 #if WITH_EDITOR
 #include "AssetToolsModule.h"
@@ -61,39 +50,10 @@ namespace
 /** Written once at module startup, read from RPC threads afterwards. */
 std::atomic<bool> GHasMjzDecoder{false};
 
-/**
- * The elements that are built as a hand subclass rather than the generated class.
- *
- * Each is here because it holds per-instance state the reflection system has to
- * see: a render target and a worker thread for the camera, mesh component
- * references held against garbage collection for the geom and the flexcomp, a
- * pivot cache for the body, and the imported UAsset a file-backed mesh or
- * texture stands for. Everything else an element does that is not a schema
- * attribute lives in a runtime function library instead, so this list does not
- * grow with the schema.
- *
- * Registration is process-wide and every registration has to happen before the
- * first spec is read, which is what module startup is.
- */
-void RegisterHandElementClasses()
-{
-#if URLAB_MJ_GEN
-	using urlab::spec::psm::ElementType;
-	urlab::spec::MjSetElementClass(ElementType::Body, UMjBody::StaticClass());
-	urlab::spec::MjSetElementClass(ElementType::Camera, UMjCamera::StaticClass());
-	urlab::spec::MjSetElementClass(ElementType::Flexcomp, UMjFlexcomp::StaticClass());
-	urlab::spec::MjSetElementClass(ElementType::Geom, UMjGeom::StaticClass());
-	urlab::spec::MjSetElementClass(ElementType::Mesh, UMjMesh::StaticClass());
-	urlab::spec::MjSetElementClass(ElementType::ModelAsset, UMjModelAsset::StaticClass());
-	urlab::spec::MjSetElementClass(ElementType::Texture, UMjTexture::StaticClass());
-#endif
-}
 } // namespace
 
 void FURLabModule::StartupModule()
 {
-	RegisterHandElementClasses();
-
 	// The plugin's runtime assets are reached by path, so the cooker cannot see
 	// them and a packaged build silently loses them if their directories were
 	// not cooked. Check once here and say so, rather than letting each call site

@@ -29,6 +29,8 @@ public class URLabEditor : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private", "MuJoCoSpec"));
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
@@ -79,16 +81,5 @@ public class URLabEditor : ModuleRules
 			"MaterialEditor"
 		});
 
-		// Editor import runs MuJoCo's fatal recursive dependency scanner in a
-		// separate process. The helper is staged beside libmujoco, which URLab's
-		// runtime module already stages in the same binary directory.
-		string HelperName = Target.Platform == UnrealTargetPlatform.Win64
-			? "urlab_mj_deps.exe" : "urlab_mj_deps";
-		string Helper = Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..",
-			"third_party", "install", "protospec", "bin", HelperName));
-		if (File.Exists(Helper))
-		{
-			RuntimeDependencies.Add("$(BinaryOutputDir)/" + HelperName, Helper, StagedFileType.NonUFS);
-		}
 	}
 }

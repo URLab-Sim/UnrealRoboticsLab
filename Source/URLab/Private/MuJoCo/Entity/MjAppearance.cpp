@@ -11,7 +11,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 
 #include "MuJoCo/Entity/MjGeomAppearance.h"
-#include "MuJoCo/Spec/MjAssetResolve.h"
+#include "Render/RenderMaterial.h"
 
 namespace MjAppearance
 {
@@ -62,4 +62,9 @@ namespace MjAppearance
 			}
 		}
 	}
+}
+
+const TCHAR* MjMaterialRoleParameter(EMjMaterialRole Role)
+{
+	return RenderMaterialRoleParameter(static_cast<ERenderMaterialRole>(Role));
 }

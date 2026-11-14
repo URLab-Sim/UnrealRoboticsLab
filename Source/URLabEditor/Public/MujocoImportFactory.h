@@ -26,7 +26,10 @@
 #include "EditorReimportHandler.h"
 #include "Factories/Factory.h"
 
-#include "MuJoCo/Spec/MjSpecRef.h"
+struct FMjDocParseOptions
+{
+	bool bAllowExternalIncludes = false;
+};
 
 #include "MujocoImportFactory.generated.h"
 

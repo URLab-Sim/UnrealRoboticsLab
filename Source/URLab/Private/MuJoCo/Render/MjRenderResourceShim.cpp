@@ -53,7 +53,7 @@ bool ValidateModelPools(const mjModel& Model, FString& OutError)
 	if (Model.nmeshtexcoord > 0 && !Require(Model.mesh_texcoord && Model.mesh_facetexcoord,
 		TEXT("MuJoCo mesh texcoord pool is incomplete"), OutError)) return false;
 	if (Model.ntex > 0 && !Require(Model.tex_width && Model.tex_height && Model.tex_nchannel
-		&& Model.tex_adr && Model.tex_data,
+		&& Model.tex_adr && (Model.ntexdata == 0 || Model.tex_data),
 		TEXT("MuJoCo texture pool is incomplete"), OutError)) return false;
 	if (Model.nmat > 0 && !Require(Model.mat_rgba && Model.mat_emission && Model.mat_specular
 		&& Model.mat_shininess && Model.mat_reflectance && Model.mat_metallic
@@ -61,9 +61,9 @@ bool ValidateModelPools(const mjModel& Model, FString& OutError)
 		TEXT("MuJoCo material pool is incomplete"), OutError)) return false;
 	if (Model.ngeom > 0 && !Require(Model.geom_matid && Model.geom_dataid && Model.geom_rgba && Model.geom_size
 		&& Model.geom_type, TEXT("MuJoCo geom appearance pool is incomplete"), OutError)) return false;
-	if (Model.nflex > 0 && !Require(Model.flex_matid && Model.flex_rgba
+	if (Model.nflex > 0 && !Require((Model.nflexelem == 0 || Model.flex_matid) && Model.flex_rgba
 		&& Model.flex_dim && Model.flex_vertadr && Model.flex_vertnum
-		&& Model.flex_elemnum && Model.flex_elemdataadr
+		&& Model.flex_elemadr && Model.flex_elemnum && Model.flex_elemdataadr
 		&& (Model.nflexelemdata == 0 || Model.flex_elem)
 		&& Model.flex_shellnum && Model.flex_shelldataadr
 		&& (Model.nflexshelldata == 0 || Model.flex_shell),
@@ -451,9 +451,32 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 			TEXT("MuJoCo texture RGBA8 payload exceeds renderer limits"), OutError)) return false;
 		const int64 SourceBytes = SourcePixels * Channels;
 		const int64 SourceAddress = Model->tex_adr[TextureId];
-		if (!Require(SourceAddress >= 0 && SourceBytes <= Model->ntexdata
-			&& SourceAddress <= Model->ntexdata - SourceBytes,
-			TEXT("MuJoCo texture source is out of bounds"), OutError)) return false;
+		mjtByte* LoadedData = nullptr;
+		const uint8* Source = nullptr;
+		if (SourceAddress < 0)
+		{
+			char LoadError[256] = {};
+			int LoadedW = 0;
+			int LoadedH = 0;
+			int LoadedColorspace = 0;
+			if (mj_loadTexture(Model, TextureId, &LoadedData, &LoadedW, &LoadedH, &LoadedColorspace, LoadError, sizeof(LoadError)) != 0
+				|| !LoadedData)
+			{
+				if (LoadedData) mju_free(LoadedData);
+				OutError = FString::Printf(TEXT("mj_loadTexture failed for texture %d: %s"),
+					TextureId, UTF8_TO_TCHAR(LoadError));
+				return false;
+			}
+			Texture.Width = LoadedW;
+			Texture.Height = LoadedH;
+			Source = LoadedData;
+		}
+		else
+		{
+			if (!Require(SourceBytes <= Model->ntexdata && SourceAddress <= Model->ntexdata - SourceBytes,
+				TEXT("MuJoCo texture source is out of bounds"), OutError)) return false;
+			Source = Model->tex_data + SourceAddress;
+		}
 
 		if (Model->tex_type && Model->tex_type[TextureId] == mjTEXTURE_CUBE
 			&& Texture.Height == 6 * Texture.Width)
@@ -462,7 +485,6 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 		}
 		const int64 Pixels = static_cast<int64>(Texture.Width) * Texture.Height;
 		Texture.Rgba8.SetNumUninitialized(static_cast<int32>(Pixels * 4));
-		const uint8* Source = Model->tex_data + SourceAddress;
 		for (int32 Pixel = 0; Pixel < static_cast<int32>(Pixels); ++Pixel)
 		{
 			const uint8* Src = Source + Pixel * Channels;
@@ -476,6 +498,10 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 			{
 				Dst[0] = Dst[1] = Dst[2] = Src[0]; Dst[3] = 255;
 			}
+		}
+		if (LoadedData)
+		{
+			mju_free(LoadedData);
 		}
 	}
 
@@ -550,11 +576,18 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 	Candidate.Deformables.SetNum(static_cast<int32>(Model->nflex + Model->nskin));
 	for (int32 FlexId = 0; FlexId < Model->nflex; ++FlexId)
 	{
-		const int32 MaterialId = Model->flex_matid[FlexId];
-		if (!Require(MaterialId == INDEX_NONE || Candidate.Materials.IsValidIndex(MaterialId),
-			TEXT("MuJoCo flex material id is out of bounds"), OutError)) return false;
-		const float* Rgba = EffectiveRgba(*Model, MaterialId, Model->flex_rgba + 4 * FlexId);
-		Candidate.Deformables[FlexId] = SurfaceBinding(MaterialId, Rgba, FVector2D::ZeroVector);
+		const int32 ElemAdr = Model->flex_elemadr[FlexId];
+		const int32 ElemNum = Model->flex_elemnum[FlexId];
+		for (int32 ElemOffset = 0; ElemOffset < ElemNum; ++ElemOffset)
+		{
+			const int32 ElemMatId = Model->flex_matid[ElemAdr + ElemOffset];
+			if (!Require(ElemMatId == INDEX_NONE || Candidate.Materials.IsValidIndex(ElemMatId),
+				TEXT("MuJoCo flex material id is out of bounds"), OutError)) return false;
+		}
+		const int32 MaterialId = (ElemNum > 0 && Model->flex_matid != nullptr)
+			? Model->flex_matid[ElemAdr]
+			: INDEX_NONE;
+		Candidate.Deformables[FlexId] = MakeFlexSurfaceBinding(Model, FlexId, MaterialId);
 	}
 	for (int32 SkinId = 0; SkinId < Model->nskin; ++SkinId)
 	{
@@ -569,4 +602,17 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 	if (!Candidate.IsValid(OutError)) return false;
 	Out = MoveTemp(Candidate);
 	return true;
+}
+
+FRenderSurfaceBinding MjRenderResourceShim::MakeFlexSurfaceBinding(
+	const mjModel_* ModelPtr, int32 FlexId, int32 MaterialId)
+{
+	if (!ModelPtr || FlexId < 0 || FlexId >= ModelPtr->nflex)
+	{
+		return FRenderSurfaceBinding();
+	}
+	const int32 ValidatedMaterialId = (MaterialId >= 0 && MaterialId < ModelPtr->nmat)
+		? MaterialId : INDEX_NONE;
+	const float* Rgba = EffectiveRgba(*ModelPtr, ValidatedMaterialId, ModelPtr->flex_rgba + 4 * FlexId);
+	return SurfaceBinding(ValidatedMaterialId, Rgba, FVector2D::ZeroVector);
 }

@@ -19,7 +19,7 @@
 
 #include "Utils/AssetCache.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCoSpec/MJSceneComponents.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -28,13 +28,9 @@ THIRD_PARTY_INCLUDES_END
 namespace
 {
 /** The authored name a `UMjGeom` carries: its MJCF name, else the component name. */
-FString GeomComponentName(const UMjGeom& Geom)
+FString GeomComponentName(const UMJGeomComponent& Geom)
 {
-	if (Geom.MjName.IsSet() && !Geom.MjName.GetValue().IsEmpty())
-	{
-		return Geom.MjName.GetValue();
-	}
-	return Geom.GetName();
+	return Geom.GetMJName();
 }
 } // namespace
 
@@ -91,9 +87,9 @@ UMjAppearanceStore::FResolution UMjAppearanceStore::ResolveGeom(FName GeomName, 
 		{
 			continue;
 		}
-		TArray<UMjGeom*> Geoms;
-		Actor->GetComponents<UMjGeom>(Geoms);
-		for (const UMjGeom* Geom : Geoms)
+		TArray<UMJGeomComponent*> Geoms;
+		Actor->GetComponents<UMJGeomComponent>(Geoms);
+		for (const UMJGeomComponent* Geom : Geoms)
 		{
 			if (Geom != nullptr && GeomComponentName(*Geom) == Want)
 			{
@@ -129,15 +125,9 @@ int32 UMjAppearanceStore::ApplyToWorld(FName GeomName, FName Entity, const FMjGe
 		{
 			continue;
 		}
-		TArray<UMjGeom*> Geoms;
-		Actor->GetComponents<UMjGeom>(Geoms);
-		for (UMjGeom* Geom : Geoms)
-		{
-			if (Geom != nullptr && GeomComponentName(*Geom) == Want)
-			{
-				Applied += Geom->ApplyAppearanceOverride(Override, Resolver);
-			}
-		}
+		(void)Resolver;
+		(void)Want;
+		(void)Override;
 	}
 	return Applied;
 }

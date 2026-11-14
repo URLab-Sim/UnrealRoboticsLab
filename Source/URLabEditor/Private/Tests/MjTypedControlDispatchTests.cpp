@@ -37,7 +37,7 @@ TArray<uint8> TypedControlBytesOf(const char* Text)
 	return Out;
 }
 
-V Map(std::initializer_list<TPair<FString, V>> Fields)
+V CtrlMap(std::initializer_list<TPair<FString, V>> Fields)
 {
 	TArray<FString> Keys;
 	TArray<V> Values;
@@ -95,7 +95,7 @@ bool Send(UURLabZmqRpcTransport& Transport, const FURLabConnectReply& Connection
 
 V ClaimBody(uint64 Generation)
 {
-	return Map({
+	return CtrlMap({
 		{TEXT("model_generation"), V::MakeInt(static_cast<int64>(Generation))},
 		{TEXT("ttl_s"), V::MakeFloat(30.0)}});
 }
@@ -142,7 +142,7 @@ bool SameObservation(const FMjModelObservation& A, const FMjModelObservation& B)
 V TamperedCapturedState(const V& Captured)
 {
 	const V& Identity = *Captured.FindMapValue(TEXT("model"));
-	V TamperedIdentity = Map({
+	V TamperedIdentity = CtrlMap({
 		{TEXT("content_sha256"), V::MakeString(
 			Identity.FindMapValue(TEXT("content_sha256"))->GetString() + TEXT("00"))},
 		{TEXT("generation"), *Identity.FindMapValue(TEXT("generation"))},
@@ -152,7 +152,7 @@ V TamperedCapturedState(const V& Captured)
 		{TEXT("nu"), *Identity.FindMapValue(TEXT("nu"))},
 		{TEXT("na"), *Identity.FindMapValue(TEXT("na"))},
 		{TEXT("nsensordata"), *Identity.FindMapValue(TEXT("nsensordata"))}});
-	return Map({
+	return CtrlMap({
 		{TEXT("model"), MoveTemp(TamperedIdentity)},
 		{TEXT("clock_epoch"), *Captured.FindMapValue(TEXT("clock_epoch"))},
 		{TEXT("mask"), *Captured.FindMapValue(TEXT("mask"))},
@@ -378,7 +378,7 @@ bool FURLabTypedControlMutationRetentionTest::RunTest(const FString&)
 	FURLabReplyEnvelope Captured;
 	if (!TestTrue(TEXT("capture integration state"), Send(*Fixture.Transport, Session, 3,
 		TEXT("simulation_capture_state"),
-		Map({{TEXT("mask"), V::MakeInt(IntegrationStateMask)}}), CapturedBytes, Captured))
+		CtrlMap({{TEXT("mask"), V::MakeInt(IntegrationStateMask)}}), CapturedBytes, Captured))
 		|| !TestEqual(TEXT("capture returns nested-state source"),
 			Captured.Kind, EURLabReplyKind::Result))
 	{

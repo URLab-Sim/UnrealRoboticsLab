@@ -11,6 +11,7 @@
 #include "AssetImportTask.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
+#include "ObjectTools.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Factories/FbxFactory.h"
@@ -28,7 +29,6 @@
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 
-#include "MuJoCo/Spec/MjAssetResolve.h"
 
 #include "URLabEditorLogging.h"
 
@@ -276,7 +276,7 @@ UStaticMesh* ImportMeshAsset(const FString& SourcePath, const FString& Destinati
 
 	// The same sanitiser the preview's lookup uses, so the name the import
 	// writes and the name the preview asks for cannot diverge.
-	const FString FileName = MjSanitizeAssetName(AssetName);
+	const FString FileName = ObjectTools::SanitizeObjectName(AssetName);
 	const FString PackageName = UPackageTools::SanitizePackageName(FPaths::Combine(DestinationPath, FileName));
 
 	if (UStaticMesh* ExistingMesh = LoadObject<UStaticMesh>(nullptr, *PackageName))
@@ -351,7 +351,7 @@ UTexture2D* ImportTextureAsset(
 
 	// The same sanitiser the preview's lookup uses, so the name the import
 	// writes and the name the preview asks for cannot diverge.
-	const FString FileName = MjSanitizeAssetName(AssetName);
+	const FString FileName = ObjectTools::SanitizeObjectName(AssetName);
 	const FString PackageName = UPackageTools::SanitizePackageName(FPaths::Combine(DestinationPath, FileName));
 
 	if (UTexture2D* ExistingTexture = LoadObject<UTexture2D>(nullptr, *PackageName))

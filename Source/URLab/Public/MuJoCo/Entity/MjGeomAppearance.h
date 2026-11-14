@@ -4,7 +4,29 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MuJoCo/Spec/MjAssetResolve.h" // EMjMaterialRole
+
+/**
+ * The texture roles MJCF declares, in `mjtTextureRole` order.
+ *
+ * `Count` is the array bound, not a role. `User` (role 0 in the C enum) has no
+ * MJCF spelling and no slot here.
+ */
+enum class EMjMaterialRole : uint8
+{
+	Rgb = 0,
+	Occlusion,
+	Roughness,
+	Metallic,
+	Normal,
+	Opacity,
+	Emissive,
+	Rgba,
+	Orm,
+	Count
+};
+
+/** The master material's texture parameter for a slot, e.g. "RgbTexture". */
+URLAB_API const TCHAR* MjMaterialRoleParameter(EMjMaterialRole Role);
 
 /**
  * A name-keyed appearance override for visual domain randomization. It re-drives a geom's existing

@@ -158,19 +158,22 @@ bool FMjActuatorInheritedGainsMatchNative::RunTest(const FString&)
 		return false;
 	}
 
-	if (S.Model()->nu != Ref.m->nu)
-	{
-		AddError(FString::Printf(TEXT("nu mismatch: ref=%d got=%d"),
-			(int)Ref.m->nu, (int)S.Model()->nu));
-	}
-	else
-	{
-		for (int32 a = 0; a < Ref.m->nu; ++a)
+	S.VisitPrepared([&](const mjModel* GotM, const mjData*) {
+		if (GotM->nu != Ref.m->nu)
 		{
-			const FString Label = FString::Printf(TEXT("actuator %d"), a);
-			ActuatorParamsMatch(*this, *Label, Ref.m, S.Model(), a);
+			AddError(FString::Printf(TEXT("nu mismatch: ref=%d got=%d"),
+				(int)Ref.m->nu, (int)GotM->nu));
 		}
-	}
+		else
+		{
+			for (int32 a = 0; a < Ref.m->nu; ++a)
+			{
+				const FString Label = FString::Printf(TEXT("actuator %d"), a);
+				ActuatorParamsMatch(*this, *Label, Ref.m, GotM, a);
+			}
+		}
+		return true;
+	});
 
 	S.Cleanup();
 	Ref.Cleanup();
@@ -216,17 +219,20 @@ bool FMjActuatorInheritedPositionKpNotClobbered::RunTest(const FString&)
 		return false;
 	}
 
-	if (S.Model()->nu != 1)
-	{
-		AddError(FString::Printf(TEXT("expected nu==1, got %d"), (int)S.Model()->nu));
-		S.Cleanup();
-		return false;
-	}
-
-	TestEqual(TEXT("inherited kp -> gainprm[0]"),
-		(float)S.Model()->actuator_gainprm[0], 2000.0f);
-	TestEqual(TEXT("position feedback -> biasprm[1] == -kp"),
-		(float)S.Model()->actuator_biasprm[1], -2000.0f);
+	S.VisitPrepared([&](const mjModel* GotM, const mjData*) {
+		if (GotM->nu != 1)
+		{
+			AddError(FString::Printf(TEXT("expected nu==1, got %d"), (int)GotM->nu));
+		}
+		else
+		{
+			TestEqual(TEXT("inherited kp -> gainprm[0]"),
+				(float)GotM->actuator_gainprm[0], 2000.0f);
+			TestEqual(TEXT("position feedback -> biasprm[1] == -kp"),
+				(float)GotM->actuator_biasprm[1], -2000.0f);
+		}
+		return true;
+	});
 
 	S.Cleanup();
 	return true;
@@ -277,15 +283,18 @@ bool FMjActuatorInheritedDamperKvPreserved::RunTest(const FString&)
 		return false;
 	}
 
-	if (S.Model()->nu != 1)
-	{
-		AddError(FString::Printf(TEXT("expected nu==1, got %d"), (int)S.Model()->nu));
-		S.Cleanup();
-		return false;
-	}
-
-	TestEqual(TEXT("inherited damper kv -> gainprm[2] == -kv"),
-		(float)S.Model()->actuator_gainprm[2], -7.0f);
+	S.VisitPrepared([&](const mjModel* GotM, const mjData*) {
+		if (GotM->nu != 1)
+		{
+			AddError(FString::Printf(TEXT("expected nu==1, got %d"), (int)GotM->nu));
+		}
+		else
+		{
+			TestEqual(TEXT("inherited damper kv -> gainprm[2] == -kv"),
+				(float)GotM->actuator_gainprm[2], -7.0f);
+		}
+		return true;
+	});
 
 	// Native must agree: the reader seeds the damper's kv from the inherited
 	// gainprm like every sibling type, so URLab and mj_loadXML land on the same

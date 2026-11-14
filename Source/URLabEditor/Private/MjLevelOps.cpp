@@ -34,13 +34,9 @@
 #include "Wire/UrlabWire.gen.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCoSpec/MJSceneComponents.h"
+#include "MuJoCoSpec/MJActorComponents.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
-#include "MuJoCo/Spec/MjNodeComponent.h"
-#include "MuJoCo/Elements/MjActuatorRuntime.h"
-#include "MuJoCo/Elements/MjJointRuntime.h"
-#include "MuJoCo/Elements/MjSensorRuntime.h"
-#include "MuJoCo/Elements/MjCamera.h"
-#include "MuJoCo/Elements/MjBody.h"
 #include "Utils/CoordinateConversion.h"
 #include "MujocoImportFactory.h"
 
@@ -1211,50 +1207,42 @@ bool SnapshotSceneSync(
 			TSharedPtr<FJsonObject> Urlab = MakeShared<FJsonObject>();
 			Urlab->SetStringField(TEXT("mj_class"), TEXT("articulation"));
 
-			// The authored names, straight off the spec, so an articulation
-			// that has never compiled still lists what it contains.
-			auto NamesOfTag = [Mj](const TCHAR* Tag) {
-				TArray<TSharedPtr<FJsonValue>> Names;
-				for (const UMjNodeComponent* Element : Mj->GetElementsByTag(Tag))
+			TArray<TSharedPtr<FJsonValue>> JointNames;
+			for (const UMJJointComponent* Joint : Mj->GetJoints())
+			{
+				if (Joint != nullptr)
 				{
-					if (Element != nullptr)
-					{
-						Names.Add(MakeShared<FJsonValueString>(Element->MjName.Get(Element->GetName())));
-					}
+					JointNames.Add(MakeShared<FJsonValueString>(Joint->GetMJName()));
 				}
-				return Names;
-			};
-
-			TArray<TSharedPtr<FJsonValue>> JointNames = NamesOfTag(TEXT("joint"));
-			JointNames.Append(NamesOfTag(TEXT("freejoint")));
+			}
 			Urlab->SetArrayField(TEXT("joints"), JointNames);
 
 			TArray<TSharedPtr<FJsonValue>> ActNames;
-			for (const UMjNodeComponent* Act : Mj->GetActuators())
+			for (const UMJActuatorComponent* Act : Mj->GetActuators())
 			{
 				if (Act != nullptr)
 				{
-					ActNames.Add(MakeShared<FJsonValueString>(Act->MjName.Get(Act->GetName())));
+					ActNames.Add(MakeShared<FJsonValueString>(Act->GetMJName()));
 				}
 			}
 			Urlab->SetArrayField(TEXT("actuators"), ActNames);
 
 			TArray<TSharedPtr<FJsonValue>> SensorNames;
-			for (const UMjNodeComponent* Sensor : Mj->GetSensors())
+			for (const UMJSensorComponent* Sensor : Mj->GetSensors())
 			{
 				if (Sensor != nullptr)
 				{
-					SensorNames.Add(MakeShared<FJsonValueString>(Sensor->MjName.Get(Sensor->GetName())));
+					SensorNames.Add(MakeShared<FJsonValueString>(Sensor->GetMJName()));
 				}
 			}
 			Urlab->SetArrayField(TEXT("sensors"), SensorNames);
 
-			TArray<UMjCamera*> Cams;
-			Mj->GetComponents<UMjCamera>(Cams);
+			TArray<UMJCameraComponent*> Cams;
+			Mj->GetComponents<UMJCameraComponent>(Cams);
 			TArray<TSharedPtr<FJsonValue>> CamNames;
-			for (UMjCamera* C : Cams)
+			for (UMJCameraComponent* C : Cams)
 				if (C)
-					CamNames.Add(MakeShared<FJsonValueString>(C->GetName()));
+					CamNames.Add(MakeShared<FJsonValueString>(C->GetMJName()));
 			Urlab->SetArrayField(TEXT("cameras"), CamNames);
 
 			Row->SetObjectField(TEXT("urlab"), Urlab);

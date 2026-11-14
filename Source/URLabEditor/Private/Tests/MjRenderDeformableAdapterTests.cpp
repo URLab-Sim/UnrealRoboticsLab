@@ -128,4 +128,95 @@ bool FMjRenderDeformableAdapterTest::RunTest(const FString&)
 	TestTrue(TEXT("debug frame validates"), DebugFrame.IsValid(Patched, Error));
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRenderMultiMaterialFlexAdapterTest,
+	"URLab.RenderAdapter.MultiMaterialFlex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRenderMultiMaterialFlexAdapterTest::RunTest(const FString&)
+{
+	const char* Xml = R"(<mujoco model="multi_mat_flex">
+  <asset>
+    <material name="mat_red" rgba="1 0 0 1"/>
+    <material name="mat_blue" rgba="0 0 1 0.5"/>
+  </asset>
+  <worldbody>
+    <flexcomp name="patch" type="grid" dim="2" count="2 3 1"
+              spacing="0.1 0.1 0.1" pos="0 0 0.3" radius="0.01"
+              rgba="0.2 0.8 0.2 1"/>
+  </worldbody>
+</mujoco>)";
+	char ParseError[512] = {};
+	mjSpec* Spec = mj_parseXMLString(Xml, nullptr, ParseError, sizeof(ParseError));
+	if (!TestNotNull(TEXT("multi-material flex XML parses"), Spec))
+	{
+		AddError(UTF8_TO_TCHAR(ParseError));
+		return false;
+	}
+	mjModel* Model = mj_compile(Spec, nullptr);
+	mj_deleteSpec(Spec);
+	if (!TestNotNull(TEXT("multi-material flex compiles"), Model))
+	{
+		return false;
+	}
+	const int32 MatRed = mj_name2id(Model, mjOBJ_MATERIAL, "mat_red");
+	const int32 MatBlue = mj_name2id(Model, mjOBJ_MATERIAL, "mat_blue");
+	TestTrue(TEXT("expected 4 elements in 2x3 grid"), Model->nflexelem == 4);
+	if (Model->nflexelem >= 4)
+	{
+		Model->flex_matid[0] = MatRed;
+		Model->flex_matid[1] = MatBlue;
+		Model->flex_matid[2] = -1;
+		Model->flex_matid[3] = MatBlue;
+	}
+	mjData* Data = mj_makeData(Model);
+	mj_forward(Model, Data);
+
+	FMjRenderSceneAdapter Adapter;
+	FRenderScene Scene;
+	FRenderSceneResources Resources;
+	FRenderFrame Frame;
+	FString Error;
+	const bool bOk = Adapter.Extract(Model, Data, TEXT("multimat-1"), 7, -1,
+		false, nullptr, Scene, Resources, Error)
+		&& Adapter.FrameFromData(Data, 1, Frame, Error);
+	if (!TestTrue(TEXT("adapter extracts multi-material flex"), bOk))
+	{
+		AddError(Error);
+		mj_deleteData(Data);
+		mj_deleteModel(Model);
+		return false;
+	}
+
+	TestEqual(TEXT("3 material slices extracted (red, blue, fallback -1)"),
+		Scene.Deformables.Num(), 3);
+	TestEqual(TEXT("frame has 3 deformable slices"),
+		Frame.Deformables.Num(), 3);
+	TestTrue(TEXT("frame validates against multi-material scene"),
+		Frame.IsValid(Scene, Error));
+
+	if (Scene.Deformables.Num() == 3)
+	{
+		TArray<int32> MatIds;
+		for (const FRenderDeformableDesc& Desc : Scene.Deformables)
+		{
+			TestTrue(TEXT("slice surface index is valid"),
+				Resources.Deformables.IsValidIndex(Desc.SurfaceIndex));
+			MatIds.Add(Resources.Deformables[Desc.SurfaceIndex].MaterialIndex);
+		}
+		TestEqual(TEXT("slice 0 uses mat_red"), MatIds[0], MatRed);
+		TestEqual(TEXT("slice 1 uses mat_blue"), MatIds[1], MatBlue);
+		TestEqual(TEXT("slice 2 falls back to INDEX_NONE"), MatIds[2], INDEX_NONE);
+
+		const FRenderSurfaceBinding& FallbackBinding =
+			Resources.Deformables[Scene.Deformables[2].SurfaceIndex];
+		TestTrue(TEXT("fallback slice uses flex_rgba green channel"),
+			FallbackBinding.Rgba.G > FallbackBinding.Rgba.R
+			&& FallbackBinding.Rgba.G > FallbackBinding.Rgba.B);
+	}
+
+	mj_deleteData(Data);
+	mj_deleteModel(Model);
+	return !HasAnyErrors();
+}
 #endif

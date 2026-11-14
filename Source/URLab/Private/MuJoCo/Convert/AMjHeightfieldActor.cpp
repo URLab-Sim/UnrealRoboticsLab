@@ -25,19 +25,11 @@
 #include "DrawDebugHelpers.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Spec/MjFrameTypes.h"
-#include "MuJoCo/Spec/MjNodeComponent.h"
-#include "MuJoCo/Elements/MjGeom.h"
-#include "MuJoCo/Gen/Elements/Assets/MjAsset.gen.h"
-#include "MuJoCo/Gen/Elements/Bodies/MjBody.gen.h"
-#include "MuJoCo/Gen/Elements/Assets/MjHfield.gen.h"
-#include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "Serialization/BufferArchive.h"
+#include "MuJoCoSpec/MJUnitConverter.h"
+#include "mujoco/mujoco.h"
 #include "Utils/URLabLogging.h"
 
-#if URLAB_MJ_GEN
-#include "MuJoCo/Spec/MjNodeFactories.h"
-#endif
 
 AMjHeightfieldActor::AMjHeightfieldActor()
 {
@@ -58,8 +50,6 @@ AMjHeightfieldActor::AMjHeightfieldActor()
 
 	// The spec's root. Under the box, not in place of it: the box is the
 	// authored sampling region and has to stay the thing the gizmo moves.
-	Spec = CreateDefaultSubobject<UMjModel>(TEXT("Spec"));
-	Spec->SetupAttachment(BoundsBox);
 }
 
 // -----------------------------------------------------------------------------
@@ -320,43 +310,25 @@ bool AMjHeightfieldActor::SampleElevation(TArray<float>& OutNormHeights, float& 
 	return true;
 }
 
-FSpecRef AMjHeightfieldActor::GetSceneSpec() const
-{
-	// Nothing sampled means nothing to attach. An empty participant would still
-	// compile; it would just put an `<attach>` of an empty model in the scene for
-	// a heightfield that has no data, which reads as a working terrain.
-	if (HfieldElement == nullptr)
-	{
-		return FSpecRef();
-	}
-	return FSpecRef::OverActor(const_cast<AMjHeightfieldActor&>(*this));
-}
-
 FString AMjHeightfieldActor::GetScenePrefix() const
 {
 	return GetName() + TEXT("_");
 }
 
-bool AMjHeightfieldActor::AuthorSceneSpec(FString& OutError)
+bool AMjHeightfieldActor::ContributeToSpec(mjSpec* SceneSpec, const FString& Prefix, FString& OutError)
 {
 	OutError.Reset();
+	if (!SceneSpec)
+	{
+		OutError = TEXT("SceneSpec is null");
+		return false;
+	}
 	if (Resolution < 2)
 	{
 		OutError = FString::Printf(TEXT("heightfield actor '%s' requires at least 2 samples per axis (Resolution is %d)"),
 			*GetName(), Resolution);
 		return false;
 	}
-
-	HfieldElement = nullptr;
-	HfieldGeomElement = nullptr;
-
-#if URLAB_MJ_GEN
-	if (Spec == nullptr)
-	{
-		OutError = FString::Printf(TEXT("heightfield actor '%s' has no authored spec root"), *GetName());
-		return false;
-	}
-	MjDestroySpecChildren(*Spec);
 
 	TArray<float> NormHeights;
 	float MinHeightCm = 0.0f;
@@ -377,54 +349,52 @@ bool AMjHeightfieldActor::AuthorSceneSpec(FString& OutError)
 	const double BoundsWidth = Bounds.Max.X - Bounds.Min.X;
 	const double BoundsHeight = Bounds.Max.Y - Bounds.Min.Y;
 
-	urlab::spec::FMjInstanceScope Scope(*this);
+	const FString ScopedHfName = Prefix + HFieldName;
+	mjsHField* Hfield = mjs_addHField(SceneSpec);
+	if (!Hfield)
+	{
+		OutError = TEXT("mjs_addHField failed");
+		return false;
+	}
+	mjs_setName(Hfield->element, TCHAR_TO_UTF8(*ScopedHfName));
+	Hfield->nrow = Resolution;
+	Hfield->ncol = Resolution;
 
-	UMjAsset& Asset = urlab::spec::FInstanceNodeFactory::Create<UMjAsset>(*Spec);
-	UMjHfield& Hfield = urlab::spec::FInstanceNodeFactory::Create<UMjHfield>(Asset);
-	Hfield.MjName = HFieldName;
-	Hfield.Nrow = Resolution;
-	Hfield.Ncol = Resolution;
-
-	// size = { half x, half y, elevation range, base thickness }, all metres and
-	// all required to be positive. The elevation the compiler stores is
-	// normalised to [0,1], so this third entry is what gives it a scale.
 	const double HalfXMetres = BoundsWidth / 200.0;
 	const double HalfYMetres = BoundsHeight / 200.0;
 	const double RangeMetres = RangeCm / 100.0;
-	Hfield.Size = {HalfXMetres, HalfYMetres, RangeMetres, RangeMetres * BaseThickness};
+	Hfield->size[0] = HalfXMetres;
+	Hfield->size[1] = HalfYMetres;
+	Hfield->size[2] = RangeMetres;
+	Hfield->size[3] = RangeMetres * BaseThickness;
 
-	TArray<double> Elevation;
-	Elevation.Reserve(NormHeights.Num());
-	for (float Height : NormHeights)
+	mjs_setFloat(Hfield->userdata, NormHeights.GetData(), NormHeights.Num());
+
+	mjsBody* WorldBody = mjs_findBody(SceneSpec, "world");
+	if (!WorldBody)
 	{
-		Elevation.Add(static_cast<double>(Height));
+		OutError = TEXT("SceneSpec has no world body");
+		return false;
 	}
-	Hfield.Elevation = MoveTemp(Elevation);
 
-	UMjBodyBase& WorldBody = urlab::spec::FInstanceNodeFactory::Create<UMjBodyBase>(*Spec);
-	UMjGeomBase& Geom = urlab::spec::FInstanceNodeFactory::Create<UMjGeomBase>(WorldBody);
-	Geom.MjName = HFieldName + TEXT("_geom");
-	Geom.Type = EMjGeomType::hfield;
-	Geom.Hfield = HFieldName;
+	mjsGeom* Geom = mjs_addGeom(WorldBody, nullptr);
+	if (!Geom)
+	{
+		OutError = TEXT("mjs_addGeom failed");
+		return false;
+	}
+	const FString ScopedGeomName = ScopedHfName + TEXT("_geom");
+	mjs_setName(Geom->element, TCHAR_TO_UTF8(*ScopedGeomName));
+	Geom->type = mjGEOM_HFIELD;
+	mjs_setString(Geom->hfieldname, TCHAR_TO_UTF8(*ScopedHfName));
 
-	// The samples were taken in world space, so the geom carries world
-	// coordinates and the participant attaches at identity. The field's origin
-	// is the centre of the sampled region at the lowest height measured, which
-	// is where the normalised elevation reads zero.
-	Geom.Pos = FMjPosition3::FromUnreal(FVector(
-		(Bounds.Min.X + Bounds.Max.X) * 0.5, (Bounds.Min.Y + Bounds.Max.Y) * 0.5, MinHeightCm));
-
-	HfieldElement = &Hfield;
-	HfieldGeomElement = &Geom;
+	const FVector OriginUe((Bounds.Min.X + Bounds.Max.X) * 0.5, (Bounds.Min.Y + Bounds.Max.Y) * 0.5, MinHeightCm);
+	FMJUnitConverter::UEPositionToMJ(OriginUe, Geom->pos);
 
 	UE_LOG(LogURLabGenerator, Log,
 		TEXT("[MjHeightfieldActor] '%s': authored hfield '%s' %dx%d size=[%.3f %.3f %.3f %.3f]"), *GetName(),
-		*HFieldName, Resolution, Resolution, HalfXMetres, HalfYMetres, RangeMetres, RangeMetres * BaseThickness);
+		*ScopedHfName, Resolution, Resolution, HalfXMetres, HalfYMetres, RangeMetres, RangeMetres * BaseThickness);
 	return true;
-#else
-	OutError = TEXT("heightfield authoring requires the generated MuJoCo profile");
-	return false;
-#endif
 }
 
 // -----------------------------------------------------------------------------

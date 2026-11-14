@@ -41,8 +41,10 @@ FString NameOf(const mjModel& Model, int32 Type, int32 Index)
 
 int32 FlexVisualGeomCapacity(const mjModel& Model)
 {
+	const int64 FlexSliceBudget = FMath::Min<int64>(
+		Model.nflexelem, static_cast<int64>(Model.nflex) * (static_cast<int64>(Model.nmat) + 1));
 	const int64 Capacity = 4096 + static_cast<int64>(Model.ngeom) + Model.nsite
-		+ Model.nflex + Model.nskin + 2 * static_cast<int64>(Model.nwrap);
+		+ Model.nflex + FlexSliceBudget + Model.nskin + 2 * static_cast<int64>(Model.nwrap);
 	return static_cast<int32>(FMath::Min<int64>(Capacity, MAX_int32 / 2));
 }
 
@@ -691,6 +693,7 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 	// MuJoCo's visualizer owns flex surface expansion, smooth corner normals,
 	// front/back sheets, thickness and boundary closure. Freeze its default
 	// options for this installed scene revision.
+	TArray<FMjDeformableBinding> CandidateDeformableBindings;
 	FScopedFlexVisual InitialFlex;
 	if (Model->nflex > 0 && !MakeFlexVisual(*Model, *InitialData, InitialFlex.Scene, OutError))
 		return false;
@@ -704,41 +707,97 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 			OutError = FString::Printf(TEXT("flex %d has invalid visual face count"), FlexId);
 			return false;
 		}
-		FRenderDeformableDesc& Desc = CandidateScene.Deformables.AddDefaulted_GetRef();
-		Desc.Name = NameOf(*Model, mjOBJ_FLEX, FlexId);
-		if (Desc.Name.IsEmpty()) Desc.Name = FString::Printf(TEXT("flex_%d"), FlexId);
-		Desc.VertexCount = 3 * Used;
-		Desc.SurfaceIndex = FlexId;
-		Desc.Triangles.Reserve(3 * Used);
-		for (int32 Face = 0; Face < Used; ++Face)
+		FString FlexName = NameOf(*Model, mjOBJ_FLEX, FlexId);
+		if (FlexName.IsEmpty()) FlexName = FString::Printf(TEXT("flex_%d"), FlexId);
+		TArray<int32, TInlineAllocator<8>> UniqueMatIds;
+		const int32 ElemAdr = Model->flex_elemadr[FlexId];
+		const int32 ElemNum = Model->flex_elemnum[FlexId];
+		for (int32 ElemOffset = 0; ElemOffset < ElemNum; ++ElemOffset)
 		{
-			const int32 Base = 3 * Face;
-			// UE procedural meshes use the opposite front-face convention from
-			// MuJoCo. Reflecting Y already accounts for that convention change.
-			Desc.Triangles.Add(Base);
-			Desc.Triangles.Add(Base + 1);
-			Desc.Triangles.Add(Base + 2);
+			const int32 ElemMatId = Model->flex_matid[ElemAdr + ElemOffset];
+			UniqueMatIds.AddUnique(ElemMatId);
 		}
-		if (Model->flex_texcoordadr[FlexId] >= 0)
+		if (UniqueMatIds.IsEmpty())
 		{
-			if (!InitialFlex.Scene.flextexcoord)
+			UniqueMatIds.Add(INDEX_NONE);
+		}
+		TArray<const mjvGeom*, TInlineAllocator<8>> FlexGeoms;
+		for (int32 GeomIdx = 0; GeomIdx < InitialFlex.Scene.ngeom; ++GeomIdx)
+		{
+			const mjvGeom& VisGeom = InitialFlex.Scene.geoms[GeomIdx];
+			if (VisGeom.type == mjGEOM_FLEX && VisGeom.objtype == mjOBJ_FLEX && VisGeom.objid == FlexId)
 			{
-				OutError = FString::Printf(TEXT("flex %d has no visual texture coordinates"), FlexId);
+				FlexGeoms.Add(&VisGeom);
+			}
+		}
+		for (const mjvGeom* VisGeom : FlexGeoms)
+		{
+			const bool bMultiSlice = VisGeom->dataid >= 0;
+			const int32 SliceIndex = bMultiSlice ? VisGeom->dataid : INDEX_NONE;
+			const int32 FaceOffset = bMultiSlice ? FMath::RoundToInt(VisGeom->size[1]) : 0;
+			const int32 FaceCount = bMultiSlice ? FMath::RoundToInt(VisGeom->size[2]) : Used;
+			if (FaceCount == 0) continue;
+			if (FaceOffset < 0 || FaceCount < 0 || FaceOffset + FaceCount > Used)
+			{
+				OutError = FString::Printf(TEXT("flex %d slice %d has invalid face range"), FlexId, SliceIndex);
 				return false;
 			}
-			Desc.UVs.Reserve(Desc.VertexCount);
-			const float* Coordinates = InitialFlex.Scene.flextexcoord
-				+ 6 * InitialFlex.Scene.flexfaceadr[FlexId];
-			for (int32 Vertex = 0; Vertex < Desc.VertexCount; ++Vertex)
+			int32 SurfaceIndex = FlexId;
+			if (bMultiSlice)
 			{
-				const float U = Coordinates[2 * Vertex], V = Coordinates[2 * Vertex + 1];
-				if (!FMath::IsFinite(U) || !FMath::IsFinite(V))
+				const int32 SliceMatId = UniqueMatIds.IsValidIndex(SliceIndex)
+					? UniqueMatIds[SliceIndex]
+					: INDEX_NONE;
+				const FRenderSurfaceBinding SliceBinding =
+					MjRenderResourceShim::MakeFlexSurfaceBinding(Model, FlexId, SliceMatId);
+				if (SliceIndex == 0)
 				{
-					OutError = FString::Printf(TEXT("flex %d has non-finite visual UVs"), FlexId);
+					CandidateResources.Deformables[FlexId] = SliceBinding;
+					SurfaceIndex = FlexId;
+				}
+				else
+				{
+					SurfaceIndex = CandidateResources.Deformables.Add(SliceBinding);
+				}
+			}
+			FRenderDeformableDesc& Desc = CandidateScene.Deformables.AddDefaulted_GetRef();
+			Desc.Name = bMultiSlice
+				? FString::Printf(TEXT("%s_mat%d"), *FlexName, SliceIndex)
+				: FlexName;
+			Desc.VertexCount = 3 * FaceCount;
+			Desc.SurfaceIndex = SurfaceIndex;
+			Desc.Triangles.Reserve(3 * FaceCount);
+			for (int32 Face = 0; Face < FaceCount; ++Face)
+			{
+				const int32 Base = 3 * Face;
+				// UE procedural meshes use the opposite front-face convention from
+				// MuJoCo. Reflecting Y already accounts for that convention change.
+				Desc.Triangles.Add(Base);
+				Desc.Triangles.Add(Base + 1);
+				Desc.Triangles.Add(Base + 2);
+			}
+			if (Model->flex_texcoordadr[FlexId] >= 0)
+			{
+				if (!InitialFlex.Scene.flextexcoord)
+				{
+					OutError = FString::Printf(TEXT("flex %d has no visual texture coordinates"), FlexId);
 					return false;
 				}
-				Desc.UVs.Emplace(U, V);
+				Desc.UVs.Reserve(Desc.VertexCount);
+				const float* Coordinates = InitialFlex.Scene.flextexcoord
+					+ 6 * (InitialFlex.Scene.flexfaceadr[FlexId] + FaceOffset);
+				for (int32 Vertex = 0; Vertex < Desc.VertexCount; ++Vertex)
+				{
+					const float U = Coordinates[2 * Vertex], V = Coordinates[2 * Vertex + 1];
+					if (!FMath::IsFinite(U) || !FMath::IsFinite(V))
+					{
+						OutError = FString::Printf(TEXT("flex %d has non-finite visual UVs"), FlexId);
+						return false;
+					}
+					Desc.UVs.Emplace(U, V);
+				}
 			}
+			CandidateDeformableBindings.Add({FlexId, false, SliceIndex, FaceOffset, FaceCount});
 		}
 	}
 	for (int32 SkinId = 0; SkinId < Model->nskin; ++SkinId)
@@ -791,6 +850,7 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 				Desc.UVs.Emplace(Coordinates[0], Coordinates[1]);
 			}
 		}
+		CandidateDeformableBindings.Add({SkinId, true, INDEX_NONE, 0, 0});
 	}
 
 	FString SceneError;
@@ -805,6 +865,7 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 	NumBodies = static_cast<int32>(Model->nbody);
 	CameraMountPlans = MoveTemp(CandidateMountPlans);
 	Deformables = OutScene.Deformables;
+	DeformableBindings = MoveTemp(CandidateDeformableBindings);
 	Visualization = OutScene.Visualization;
 	NumLights = static_cast<int32>(Model->nlight);
 	bHasUserCamera = bIncludeUserCamera;
@@ -879,22 +940,48 @@ bool FMjRenderSceneAdapter::FrameFromData(const mjData_* DataPtr, uint64 FrameId
 		: MakeFlexVisual(*Model, *Data, FlexScene, OutError)))
 		return false;
 	Candidate.Deformables.Reserve(Deformables.Num());
-	for (const FRenderDeformableDesc& Desc : Deformables)
+	for (int32 Index = 0; Index < Deformables.Num(); ++Index)
 	{
+		const FRenderDeformableDesc& Desc = Deformables[Index];
+		const FMjDeformableBinding& Binding = DeformableBindings[Index];
 		FRenderFrame::FDeformable& Surface = Candidate.Deformables.AddDefaulted_GetRef();
 		Surface.Name = Desc.Name;
 		Surface.Positions.SetNumUninitialized(Desc.VertexCount);
-		if (Desc.SurfaceIndex < Model->nflex)
+		if (!Binding.bIsSkin)
 		{
-			const int32 FlexId = Desc.SurfaceIndex;
+			const int32 FlexId = Binding.ObjectIndex;
 			const int32 Used = FlexScene.flexfaceused[FlexId];
+			int32 FaceOffset = 0;
+			int32 FaceCount = Used;
+			if (Binding.SliceIndex >= 0)
+			{
+				const mjvGeom* SliceGeom = nullptr;
+				for (int32 GeomIdx = 0; GeomIdx < FlexScene.ngeom; ++GeomIdx)
+				{
+					const mjvGeom& G = FlexScene.geoms[GeomIdx];
+					if (G.type == mjGEOM_FLEX && G.objtype == mjOBJ_FLEX
+						&& G.objid == FlexId && G.dataid == Binding.SliceIndex)
+					{
+						SliceGeom = &G;
+						break;
+					}
+				}
+				if (!SliceGeom)
+				{
+					OutError = FString::Printf(TEXT("flex %d slice %d missing from frame"), FlexId, Binding.SliceIndex);
+					return false;
+				}
+				FaceOffset = FMath::RoundToInt(SliceGeom->size[1]);
+				FaceCount = FMath::RoundToInt(SliceGeom->size[2]);
+			}
 			if (Used < 0 || Used > FlexScene.flexfacenum[FlexId]
-				|| Used * 3 != Desc.VertexCount)
+				|| FaceOffset < 0 || FaceCount < 0 || FaceOffset + FaceCount > Used
+				|| FaceCount * 3 != Desc.VertexCount)
 			{
 				OutError = FString::Printf(TEXT("flex %d visual topology changed; reinstall scene"), FlexId);
 				return false;
 			}
-			const int32 First = FlexScene.flexfaceadr[FlexId] * 9;
+			const int32 First = (FlexScene.flexfaceadr[FlexId] + FaceOffset) * 9;
 			Surface.Normals.SetNumUninitialized(Desc.VertexCount);
 			for (int32 Vertex = 0; Vertex < Desc.VertexCount; ++Vertex)
 			{
@@ -910,7 +997,7 @@ bool FMjRenderSceneAdapter::FrameFromData(const mjData_* DataPtr, uint64 FrameId
 		}
 		else
 		{
-			const int32 SkinId = Desc.SurfaceIndex - Model->nflex;
+			const int32 SkinId = Binding.ObjectIndex;
 			const int32 VertAdr = Model->skin_vertadr[SkinId];
 			TArray<double> Accum;
 			Accum.SetNumZeroed(3 * Desc.VertexCount);

@@ -52,6 +52,8 @@ public class URLab : ModuleRules
 		// path) is unaffected, full rebuild is ~2x slower.
 		bUseUnity = false;
 
+		PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public", "MuJoCoSpec"));
+
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
 			"Core",
@@ -133,7 +135,6 @@ public class URLab : ModuleRules
 
 		AddMuj(Target);
 		AddMjShim(Target);
-		AddProtospec(Target);
 		AddCoACD(Target);
 		AddZeroMQ(Target);
 	}
@@ -146,59 +147,6 @@ public class URLab : ModuleRules
 	protected void AddMjShim(ReadOnlyTargetRules Target)
 	{
 		AddThirdPartyLibrary("MjShim", Target);
-	}
-
-	// The schema-driven UE authoring tree uses only native conversion, include
-	// expansion and XML helpers, plus a native model comparison test helper.
-	protected void AddProtospec(ReadOnlyTargetRules Target)
-	{
-		// Only the narrow helpers used by the direct UE XML gateway are staged.
-		string[] IncludeDirs = { "include", "core", "io", "harness",
-			Path.Combine("third_party", "tinyxml2") };
-
-		string Root = Path.Combine(ThirdPartyPath, "protospec");
-		string IncludePath = Path.Combine(Root, "include");
-		string LibPath = Path.Combine(Root, "lib");
-		if (!Directory.Exists(IncludePath) || !Directory.Exists(LibPath))
-		{
-			Console.WriteLine(
-				"URLab: ProtoSpec is not installed under third_party/install/protospec - " +
-				"building without the generated MuJoCo authoring tree. Run " +
-				"protospec/build.ps1 (Windows) or protospec/build.sh (Linux) to enable it.");
-			PublicDefinitions.Add("URLAB_PROTOSPEC=0");
-			return;
-		}
-
-		foreach (string Dir in IncludeDirs)
-		{
-			string Full = Path.Combine(Root, Dir);
-			if (Directory.Exists(Full))
-			{
-				PublicIncludePaths.Add(Full);
-			}
-		}
-
-		// Named, not globbed: the link line is the staging script's contract, so a
-		// library that stops being staged fails here by name instead of silently
-		// disappearing, and a stale archive left in the install cannot creep back on.
-		string[] LibNames = { "protospec_core", "protospec_mjcf", "tinyxml2", "protospec_harness" };
-		bool Win64 = Target.Platform == UnrealTargetPlatform.Win64;
-		foreach (string Name in LibNames)
-		{
-			string Lib = Path.Combine(LibPath, Win64 ? Name + ".lib" : "lib" + Name + ".a");
-			if (!File.Exists(Lib))
-			{
-				throw new BuildException(
-					"ProtoSpec install at {0} is missing '{1}'. " +
-					"Re-run protospec/build.ps1 (Windows) or protospec/build.sh (Linux).", Root, Lib);
-			}
-			PublicAdditionalLibraries.Add(Lib);
-		}
-
-		// ProtoSpec is header-template-heavy and uses C++20 concepts throughout;
-		// UE 5.7 already compiles at C++20, so this only pins the intent.
-		CppStandard = CppStandardVersion.Cpp20;
-		PublicDefinitions.Add("URLAB_PROTOSPEC=1");
 	}
 
 	private string ThirdPartyPath

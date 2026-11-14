@@ -12,6 +12,7 @@
 #include "Containers/Ticker.h"
 
 #include "Bridge/OpRegistry.h"
+#include "Bridge/RpcDispatcher.h"
 #include "Bridge/RpcErrorCodes.h"
 #include "MjLevelOps.h"
 #include "MuJoCo/Core/AMjManager.h"

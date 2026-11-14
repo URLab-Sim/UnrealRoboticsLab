@@ -1,27 +1,36 @@
 # Importing and authoring MuJoCo models
 
-The Editor's MuJoCo XML factory imports an MJCF file as an Unreal Blueprint whose generated, typed component hierarchy is the persistent authoring document. The Content Browser import action and the editor-only `editor_import_xml` RPC use the same import operation. The RPC accepts an XML `path` and optional `force_reimport`; it is an Editor workflow, separate from the source-independent runtime API used by external controllers.
+URLab's `MuJoCoSpec` layer imports MJCF `.xml` models directly into `UMJModelComponent` and `UMJ*Component` hierarchies backed by MuJoCo 4.0.2's `mjSpec` C API.
+
+`FMJXmlImporterExporter` (`Source/URLabEditor/Private/MuJoCoSpec/MJXmlImporterExporter.h`) provides the editor import and export entry points:
+
+- `ImportXMLToActor(Xml, TargetActor, Vfs, OutError)`
+- `ImportXMLToBlueprintSCS(Xml, Blueprint, Vfs, OutError)`
+- `ExportActorToXML(SourceActor, OutXml, OutError)`
+
+The Content Browser import action (`MujocoImportFactory`) and the editor-only `editor_import_xml` RPC (`MjEditorOpHandlers`) both import MJCF into Unreal Blueprints/Actors. The `editor_import_xml` RPC accepts an XML `path` and optional `force_reimport`, and is unavailable in packaged games.
 
 ## Import an XML model
 
-1. Import the `.xml` file through the Unreal Content Browser. The factory creates a Blueprint in the chosen destination and imports the supported referenced mesh and texture assets. The editor RPC uses `/Game/MuJoCoImports` as its destination.
-2. Inspect the generated component hierarchy and diagnostics. Elements expose typed properties, schema-filtered references, and native Unreal transforms for supported spatial values. XML includes are expanded during import. Resource files captured by import are stored with the authored components so export does not have to read the original source tree.
-3. Save the Blueprint, place it in a level, and add an `AAMjManager` scene-root actor. In an authored-simulation boot mode, the manager compiles the level's authored scene at play start, installs an owned model into the world simulation subsystem, and hands its presentation to the existing neutral renderer.
-
-The RPC can automate step 1 from an external Editor client. It takes a filesystem path, not uploaded XML bytes; the RPC is unavailable in packaged games. `force_reimport=true` replaces the existing imported Blueprint, so use it only when that replacement is intended.
+1. Drag or import an `.xml` file through the Unreal Content Browser (or invoke `editor_import_xml`).
+2. Inspect the resulting `UMJModelComponent` and its child components (`UMJBodyComponent`, `UMJFrameComponent`, `UMJGeomComponent`, `UMJJointComponent`, `UMJSiteComponent`, `UMJCameraComponent`, `UMJLightComponent`, `UMJAttachComponent`, `UMJActuatorComponent`, `UMJSensorComponent`, `UMJTendonComponent`).
+3. Referenced mesh, texture, and include payloads are stored in `UMJAssetLibrary::RawBuffers` and fed into MuJoCo's `mjVFS` via `mj_addBufferVFS`. MuJoCo 4 by-reference textures (`tex_adr == -1`) are decoded via `mj_loadTexture` and can be embedded via `mj_embedAssets`.
 
 ## Author a scene in Unreal
 
-The scene can also be assembled from the generated typed model, section, asset, body, joint, geom, and actuator components. The manager owns the scene root; imported articulation Blueprints can be placed as scene participants. Asset entries have typed mesh and texture asset references, while geoms refer to the corresponding authored asset elements. Component properties and generated accessors provide Blueprint and C++ authoring access without editing XML directly.
+You can assemble or edit a model directly in Unreal by adding a `UMJModelComponent` to an Actor or Blueprint and attaching `MuJoCoSpec` components:
 
-Spatial import normalizes MJCF orientation spellings and `fromto` into Unreal transforms and supported dimensions. Those original spellings/endpoints are discarded, so export preserves the compiled meaning of the imported model rather than reconstructing its original syntax. Default-class spatial values remain inherited until a local authored override is made.
+- Spatial elements (`UMJBodyComponent`, `UMJFrameComponent`, `UMJGeomComponent`, `UMJJointComponent`, `UMJSiteComponent`, `UMJCameraComponent`, `UMJLightComponent`, `UMJAttachComponent`) derive from `UMJSceneComponent`.
+- Non-spatial elements (`UMJActuatorComponent`, `UMJSensorComponent`, `UMJTendonComponent`) derive from `UMJActorComponent`.
+- `UMJGeomComponent` holds `FMJGeomSpec` (including `fromto` endpoints) and `FMJElementRef` material/mesh references.
+- `UMJActuatorComponent` uses `EMJActuatorShortcut` mapped to MuJoCo's `mjs_setTo*` helpers.
+- `UMJModelComponent::DefaultClasses` (`TArray<FMJDefaultClassEntry>`) configures MJCF `<default>` classes.
 
-Visual mesh export reads the selected static mesh's LOD0 MeshDescription, preserving authored per-corner normals and UVs independently from collision geometry. If all corner normals are absent, the OBJ omits `vn` and MuJoCo applies its native missing-normal behavior; a partial normal stream is rejected. This does not promise parity with normals Unreal may generate for the built render LOD when mesh build settings recompute them. Exporting built-render topology/normals is a separate audit follow-up because it would also change the current source-MeshDescription geometry/build-scale contract. Arbitrary Unreal material graphs are not converted into MJCF materials; explicit MJCF material nodes remain authoritative. Some source formats have no Unreal preview converter even when the source bytes remain usable by MuJoCo.
+## Compile, step, and export
 
-## Runtime and packaging boundary
+- `UMJModelComponent::BuildSpecFromActor(OutError)` constructs the `mjSpec` from the Actor's component tree.
+- `UMJModelComponent::CompileModel(OutError)` compiles `mjSpec` -> `mjModel` + `mjData` (`mj_compile`).
+- `UMJModelComponent::RecompileModel(OutError)` rebuilds `mjSpec` and calls `mj_recompile` in place, preserving `qpos` and `qvel`.
+- `UMJModelComponent::ExportXML(OutXml, OutError, bSaveCompiled=false, bSaveCanonical=false, bSaveInertial=false)` exports MJCF XML with `mjsCompiler` flags (`savecompiled`, `savecanonical`, `saveinertial`) defaulting to `false`.
 
-The authored level is compiled once at play start. `AAMjManager.CompileModel` reports whether the authored scene compiles; it does not replace the already installed runtime model. Generated authoring fields can be edited in Blueprint construction and level instances, but typed live-property bindings, runtime recompile/replacement from changed authored fields, and save-back are not committed features.
-
-Asset bytes can be prepared and serialized with authored components before cooking, so authored maps cook, stage and run in packaged builds. A cook fails if an authored mesh's persisted bytes are missing. The neutral renderer requires heightfields of at least 2 rows and 2 columns. Editor import UI, Details customization, and the import RPC remain Editor-only. XML, MJB, MJZ, and neutral-render sources continue to use the separate runtime loading path without authoring components.
-
-See [MJCF authoring requirements and implementation status](../architecture/authoring_requirements.md) for supported semantics, known limits, and validation evidence.
+See [The Component Model](../concepts/model.md) and [MJCF Support](../concepts/mjcf_support.md) for details on `UMJAssetLibrary` and MuJoCo 4.0.2 schema coverage.

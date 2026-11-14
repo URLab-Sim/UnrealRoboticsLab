@@ -1,20 +1,23 @@
-# Architecture: components to native MuJoCo simulation
+# Architecture: `MuJoCoSpec` (`mjSpec`) to native MuJoCo simulation
 
-URLab's generated `UMjNodeComponent` tree is the persistent authored model. The direct XML gateway walks either a Blueprint SCS template graph or a live actor graph, using generated field and child descriptors. Ordinary MJCF attributes retain their schema spelling; alternate orientation and `fromto` spellings are normalized at import. Original `fromto` endpoints are discarded. Normalized geom/site half-extents remain an atomic optional value inherited through default classes, and export maps them through each element's effective type.
+URLab's clean-slate `MuJoCoSpec` layer (`Source/URLab/{Public,Private}/MuJoCoSpec/` and `Source/URLabEditor/Private/MuJoCoSpec/`) builds and compiles models directly through MuJoCo 4.0.2's `mjSpec` C API (`mj_makeSpec`, `mj_parseXMLString`, `mjs_attach`, `mj_compile`, `mj_recompile`).
 
 ```mermaid
 flowchart LR
-    UE["Generated UE authoring tree"] --> XML["Direct MJCF writer"]
-    XML --> Native["MuJoCo native XML parser → mjSpec"]
-    Native --> Scene["Participant placement / mjs_attach"]
-    Scene --> Compile["mj_compile → mjModel"]
-    Compile --> Runtime["Bindings, simulation, neutral renderer"]
+    Comps["UMJModelComponent + UMJ*Component tree"] --> Build["BuildSpecFromActor -> mjSpec"]
+    Assets["UMJAssetLibrary (mjVFS / mj_addBufferVFS)"] --> Build
+    Build --> Attach["UMJAttachComponent (mjs_attach)"]
+    Attach --> Compile["mj_compile / mj_recompile -> mjModel + mjData"]
+    Compile --> Runtime["SyncTransformsFromData & neutral renderer"]
 ```
 
-The XML writer receives transient per-node asset filenames and reserved names without mutating authored fields. The asset collector supplies compiler-ready bytes to MuJoCo's VFS. The native parser constructs each participant spec and interprets shortcuts, aliases and defaults; the compiler validates physics. URLab retains scene composition because participants can be placed independently and attached under different conflict policies. A failed attach causes the whole build to be discarded.
+## Core pieces
 
-The old direct `MjSpecBuild` walk, handwritten write hooks, generated native write backend, plain C++ AST, cross-profile SDK and generic MJCF reader/writer were removed. The retained ProtoSpec C++ helpers are limited to native-backed orientation/full-inertia resolution, source-aware `<include>` expansion, tinyxml2 and a test-only native `mjModel` comparison library. Runtime simulation and the neutral renderer remain independent of authoring components.
+- **`UMJModelComponent`** (`Source/URLab/Public/MuJoCoSpec/MJModelComponent.h`) owns the RAII handles (`FMJSpecHandle`, `FMJModelHandle`, `FMJDataHandle`, `FMJVFSHandle`), `DefaultClasses` (`TArray<FMJDefaultClassEntry>`), and `AssetLibrary` (`UMJAssetLibrary`). It builds the `mjSpec` from the owning Actor's component tree (`BuildSpecFromActor`), compiles (`CompileModel`) or recompiles in-place (`RecompileModel`), steps physics (`StepSimulation`), syncs body transforms (`SyncTransformsFromData`), and exports MJCF (`ExportXML` with `savecompiled=false`, `savecanonical=false`, `saveinertial=false`).
+- **Spatial components** (`UMJSceneComponent` subclasses in `MJSceneComponents.h`): `UMJBodyComponent`, `UMJFrameComponent`, `UMJGeomComponent` (including `fromto`), `UMJJointComponent`, `UMJSiteComponent`, `UMJCameraComponent`, `UMJLightComponent`, and `UMJAttachComponent` (`mjs_attach`).
+- **Non-spatial components** (`UMJActorComponent` subclasses in `MJActorComponents.h`): `UMJActuatorComponent` (using `EMJActuatorShortcut` mapped to `mjs_setTo*`), `UMJSensorComponent`, and `UMJTendonComponent`.
+- **`UMJAssetLibrary`** (`MJAssetLibrary.h`) stores UE `UStaticMesh` and `UTexture2D` references alongside `RawBuffers` fed into `mjVFS` via `mj_addBufferVFS`. It also exposes MuJoCo 4 by-reference texture helpers (`IsTextureByReference` checking `tex_adr == -1`, `LoadTextureFromModel` via `mj_loadTexture`, and `EmbedModelAssets` via `mj_embedAssets`).
+- **`FMJXmlImporterExporter`** (`Source/URLabEditor/Private/MuJoCoSpec/MJXmlImporterExporter.h`) imports MJCF XML into an Actor (`ImportXMLToActor`) or Blueprint SCS (`ImportXMLToBlueprintSCS`), and exports an Actor back to MJCF (`ExportActorToXML`).
+- **Codegen** (`Tools/SpecCodegen/generate_ue_spec.py`) generates `MJSpecEnums.h`, `MJSpecStructs.h`, `MJSpecMarshal.h`, and `MJSpecMarshal.cpp` from MuJoCo 4 `introspect` and `mjcf.schema`. `Scripts/build_and_test_linux.sh` runs `generate_ue_spec.py --check` to prevent codegen drift.
 
-The key checks are generated-code drift, direct actor/SCS import, import/export semantics, native differential compile over the corpus, binding and asset/VFS fixtures, and spatial-default edits. Initial compiled-model parity does not imply that the discarded `fromto` spelling is reconstructed after a later type change; that edit follows the normalized UE dimensions.
-
-See [Generation](concepts/generation.md), [the component model](concepts/model.md), and [authoring requirements](architecture/authoring_requirements.md) for the detailed contracts and remaining persistence/packaged-use proof points.
+See [Generation](concepts/generation.md), [The Component Model](concepts/model.md), and [Intended Design](architecture/intended_design.md) for the surrounding architecture.

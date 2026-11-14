@@ -1,17 +1,22 @@
 # Generation
 
-URLab uses MuJoCo's pinned MJCF schema to generate its persistent authoring component tree. Each element becomes an Unreal component with typed optional properties, and generated descriptors map those properties to their source XML names, presence, formatting, references, defaults and legal child contexts.
+URLab generates its `MuJoCoSpec` UE types (`UENUM`, `USTRUCT`) and `mjSpec` marshaling code directly from the pinned MuJoCo 4 submodule's `introspect` module and `mjcf.schema`.
 
 ```mermaid
 flowchart LR
-    Schema["MuJoCo mjcf.schema"] --> Front["ProtoSpec schema front end"]
-    Front --> Ue["Generated UE classes and descriptors"]
-    Ue --> Gateway["Direct UE XML import/export"]
-    Gateway --> Native["MuJoCo XML parser and compiler"]
+    MuJoCo["MuJoCo 4 introspect + mjcf.schema"] --> Codegen["Tools/SpecCodegen/generate_ue_spec.py"]
+    Manifest["Tools/SpecCodegen/manifest.py"] --> Codegen
+    Codegen --> Public["Source/URLab/Public/MuJoCoSpec/Generated/"]
+    Codegen --> Private["Source/URLab/Private/MuJoCoSpec/Generated/"]
 ```
 
-The front end uses MuJoCo's own schema parser. The UE emitter creates 144 element classes, enum keyword tables, schema defaults, child dispatch, a small element identity enum, and typed field thunks. Ordinary source attributes, including expanded aliases, remain distinct generated fields. Alternate spatial spellings are consumed at import and normalized into UE spatial values. The direct gateway walks the component graph for both Blueprint SCS templates and live actors; there is no second persistent C++ document.
+`Tools/SpecCodegen/generate_ue_spec.py` emits four checked-in files:
 
-The native parser builds `mjSpec` and the native compiler builds `mjModel`. URLab retains a narrow resolver for orientation and full inertia, an include expander with source diagnostics, XML syntax handling, and a native `mjModel` comparison helper for parity tests. MuJoCo owns physics validation and shortcut semantics.
+- `Source/URLab/Public/MuJoCoSpec/Generated/MJSpecEnums.h`
+- `Source/URLab/Public/MuJoCoSpec/Generated/MJSpecStructs.h`
+- `Source/URLab/Public/MuJoCoSpec/Generated/MJSpecMarshal.h`
+- `Source/URLab/Private/MuJoCoSpec/Generated/MJSpecMarshal.cpp`
 
-To regenerate or check the output, see [Regenerating MuJoCo authoring code](../contributing/generation.md).
+Handwritten components (`UMJModelComponent`, `UMJBodyComponent`, `UMJGeomComponent`, etc.) hold these generated `FMJ*Spec` structs and call the generated marshaling functions to populate `mjs*` elements on `mjSpec*`. MuJoCo itself owns XML parsing, shortcut expansion (`mjs_setTo*`), `mjs_attach`, and `mj_compile` validation.
+
+To regenerate or run the `--check` drift gate, see [Regenerating MuJoCoSpec code](../contributing/generation.md).

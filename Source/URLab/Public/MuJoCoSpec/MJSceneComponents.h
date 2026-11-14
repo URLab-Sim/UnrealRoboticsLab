@@ -21,6 +21,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
 	FString DefaultClass;
 
+	UPROPERTY()
+	FQuat ImportedMJQuat = FQuat::Identity;
+
+	UPROPERTY()
+	FRotator ImportedUERotator = FRotator::ZeroRotator;
+
+	UPROPERTY()
+	bool bHasImportedMJQuat = false;
+
+	void SetImportedTransform(const FTransform& Xform)
+	{
+		SetRelativeTransform(Xform);
+		ImportedMJQuat = Xform.GetRotation().GetNormalized();
+		ImportedUERotator = GetRelativeRotation();
+		bHasImportedMJQuat = true;
+	}
+
 	FString GetMJName() const { return ElementName.IsEmpty() ? GetName() : ElementName; }
 };
 
@@ -61,6 +78,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom")
 	FMJElementRef MeshRef;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom")
+	FString HFieldName;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "MuJoCo|Runtime")
 	int32 GeomId = -1;

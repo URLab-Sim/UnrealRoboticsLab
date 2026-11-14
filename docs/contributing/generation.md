@@ -1,23 +1,24 @@
-# Regenerating MuJoCo authoring code
+# Regenerating MuJoCoSpec code
 
-URLab's MuJoCo component classes and field descriptors are generated from the pinned `third_party/MuJoCo/src/src/xml/mjcf.schema`. The generated files under `Source/URLab/*/MuJoCo/Gen/` are checked in. Do not edit them directly.
+URLab's `MuJoCoSpec` enums, structs, and `mjSpec` marshalers are generated from the pinned MuJoCo 4 submodule (`third_party/MuJoCo/src`) using `Tools/SpecCodegen/generate_ue_spec.py` and `Tools/SpecCodegen/manifest.py`. The generated files are checked in — do not edit them by hand.
 
 | Path | Role |
 |---|---|
-| `protospec/protospec_gen/frontend.py` | parses MuJoCo's schema with MuJoCo's own parser and applies authoring overlays |
-| `protospec/protospec_gen/overlay.py`, `overlay_ue.py` | small schema and UE storage exceptions |
-| `protospec/protospec_gen/emit_ue.py` | emits UE classes, typed accessors, defaults, keywords, child dispatch and field descriptors |
-| `Source/URLab/Private/MuJoCo/Spec/MjUeXml*.cpp` | directly imports and exports the generated UE document |
-| `Source/URLab/Private/MuJoCo/Spec/MjSpecParse.cpp` | passes emitted MJCF to MuJoCo's native XML parser and compiler |
+| `Tools/SpecCodegen/generate_ue_spec.py` | Reads MuJoCo 4 `introspect` + `mjcf.schema` and emits UE headers/sources |
+| `Tools/SpecCodegen/manifest.py` | Configures element/struct/enum mappings for codegen |
+| `Source/URLab/Public/MuJoCoSpec/Generated/MJSpecEnums.h` | Generated `UENUM` declarations |
+| `Source/URLab/Public/MuJoCoSpec/Generated/MJSpecStructs.h` | Generated `USTRUCT` declarations (`FMJ*Spec`) |
+| `Source/URLab/Public/MuJoCoSpec/Generated/MJSpecMarshal.h` | Generated marshaling declarations |
+| `Source/URLab/Private/MuJoCoSpec/Generated/MJSpecMarshal.cpp` | Generated `FMJ*Spec` <-> `mjs*` marshaling implementations |
 
-From `protospec/`, run:
+From the plugin root, run:
 
 ```bash
-uv run python -m protospec_gen.emit_ue --out ..
-uv run python -m protospec_gen.emit_ue --out .. --check
-uv run pytest -q
+python3 Tools/SpecCodegen/generate_ue_spec.py
 ```
 
-The wrappers `Scripts/regen_ue_profile.ps1` and `Scripts/regen_ue_profile.sh` provide the same regeneration and `--check` operation from the plugin root. The check compares generated output byte for byte without writing. A MuJoCo version bump may change the generated component tree; review the schema and overlay exceptions before committing the result.
+To verify there is no drift between the pinned MuJoCo submodule and the checked-in generated files (this gate also runs automatically in `Scripts/build_and_test_linux.sh`):
 
-`protospec/build.ps1` or `build.sh` stages only the native-backed orientation helper, XML include expander, tinyxml2, and native model comparison helper needed by URLab. The plain C++ AST, generic profile SDK, generic reader/writer, and direct `mjSpec` write backend have been retired. A new ordinary schema attribute should flow through generated storage and the direct XML gateway without per-element handwritten code; MuJoCo's parser remains responsible for compiler semantics.
+```bash
+python3 Tools/SpecCodegen/generate_ue_spec.py --check
+```

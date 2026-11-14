@@ -1,33 +1,24 @@
 [![Documentation](https://img.shields.io/badge/Documentation-blue.svg)](https://urlab-sim.github.io/UnrealRoboticsLab/)
 [![arXiv](https://img.shields.io/badge/arXiv-2504.14135-b31b1b.svg)](https://arxiv.org/abs/2504.14135)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![MuJoCo](https://img.shields.io/badge/MuJoCo-3.9%2B-green.svg)](https://github.com/google-deepmind/mujoco)
+[![MuJoCo](https://img.shields.io/badge/MuJoCo-4.0.2-green.svg)](https://github.com/google-deepmind/mujoco)
 [![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.7%2B-black.svg)](https://www.unrealengine.com)
 
 # URLab: MuJoCo Physics in Unreal Engine
 
 ![URLab](docs/images/hero.png)
 
-> ## ⚠️ Beta: this release breaks existing MjArticulation assets
+> ## Beta: MuJoCo 4.0.2 + `MuJoCoSpec` (`mjSpec`)
 >
-> `main` is now the **beta**. The component model changed: components no longer
-> mirror the MuJoCo model, they **are** the model, and every element is
-> generated from MuJoCo's own `mjcf.schema`.
+> `main` targets **MuJoCo 4.0.2** (`mjVERSION_HEADER 4000002`) with a
+> clean-slate `MuJoCoSpec` authoring layer (`UMJModelComponent`,
+> `UMJBodyComponent`, `UMJGeomComponent`, and siblings) backed directly by
+> MuJoCo's `mjSpec` C API.
 >
-> **Updating the plugin will break MjArticulations you already have.** Their
-> components are the previous generation's classes, and nothing migrates them.
-> Expect to re-import your MJCF rather than to open an existing Blueprint. Back
-> up your project first.
->
-> **If you are not ready for that, stay on the `alpha` branch**, which is the
-> final pre-beta state and is not going to move under you:
->
-> ```
-> git checkout alpha          # or the v0.5.0-alpha tag, which is frozen
-> ```
->
-> Re-importing gets you a model that compiles to exactly what stock MuJoCo's
-> own `mj_loadXML` produces, which the previous generation could not promise.
+> **Updating from older alpha/beta releases will break legacy Blueprint
+> assets.** Re-import your MJCF rather than opening legacy Blueprints, and back
+> up your project first. If you need the legacy pre-beta state, stay on the
+> `alpha` branch (`v0.5.0-alpha`).
 
 UnrealRoboticsLab (URLab) is an Unreal Engine 5 plugin that embeds the
 [MuJoCo](https://github.com/google-deepmind/mujoco) physics engine directly into
@@ -41,10 +32,13 @@ dynamics and render them with Unreal's lighting, materials, and cameras.
 
 ## What you can do
 
-- **Import MuJoCo models.** Drag an MJCF `.xml` into the Content Browser and URLab
-  builds a ready-to-simulate Articulation Blueprint, with support for joints,
-  actuators, tendons, muscles, and flexcomp. Or turn any static mesh into a physics
-  body with a single component.
+- **Import and author MuJoCo models.** Import MJCF `.xml` into an Actor or
+  Blueprint via `FMJXmlImporterExporter`, or assemble `UMJModelComponent`
+  hierarchies directly with `UMJBodyComponent`, `UMJFrameComponent`,
+  `UMJGeomComponent`, `UMJJointComponent`, `UMJSiteComponent`,
+  `UMJCameraComponent`, `UMJLightComponent`, `UMJAttachComponent`,
+  `UMJActuatorComponent`, `UMJSensorComponent`, `UMJTendonComponent`, and
+  `UMJAssetLibrary`.
 - **Simulate with MuJoCo, render with Unreal.** Physics runs on its own thread while
   Unreal renders, so you get accurate contacts and photorealistic output together.
 - **Control a simulation.** Use the world-owned MuJoCo simulation service and
@@ -84,7 +78,7 @@ Full documentation is at
 | [Quickstart](https://urlab-sim.github.io/UnrealRoboticsLab/quickstart/) | Import a robot and run a simulation |
 | [Guides](https://urlab-sim.github.io/UnrealRoboticsLab/guides/importing/) | Importing, articulations, sensors, cameras, controllers, debug |
 | [Python & External Control](https://urlab-sim.github.io/UnrealRoboticsLab/python/) | Drive URLab from Python, run and evaluate policies |
-| [Architecture](https://urlab-sim.github.io/UnrealRoboticsLab/concepts/architecture/) | How the pieces fit together |
+| [Architecture](https://urlab-sim.github.io/UnrealRoboticsLab/architecture/intended_design/) | How the pieces fit together |
 | [Roadmap](https://urlab-sim.github.io/UnrealRoboticsLab/roadmap/) | Where URLab is headed |
 
 ## Python integration
@@ -94,7 +88,7 @@ On Linux, gRPC (`dm_env_rpc`) carries URLab render extensions with network data;
 it does not provide general simulation control or a continuous viewer bus. The companion
 [urlab_bridge](https://github.com/URLab-Sim/URLab_Bridge) package (separate
 repository) provides Python middleware for remote control and ROS 2 bridging, and
-  the typed clients for simulation, render and viewer services described under
+the typed clients for simulation, render and viewer services described under
 [Render Server](https://urlab-sim.github.io/UnrealRoboticsLab/concepts/render_roles/).
 
 ## Requirements
@@ -103,7 +97,7 @@ repository) provides Python middleware for remote control and ROS 2 bridging, an
   regressions on Linux), Windows (Win64) with Visual Studio 2022/2025, or Linux
   (x86_64) with UE's bundled clang.
 - CMake 3.24+ to build the dependencies.
-- MuJoCo, CoACD, and libzmq are bundled as submodules and built from source.
+- MuJoCo 4.0.2, CoACD, and libzmq are bundled as submodules and built from source.
 - gRPC is built separately and only on Linux; see the gRPC transport page in
   the contributing docs. Without it the plugin builds and runs, minus that transport.
 - Python 3.11 or 3.12 (optional), for `urlab_bridge`.
@@ -112,8 +106,8 @@ repository) provides Python middleware for remote control and ROS 2 bridging, an
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and the
 [Contributing docs](https://urlab-sim.github.io/UnrealRoboticsLab/contributing/building/)
-for building from source, regenerating the MuJoCo profile, and bumping
-MuJoCo. Since Unreal projects
+for building from source, regenerating `MuJoCoSpec` codegen
+(`Tools/SpecCodegen/generate_ue_spec.py`), and bumping MuJoCo. Since Unreal projects
 cannot use standard CI, each PR should include proof of a local build and passing
 tests.
 

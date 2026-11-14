@@ -40,6 +40,9 @@ public:
 	FMJElementRef TargetRef;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator")
+	FString SliderSite;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator")
 	double Ctrl = 0.0;
 
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "MuJoCo|Runtime")

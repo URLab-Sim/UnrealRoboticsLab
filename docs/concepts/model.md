@@ -1,188 +1,54 @@
 # The Component Model
 
-An Unreal Blueprint holds a tree of components. In URLab that tree **is**
-the MuJoCo model. There is no MJCF document behind it, no mirrored
-object graph, and no translation layer that could fall out of step with
-what you edited.
+In URLab, a robot or scene authored in Unreal is represented by a `UMJModelComponent` paired with a hierarchy of `MuJoCoSpec` components on an Actor or Blueprint. When compiled, `UMJModelComponent` marshals those components directly into a MuJoCo `mjSpec` and compiles `mjModel` + `mjData` via `mj_compile` (or updates them in place via `mj_recompile`).
 
-This page covers what a component is, how an MJCF element maps onto one,
-how defaults and references work, and what happens when the model is
-compiled. For where the component classes come from, see
-[Generation](generation.md).
+For how the underlying structs, enums, and marshalers are generated from MuJoCo 4, see [Generation](generation.md).
 
-## There is no second document
+## `UMJModelComponent`
 
-Every element of a MuJoCo model is a `UMjNodeComponent`, and an
-articulation's `Spec` property is the root of that tree:
+`UMJModelComponent` (`Source/URLab/Public/MuJoCoSpec/MJModelComponent.h`) is a `UActorComponent` that owns the MuJoCo lifecycle for an Actor's component hierarchy:
 
-```cpp
-/**
- * This articulation's MuJoCo spec, as the component tree it is.
- *
- * There is no second artifact: what the importer read, what the details
- * panel edits and what the writer emits are all this tree.
- */
-UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Spec")
-TObjectPtr<UMjModel> Spec;
-```
+- **RAII handles:** `FMJSpecHandle` (`mjSpec*`), `FMJModelHandle` (`mjModel*`), `FMJDataHandle` (`mjData*`), and `FMJVFSHandle` (`mjVFS*`).
+- **Configuration:** `ModelName`, `bCompilerDegree`, `AssetLibrary` (`UMJAssetLibrary*`), and `DefaultClasses` (`TArray<FMJDefaultClassEntry>`).
+- **Lifecycle methods:**
+  - `BuildSpecFromActor(OutError)` — walks the Actor's spatial and non-spatial `MuJoCoSpec` components into a fresh `mjSpec`.
+  - `CompileModel(OutError)` — compiles `mjSpec` into `mjModel` + `mjData` via `mj_compile`.
+  - `RecompileModel(OutError)` — rebuilds `mjSpec` and calls `mj_recompile` in place, preserving `qpos` and `qvel`.
+  - `StepSimulation(Dt)` and `SyncTransformsFromData()` — advances physics and updates `UMJBodyComponent` transforms from `mjData`.
+  - `ExportXML(OutXml, OutError, bSaveCompiled=false, bSaveCanonical=false, bSaveInertial=false)` — exports the spec to MJCF XML using MuJoCo 4 `mjsCompiler` flags (`savecompiled`, `savecanonical`, `saveinertial`).
 
-`UMjNodeComponent` derives from `USceneComponent`, so an element is an
-ordinary Unreal component: it appears in the components panel, it takes
-part in undo and duplication, it is saved with the Blueprint, and the
-viewport gizmo moves it.
+## Spatial and non-spatial components
 
-`Source/URLab/Public/MuJoCo/Spec/MjNodeComponent.h` is the whole of the
-non-schema base. It carries the authored name, identity, spec order,
-provenance, the compiled-model id, and the transform write-back that
-keeps the gizmo and the authored pose the same fact. Nothing on it
-scales with the schema.
+Every authored MuJoCo element maps to a clean `UActorComponent` or `USceneComponent` subclass under `Source/URLab/Public/MuJoCoSpec/`:
 
-## An MJCF element is a component
-
-One `UCLASS` per schema element, named after the MJCF tag, with the
-`<mujoco>` root as `UMjModel`:
-
-| MJCF | Component | Where |
+| Component | Base | Role |
 |---|---|---|
-| `<mujoco>` | `UMjModel` | `Gen/Elements/MjModel.gen.h` |
-| `<body>` | `UMjBody` | `Gen/Elements/Bodies/`, hand subclass |
-| `<geom>` | `UMjGeom` | `Gen/Elements/Geometry/`, hand subclass |
-| `<site>` | `UMjSite` | `Gen/Elements/Geometry/` |
-| `<joint>`, `<freejoint>` | `UMjJoint`, `UMjFreeJoint` | `Gen/Elements/Joints/` |
-| `<motor>`, `<position>`, `<general>` … | `UMjMotor`, `UMjPosition`, `UMjActuatorGeneral` | `Gen/Elements/Actuators/` |
-| `<touch>`, `<gyro>`, `<framepos>` … | `UMjTouch`, `UMjGyro`, `UMjFramepos` | `Gen/Elements/Sensors/` |
-| `<mesh>`, `<material>`, `<texture>` | `UMjMesh`, `UMjMaterial`, `UMjTexture` | `Gen/Elements/Assets/` |
-| `<default>` | `UMjDefault` | `Gen/Elements/Defaults/` |
-| `<option>`, `<compiler>`, `<flag>` | `UMjOption`, `UMjCompiler`, `UMjFlag` | `Gen/Elements/Options/` |
+| `UMJBodyComponent` | `UMJSceneComponent` | Rigid body (`<body>`) with inertial/runtime body ID |
+| `UMJFrameComponent` | `UMJSceneComponent` | Coordinate frame (`<frame>`) |
+| `UMJGeomComponent` | `UMJSceneComponent` | Collision/visual geometry (`<geom>`), including `fromto` in `FMJGeomSpec` |
+| `UMJJointComponent` | `UMJSceneComponent` | Joint (`<joint>`) |
+| `UMJSiteComponent` | `UMJSceneComponent` | Site marker (`<site>`) |
+| `UMJCameraComponent` | `UMJSceneComponent` | Camera (`<camera>`) |
+| `UMJLightComponent` | `UMJSceneComponent` | Light (`<light>`) |
+| `UMJAttachComponent` | `UMJSceneComponent` | Attaches a sub-model spec via MuJoCo 4 `mjs_attach` |
+| `UMJActuatorComponent` | `UMJActorComponent` | Actuator (`<actuator>`), using `EMJActuatorShortcut` -> `mjs_setTo*` |
+| `UMJSensorComponent` | `UMJActorComponent` | Sensor (`<sensor>`) |
+| `UMJTendonComponent` | `UMJActorComponent` | Spatial or fixed tendon (`<tendon>`) |
 
-A handful are disambiguated where one tag means two things: `<joint>`
-under `<equality>` is `UMjEqualityJoint`, `<plugin>` under `<actuator>`
-is `UMjActuatorPlugin`, `<contact>` as a sensor is `UMjSensorContact`.
+Cross-element references (such as a geom's material or mesh, or an actuator's target) use `FMJElementRef` (`Source/URLab/Public/MuJoCoSpec/MJElementRef.h`).
 
-Structural MJCF tags that are not elements do not become components.
-`<worldbody>` is the clearest case: it is the tag a `<body>` child of
-`<mujoco>` is written under, so the world body is a `UMjBody` sitting
-directly under the `UMjModel` root, and the robot's bodies nest inside
-it. The same is true of the section tags `<asset>`, `<actuator>`,
-`<sensor>` and `<contact>`. An actuator component is a child of the root,
-not of an actuators folder.
+## `UMJAssetLibrary` and MuJoCo 4 VFS
 
-**Declaration order is semantic.** Joint order under a body determines
-the qpos layout, so it cannot rest on Unreal's attachment list, which is
-transient and rebuilt from registration order at load. Spec order is
-persisted in `UMjNodeComponent::SiblingIndex`, stamped at creation and
-renumbered on insert and remove. A component added by hand in the
-components panel arrives unstamped and orders *after* every stamped
-sibling, so adding a joint appends rather than silently rewriting the
-robot's qpos layout.
+`UMJAssetLibrary` (`Source/URLab/Public/MuJoCoSpec/MJAssetLibrary.h`) is a `UDataAsset` storing `UStaticMesh` and `UTexture2D` references alongside `RawBuffers` (`TMap<FString, FMJRawAssetBuffer>`) keyed by VFS filename.
 
-## Attributes are optional properties
-
-An MJCF attribute is a `UPROPERTY`, and almost all of them are wrapped:
-
-```cpp
-UPROPERTY(EditAnywhere, Category = "MuJoCo", meta = (ToolTip = "..."))
-TOptional<FMjPosition3> Pos;
-```
-
-The wrapper is the point. MJCF distinguishes "this attribute was not
-written" from "this attribute was written with the value that happens to
-be the default", and those two mean different things: an unwritten
-attribute falls through to the default class chain, a written one does
-not. A plain `double` would collapse the distinction.
-
-`TOptional` has no Blueprint pin, so every attribute also gets an
-accessor quartet: `HasPos()`, `GetPos()`, `SetPos()`, `ClearPos()`.
-`GetPos()` falls back to the schema default; it does not resolve the
-default-class chain.
-
-In the details panel, each optional property carries a checkbox that sets
-or clears it. Unset rows show the value that would be inherited, greyed,
-labelled with where it comes from (`(from arm_class)` or `(default)`),
-next to a **Set** button that authors it onto the element. Reading is
-effective; writing stays authored-only, so previewing an inherited value
-never authors it.
-
-Values are stored exactly as MJCF spells them, in MuJoCo's own frame and
-units. The type says which conversion is legal when a value crosses into
-Unreal space: `FMjPosition3` flips Y and scales by 100, `FMjDirection3`
-flips Y alone, `FMjVec3` and `FLinearColor` do nothing, `FMjQuatRot`
-holds the MJCF quaternion verbatim as `[w, x, y, z]`. Handing one to a
-rotation API by mistake does not compile.
-
-## Defaults and inheritance
-
-A `<default>` class is a `UMjDefault` component, and its class name is
-the component's own name. The template values inside it are ordinary
-element components parented under it: an `MjGeom` under an `MjDefault`
-is that class's `<geom>` partial, not a geom in the scene.
-
-Nothing marks a component as a template. The question is answered by
-position, because that is what MJCF says: a partial *is* a child of the
-`<default>` carrying the class, and `<default>` nests.
-
-Membership is two string properties, both offered as dropdowns:
-`Dclass` (MJCF `class`) on the element itself, and `Childclass` (MJCF
-`childclass`) on a body or frame, which propagates to everything beneath
-it.
-
-Resolution order is the compiler's: the element's own authored value,
-then its class chain from nearest to furthest, then MuJoCo's own schema
-value. `Source/URLab/Public/MuJoCo/Spec/MjEffective.h` walks those layers
-and hands back the storage rather than a merged copy, because the editor
-preview asks this question on every registration.
-
-## References are names
-
-A reference from one element to another is a name string, because that is
-what MJCF is. A geom's `Material`, an actuator's transmission target and
-a sensor's `Objname` are all `FString` or `TOptional<FString>`
-properties, and MuJoCo resolves them at compile time.
-
-Storing them as plain strings would make them invisible, so the generated
-field walk hands every reference over wrapped in
-`urlab::RefView<Target, Slot>` (`MuJoCo/Spec/MjRefView.h`). The phantom
-`Target` parameter names the namespace the reference points into, and the
-wrapper is what the reference machinery matches on. Three things depend
-on it:
-
-- **Dropdowns.** A reference property offers the names of the right kind
-  of element in the same spec, rather than a free-text box.
-- **Rename safety.** Renaming an element rewrites every referrer, in the
-  same transaction, filtered by target namespace so a body and a geom
-  that share a name do not cross-rename.
-- **Dangling reports.** A reference naming nothing is recorded on the
-  element that carries it, in `DanglingReferences`, at the moment it
-  becomes bad rather than at the moment somebody presses play.
-
-The element also records `PlacementProblems`, because MJCF says which
-elements may contain which, and a component parented against that is not
-an error you would otherwise be told about: the element is simply absent
-from the compiled model, and the model still compiles.
-
-## What happens on compile
-
-The generated field descriptors write each participant's component tree to MJCF, preserving authored optional fields, raw ordinary schema attributes, child order and references. Required assets are resolved to compiler-ready bytes with transient per-node XML substitutions. MuJoCo's native XML parser reads that document and constructs `mjSpec`; URLab no longer constructs each `mjs*` element by hand.
-
-```mermaid
-flowchart LR
-    Tree["Generated UE component tree"] --> XML["Direct MJCF writer"]
-    XML --> Parse["MuJoCo native XML parser → mjSpec"]
-    Parse --> Scene["Scene composition → mjs_attach"]
-    Scene --> Model["mj_compile → mjModel"]
-    Model --> Bind["Component bindings and runtime handoff"]
-```
-
-Each participant spec is attached to the scene under a placement frame. A failed attach abandons the whole scene build. Native MuJoCo applies shortcuts, defaults and physics validation. After compilation, URLab binds eligible authored elements to compiled ids and passes the model to the existing simulation service and neutral renderer. Source components remain authoring data; they are not a second runtime physics or rendering scene.
-
-## Where MJCF text exists
-
-Import parses MJCF directly into generated UE components, consuming includes and alternate spatial spellings before saving the authored tree. Export and compilation serialize that same tree through one XML gateway. The scene handshake may serialize an assembled spec for external clients. There is no generic plain document or special macro bridge; native parsing expands `<replicate>`, `<composite>` and `<flexcomp>`.
+- `PopulateVFS(mjVFS*)` registers raw payloads via `mj_addBufferVFS`.
+- `IsTextureByReference(M, TexId)` checks `tex_adr == -1` for MuJoCo 4 by-reference textures.
+- `LoadTextureFromModel(...)` decodes textures (including by-reference textures) via `mj_loadTexture`.
+- `EmbedModelAssets(M, OutEmbedded, OutError)` creates an embedded `mjModel` via `mj_embedAssets`.
 
 ## Related
 
-- [Generation](generation.md): where the element classes come from.
-- [Architecture](architecture.md): what happens to the compiled model,
-  the physics thread and the transports.
-- [Articulations](../guides/articulations.md): editing the tree.
-- [MJCF Support](mjcf_support.md): what round-trips.
+- [Generation](generation.md): how `FMJ*Spec` structs and marshalers are generated.
+- [Architecture](../architecture/intended_design.md): runtime simulation, neutral renderer, and transport boundaries.
+- [Articulations](../guides/articulations.md): authoring component trees in Unreal.
+- [MJCF Support](mjcf_support.md): MuJoCo 4.0.2 schema coverage and XML import/export.

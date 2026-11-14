@@ -538,12 +538,18 @@ def emit_marshal_cpp(struct_fields, manifest) -> str:
         "",
         "namespace",
         "{",
+        "inline bool ScalarsDiffer(double A, double B)",
+        "{",
+        "\tif (std::isnan(A) && std::isnan(B)) { return false; }",
+        "\treturn !FMath::IsNearlyEqual(A, B, 1e-9);",
+        "}",
+        "",
         "template <typename T>",
         "bool ArraysDiffer(const T* A, const T* B, int32 Count)",
         "{",
         "\tfor (int32 i = 0; i < Count; ++i)",
         "\t{",
-        "\t\tif (!FMath::IsNearlyEqual(static_cast<double>(A[i]), static_cast<double>(B[i]), 1e-9))",
+        "\t\tif (ScalarsDiffer(static_cast<double>(A[i]), static_cast<double>(B[i])))",
         "\t\t{",
         "\t\t\treturn true;",
         "\t\t}",
@@ -609,7 +615,7 @@ def emit_marshal_cpp(struct_fields, manifest) -> str:
                 lines.append(f"\t\tmjs_setString(Dst->{cn}, TCHAR_TO_UTF8(*In.{un}));")
             elif k == "char_arr":
                 lines.append(f"\t\tstd::memset(Dst->{cn}, 0, {cf['size']});")
-                lines.append(f"\t\tFCStringAnsi::Strncpy(Dst->{cn}, TCHAR_TO_UTF8(*In.{un}), {cf['size']});")
+                lines.append(f"\t\t{{ FTCHARToUTF8 Utf8(*In.{un}); std::memcpy(Dst->{cn}, Utf8.Get(), FMath::Min(Utf8.Length(), {cf['size']})); }}")
             elif k == "rgba":
                 lines.append(f"\t\tDst->{cn}[0] = In.{un}.R; Dst->{cn}[1] = In.{un}.G; Dst->{cn}[2] = In.{un}.B; Dst->{cn}[3] = In.{un}.A;")
             elif k == "fixed_arr":
@@ -680,7 +686,7 @@ def emit_marshal_cpp(struct_fields, manifest) -> str:
                 lines.append(f"\tOut.bOverride_{un} = (Src->{cn} != DefaultSrc->{cn});")
                 lines.append(f"\tOut.{un} = FromMJ(Src->{cn});")
             elif k == "scalar":
-                lines.append(f"\tOut.bOverride_{un} = !FMath::IsNearlyEqual(static_cast<double>(Src->{cn}), static_cast<double>(DefaultSrc->{cn}), 1e-9);")
+                lines.append(f"\tOut.bOverride_{un} = ScalarsDiffer(static_cast<double>(Src->{cn}), static_cast<double>(DefaultSrc->{cn}));")
                 u = cf.get("unit")
                 if u == "len":
                     lines.append(f"\tOut.{un} = static_cast<{cf['ue_type']}>(FMJUnitConverter::MToCm(static_cast<double>(Src->{cn})));")
@@ -694,8 +700,8 @@ def emit_marshal_cpp(struct_fields, manifest) -> str:
                 lines.append(f"\tOut.{un} = UTF8_TO_TCHAR(SrcStr_{cn} ? SrcStr_{cn} : \"\");")
                 lines.append(f"\tOut.bOverride_{un} = (FCStringAnsi::Strcmp(SrcStr_{cn} ? SrcStr_{cn} : \"\", DefStr_{cn} ? DefStr_{cn} : \"\") != 0);")
             elif k == "char_arr":
-                lines.append(f"\tOut.{un} = UTF8_TO_TCHAR(Src->{cn});")
-                lines.append(f"\tOut.bOverride_{un} = (FCStringAnsi::Strncmp(Src->{cn}, DefaultSrc->{cn}, {cf['size']}) != 0);")
+                lines.append(f"\t{{ int32 Len = 0; while (Len < {cf['size']} && Src->{cn}[Len] != '\\0') {{ ++Len; }} Out.{un} = FString::ConstructFromPtrSize(UTF8_TO_TCHAR(Src->{cn}), Len); }}")
+                lines.append(f"\tOut.bOverride_{un} = (std::memcmp(Src->{cn}, DefaultSrc->{cn}, {cf['size']}) != 0);")
             elif k == "rgba":
                 lines.append(f"\tOut.bOverride_{un} = ArraysDiffer(Src->{cn}, DefaultSrc->{cn}, 4);")
                 lines.append(f"\tOut.{un} = FLinearColor(Src->{cn}[0], Src->{cn}[1], Src->{cn}[2], Src->{cn}[3]);")
@@ -778,6 +784,13 @@ def emit_marshal_cpp(struct_fields, manifest) -> str:
         "void FMJSpecMarshal::ExtractActuatorShortcut(const mjsActuator* Src, EMJActuatorShortcut& OutShortcut, FMJActuatorShortcutParams& OutParams)",
         "{",
         "\tif (!Src) { return; }",
+        "\tOutParams = FMJActuatorShortcutParams();",
+        "\tOutParams.bUseKv = false;",
+        "\tOutParams.Kv = 0.0;",
+        "\tOutParams.bUseDampRatio = false;",
+        "\tOutParams.DampRatio = 0.0;",
+        "\tOutParams.bUseTimeConst = false;",
+        "\tOutParams.TimeConst = 0.0;",
         "\tswitch (Src->type)",
         "\t{",
         "\tcase mjACTUATOR_MOTOR: OutShortcut = EMJActuatorShortcut::Motor; break;",
@@ -786,7 +799,7 @@ def emit_marshal_cpp(struct_fields, manifest) -> str:
         "\t\tOutParams.Kp = Src->gainprm[0];",
         "\t\tif (Src->biasprm[2] < 0.0) { OutParams.bUseKv = true; OutParams.Kv = -Src->biasprm[2]; OutParams.bUseDampRatio = false; }",
         "\t\telse if (Src->biasprm[2] > 0.0) { OutParams.bUseDampRatio = true; OutParams.DampRatio = Src->biasprm[2]; OutParams.bUseKv = false; }",
-        "\t\tif (Src->dynprm[0] > 0.0) { OutParams.bUseTimeConst = true; OutParams.TimeConst = Src->dynprm[0]; }",
+        "\t\tif (Src->dyntype != mjDYN_NONE && Src->dynprm[0] > 0.0) { OutParams.bUseTimeConst = true; OutParams.TimeConst = Src->dynprm[0]; }",
         "\t\tOutParams.InheritRange = Src->inheritrange;",
         "\t\tbreak;",
         "\tcase mjACTUATOR_VELOCITY:",

@@ -7,12 +7,18 @@
 
 namespace
 {
+inline bool ScalarsDiffer(double A, double B)
+{
+	if (std::isnan(A) && std::isnan(B)) { return false; }
+	return !FMath::IsNearlyEqual(A, B, 1e-9);
+}
+
 template <typename T>
 bool ArraysDiffer(const T* A, const T* B, int32 Count)
 {
 	for (int32 i = 0; i < Count; ++i)
 	{
-		if (!FMath::IsNearlyEqual(static_cast<double>(A[i]), static_cast<double>(B[i]), 1e-9))
+		if (ScalarsDiffer(static_cast<double>(A[i]), static_cast<double>(B[i])))
 		{
 			return true;
 		}
@@ -91,7 +97,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsBody* Src, FMJBodySpec& Out, const mjsB
 	const char* DefStr_childclass = DefaultSrc->childclass ? mjs_getString(DefaultSrc->childclass) : "";
 	Out.Childclass = UTF8_TO_TCHAR(SrcStr_childclass ? SrcStr_childclass : "");
 	Out.bOverride_Childclass = (FCStringAnsi::Strcmp(SrcStr_childclass ? SrcStr_childclass : "", DefStr_childclass ? DefStr_childclass : "") != 0);
-	Out.bOverride_Mass = !FMath::IsNearlyEqual(static_cast<double>(Src->mass), static_cast<double>(DefaultSrc->mass), 1e-9);
+	Out.bOverride_Mass = ScalarsDiffer(static_cast<double>(Src->mass), static_cast<double>(DefaultSrc->mass));
 	Out.Mass = static_cast<double>(Src->mass);
 	Out.bOverride_Ipos = ArraysDiffer(Src->ipos, DefaultSrc->ipos, 3);
 	FMJUnitConverter::MJPositionToUE(Src->ipos, Out.Ipos);
@@ -111,13 +117,13 @@ void FMJSpecMarshal::FromMJSpec(const mjsBody* Src, FMJBodySpec& Out, const mjsB
 	}
 	Out.bOverride_bMocap = (Src->mocap != DefaultSrc->mocap);
 	Out.bMocap = (Src->mocap != 0);
-	Out.bOverride_Gravcomp = !FMath::IsNearlyEqual(static_cast<double>(Src->gravcomp), static_cast<double>(DefaultSrc->gravcomp), 1e-9);
+	Out.bOverride_Gravcomp = ScalarsDiffer(static_cast<double>(Src->gravcomp), static_cast<double>(DefaultSrc->gravcomp));
 	Out.Gravcomp = static_cast<double>(Src->gravcomp);
 	Out.bOverride_Sleep = (Src->sleep != DefaultSrc->sleep);
 	Out.Sleep = FromMJ(Src->sleep);
-	Out.bOverride_Simple = !FMath::IsNearlyEqual(static_cast<double>(Src->simple), static_cast<double>(DefaultSrc->simple), 1e-9);
+	Out.bOverride_Simple = ScalarsDiffer(static_cast<double>(Src->simple), static_cast<double>(DefaultSrc->simple));
 	Out.Simple = static_cast<uint8>(Src->simple);
-	Out.bOverride_Fuse = !FMath::IsNearlyEqual(static_cast<double>(Src->fuse), static_cast<double>(DefaultSrc->fuse), 1e-9);
+	Out.bOverride_Fuse = ScalarsDiffer(static_cast<double>(Src->fuse), static_cast<double>(DefaultSrc->fuse));
 	Out.Fuse = static_cast<uint8>(Src->fuse);
 }
 
@@ -161,7 +167,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsFrame* Src, FMJFrameSpec& Out, const mj
 	Out.Scale = FVector(static_cast<double>(Src->scale[0]), static_cast<double>(Src->scale[1]), static_cast<double>(Src->scale[2]));
 	Out.bOverride_Scaling = (Src->scaling != DefaultSrc->scaling);
 	Out.Scaling = FromMJ(Src->scaling);
-	Out.bOverride_Massscale = !FMath::IsNearlyEqual(static_cast<double>(Src->massscale), static_cast<double>(DefaultSrc->massscale), 1e-9);
+	Out.bOverride_Massscale = ScalarsDiffer(static_cast<double>(Src->massscale), static_cast<double>(DefaultSrc->massscale));
 	Out.Massscale = static_cast<double>(Src->massscale);
 }
 
@@ -320,13 +326,13 @@ void FMJSpecMarshal::FromMJSpec(const mjsGeom* Src, FMJGeomSpec& Out, const mjsG
 	{
 		Out.Size[i] = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->size[i])));
 	}
-	Out.bOverride_Contype = !FMath::IsNearlyEqual(static_cast<double>(Src->contype), static_cast<double>(DefaultSrc->contype), 1e-9);
+	Out.bOverride_Contype = ScalarsDiffer(static_cast<double>(Src->contype), static_cast<double>(DefaultSrc->contype));
 	Out.Contype = static_cast<int32>(Src->contype);
-	Out.bOverride_Conaffinity = !FMath::IsNearlyEqual(static_cast<double>(Src->conaffinity), static_cast<double>(DefaultSrc->conaffinity), 1e-9);
+	Out.bOverride_Conaffinity = ScalarsDiffer(static_cast<double>(Src->conaffinity), static_cast<double>(DefaultSrc->conaffinity));
 	Out.Conaffinity = static_cast<int32>(Src->conaffinity);
-	Out.bOverride_Condim = !FMath::IsNearlyEqual(static_cast<double>(Src->condim), static_cast<double>(DefaultSrc->condim), 1e-9);
+	Out.bOverride_Condim = ScalarsDiffer(static_cast<double>(Src->condim), static_cast<double>(DefaultSrc->condim));
 	Out.Condim = static_cast<int32>(Src->condim);
-	Out.bOverride_Priority = !FMath::IsNearlyEqual(static_cast<double>(Src->priority), static_cast<double>(DefaultSrc->priority), 1e-9);
+	Out.bOverride_Priority = ScalarsDiffer(static_cast<double>(Src->priority), static_cast<double>(DefaultSrc->priority));
 	Out.Priority = static_cast<int32>(Src->priority);
 	Out.bOverride_Friction = ArraysDiffer(Src->friction, DefaultSrc->friction, 3);
 	Out.Friction.SetNum(3);
@@ -334,7 +340,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsGeom* Src, FMJGeomSpec& Out, const mjsG
 	{
 		Out.Friction[i] = static_cast<double>(Src->friction[i]);
 	}
-	Out.bOverride_Solmix = !FMath::IsNearlyEqual(static_cast<double>(Src->solmix), static_cast<double>(DefaultSrc->solmix), 1e-9);
+	Out.bOverride_Solmix = ScalarsDiffer(static_cast<double>(Src->solmix), static_cast<double>(DefaultSrc->solmix));
 	Out.Solmix = static_cast<double>(Src->solmix);
 	Out.bOverride_Solref = ArraysDiffer(Src->solref, DefaultSrc->solref, 2);
 	Out.Solref.SetNum(2);
@@ -348,9 +354,9 @@ void FMJSpecMarshal::FromMJSpec(const mjsGeom* Src, FMJGeomSpec& Out, const mjsG
 	{
 		Out.Solimp[i] = static_cast<double>(Src->solimp[i]);
 	}
-	Out.bOverride_Margin = !FMath::IsNearlyEqual(static_cast<double>(Src->margin), static_cast<double>(DefaultSrc->margin), 1e-9);
+	Out.bOverride_Margin = ScalarsDiffer(static_cast<double>(Src->margin), static_cast<double>(DefaultSrc->margin));
 	Out.Margin = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->margin)));
-	Out.bOverride_Gap = !FMath::IsNearlyEqual(static_cast<double>(Src->gap), static_cast<double>(DefaultSrc->gap), 1e-9);
+	Out.bOverride_Gap = ScalarsDiffer(static_cast<double>(Src->gap), static_cast<double>(DefaultSrc->gap));
 	Out.Gap = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->gap)));
 	Out.bOverride_Surfacevel = ArraysDiffer(Src->surfacevel, DefaultSrc->surfacevel, 6);
 	Out.Surfacevel.SetNum(6);
@@ -358,15 +364,15 @@ void FMJSpecMarshal::FromMJSpec(const mjsGeom* Src, FMJGeomSpec& Out, const mjsG
 	{
 		Out.Surfacevel[i] = static_cast<double>(Src->surfacevel[i]);
 	}
-	Out.bOverride_Adhesion = !FMath::IsNearlyEqual(static_cast<double>(Src->adhesion), static_cast<double>(DefaultSrc->adhesion), 1e-9);
+	Out.bOverride_Adhesion = ScalarsDiffer(static_cast<double>(Src->adhesion), static_cast<double>(DefaultSrc->adhesion));
 	Out.Adhesion = static_cast<double>(Src->adhesion);
-	Out.bOverride_Mass = !FMath::IsNearlyEqual(static_cast<double>(Src->mass), static_cast<double>(DefaultSrc->mass), 1e-9);
+	Out.bOverride_Mass = ScalarsDiffer(static_cast<double>(Src->mass), static_cast<double>(DefaultSrc->mass));
 	Out.Mass = static_cast<double>(Src->mass);
-	Out.bOverride_Density = !FMath::IsNearlyEqual(static_cast<double>(Src->density), static_cast<double>(DefaultSrc->density), 1e-9);
+	Out.bOverride_Density = ScalarsDiffer(static_cast<double>(Src->density), static_cast<double>(DefaultSrc->density));
 	Out.Density = static_cast<double>(Src->density);
 	Out.bOverride_Typeinertia = (Src->typeinertia != DefaultSrc->typeinertia);
 	Out.Typeinertia = FromMJ(Src->typeinertia);
-	Out.bOverride_FluidEllipsoid = !FMath::IsNearlyEqual(static_cast<double>(Src->fluid_ellipsoid), static_cast<double>(DefaultSrc->fluid_ellipsoid), 1e-9);
+	Out.bOverride_FluidEllipsoid = ScalarsDiffer(static_cast<double>(Src->fluid_ellipsoid), static_cast<double>(DefaultSrc->fluid_ellipsoid));
 	Out.FluidEllipsoid = static_cast<double>(Src->fluid_ellipsoid);
 	Out.bOverride_FluidCoefs = ArraysDiffer(Src->fluid_coefs, DefaultSrc->fluid_coefs, 5);
 	Out.FluidCoefs.SetNum(5);
@@ -376,7 +382,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsGeom* Src, FMJGeomSpec& Out, const mjsG
 	}
 	Out.bOverride_Rgba = ArraysDiffer(Src->rgba, DefaultSrc->rgba, 4);
 	Out.Rgba = FLinearColor(Src->rgba[0], Src->rgba[1], Src->rgba[2], Src->rgba[3]);
-	Out.bOverride_Group = !FMath::IsNearlyEqual(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group), 1e-9);
+	Out.bOverride_Group = ScalarsDiffer(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group));
 	Out.Group = static_cast<int32>(Src->group);
 	Out.bOverride_bCastshadow = (Src->castshadow != DefaultSrc->castshadow);
 	Out.bCastshadow = (Src->castshadow != 0);
@@ -524,7 +530,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsJoint* Src, FMJJointSpec& Out, const mj
 	Out.Type = FromMJ(Src->type);
 	Out.bOverride_Axis = ArraysDiffer(Src->axis, DefaultSrc->axis, 3);
 	FMJUnitConverter::MJDirectionToUE(Src->axis, Out.Axis);
-	Out.bOverride_Ref = !FMath::IsNearlyEqual(static_cast<double>(Src->ref), static_cast<double>(DefaultSrc->ref), 1e-9);
+	Out.bOverride_Ref = ScalarsDiffer(static_cast<double>(Src->ref), static_cast<double>(DefaultSrc->ref));
 	Out.Ref = static_cast<double>(Src->ref);
 	Out.bOverride_Align = (Src->align != DefaultSrc->align);
 	Out.Align = FromMJ(Src->align);
@@ -534,9 +540,9 @@ void FMJSpecMarshal::FromMJSpec(const mjsJoint* Src, FMJJointSpec& Out, const mj
 	{
 		Out.Stiffness[i] = static_cast<double>(Src->stiffness[i]);
 	}
-	Out.bOverride_Springref = !FMath::IsNearlyEqual(static_cast<double>(Src->springref), static_cast<double>(DefaultSrc->springref), 1e-9);
+	Out.bOverride_Springref = ScalarsDiffer(static_cast<double>(Src->springref), static_cast<double>(DefaultSrc->springref));
 	Out.Springref = static_cast<double>(Src->springref);
-	Out.bOverride_Springyield = !FMath::IsNearlyEqual(static_cast<double>(Src->springyield), static_cast<double>(DefaultSrc->springyield), 1e-9);
+	Out.bOverride_Springyield = ScalarsDiffer(static_cast<double>(Src->springyield), static_cast<double>(DefaultSrc->springyield));
 	Out.Springyield = static_cast<double>(Src->springyield);
 	Out.bOverride_Springdamper = ArraysDiffer(Src->springdamper, DefaultSrc->springdamper, 2);
 	Out.Springdamper.SetNum(2);
@@ -552,7 +558,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsJoint* Src, FMJJointSpec& Out, const mj
 	{
 		Out.Range[i] = static_cast<double>(Src->range[i]);
 	}
-	Out.bOverride_Margin = !FMath::IsNearlyEqual(static_cast<double>(Src->margin), static_cast<double>(DefaultSrc->margin), 1e-9);
+	Out.bOverride_Margin = ScalarsDiffer(static_cast<double>(Src->margin), static_cast<double>(DefaultSrc->margin));
 	Out.Margin = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->margin)));
 	Out.bOverride_SolrefLimit = ArraysDiffer(Src->solref_limit, DefaultSrc->solref_limit, 2);
 	Out.SolrefLimit.SetNum(2);
@@ -574,7 +580,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsJoint* Src, FMJJointSpec& Out, const mj
 	{
 		Out.Actfrcrange[i] = static_cast<double>(Src->actfrcrange[i]);
 	}
-	Out.bOverride_Armature = !FMath::IsNearlyEqual(static_cast<double>(Src->armature), static_cast<double>(DefaultSrc->armature), 1e-9);
+	Out.bOverride_Armature = ScalarsDiffer(static_cast<double>(Src->armature), static_cast<double>(DefaultSrc->armature));
 	Out.Armature = static_cast<double>(Src->armature);
 	Out.bOverride_Damping = ArraysDiffer(Src->damping, DefaultSrc->damping, 3);
 	Out.Damping.SetNum(3);
@@ -582,7 +588,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsJoint* Src, FMJJointSpec& Out, const mj
 	{
 		Out.Damping[i] = static_cast<double>(Src->damping[i]);
 	}
-	Out.bOverride_Frictionloss = !FMath::IsNearlyEqual(static_cast<double>(Src->frictionloss), static_cast<double>(DefaultSrc->frictionloss), 1e-9);
+	Out.bOverride_Frictionloss = ScalarsDiffer(static_cast<double>(Src->frictionloss), static_cast<double>(DefaultSrc->frictionloss));
 	Out.Frictionloss = static_cast<double>(Src->frictionloss);
 	Out.bOverride_SolrefFriction = ArraysDiffer(Src->solref_friction, DefaultSrc->solref_friction, 2);
 	Out.SolrefFriction.SetNum(2);
@@ -596,7 +602,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsJoint* Src, FMJJointSpec& Out, const mj
 	{
 		Out.SolimpFriction[i] = static_cast<double>(Src->solimp_friction[i]);
 	}
-	Out.bOverride_Group = !FMath::IsNearlyEqual(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group), 1e-9);
+	Out.bOverride_Group = ScalarsDiffer(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group));
 	Out.Group = static_cast<int32>(Src->group);
 	Out.bOverride_bActgravcomp = (Src->actgravcomp != DefaultSrc->actgravcomp);
 	Out.bActgravcomp = (Src->actgravcomp != 0);
@@ -665,7 +671,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsSite* Src, FMJSiteSpec& Out, const mjsS
 	}
 	Out.bOverride_Type = (Src->type != DefaultSrc->type);
 	Out.Type = FromMJ(Src->type);
-	Out.bOverride_Group = !FMath::IsNearlyEqual(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group), 1e-9);
+	Out.bOverride_Group = ScalarsDiffer(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group));
 	Out.Group = static_cast<int32>(Src->group);
 	Out.bOverride_Rgba = ArraysDiffer(Src->rgba, DefaultSrc->rgba, 4);
 	Out.Rgba = FLinearColor(Src->rgba[0], Src->rgba[1], Src->rgba[2], Src->rgba[3]);
@@ -771,11 +777,11 @@ void FMJSpecMarshal::FromMJSpec(const mjsCamera* Src, FMJCameraSpec& Out, const 
 	{
 		Out.Resolution[i] = static_cast<int32>(Src->resolution[i]);
 	}
-	Out.bOverride_Output = !FMath::IsNearlyEqual(static_cast<double>(Src->output), static_cast<double>(DefaultSrc->output), 1e-9);
+	Out.bOverride_Output = ScalarsDiffer(static_cast<double>(Src->output), static_cast<double>(DefaultSrc->output));
 	Out.Output = static_cast<int32>(Src->output);
-	Out.bOverride_Fovy = !FMath::IsNearlyEqual(static_cast<double>(Src->fovy), static_cast<double>(DefaultSrc->fovy), 1e-9);
+	Out.bOverride_Fovy = ScalarsDiffer(static_cast<double>(Src->fovy), static_cast<double>(DefaultSrc->fovy));
 	Out.Fovy = static_cast<double>(bIsDegrees ? static_cast<double>(Src->fovy) : FMath::RadiansToDegrees(static_cast<double>(Src->fovy)));
-	Out.bOverride_Ipd = !FMath::IsNearlyEqual(static_cast<double>(Src->ipd), static_cast<double>(DefaultSrc->ipd), 1e-9);
+	Out.bOverride_Ipd = ScalarsDiffer(static_cast<double>(Src->ipd), static_cast<double>(DefaultSrc->ipd));
 	Out.Ipd = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->ipd)));
 	Out.bOverride_Intrinsic = ArraysDiffer(Src->intrinsic, DefaultSrc->intrinsic, 4);
 	Out.Intrinsic.SetNum(4);
@@ -909,11 +915,11 @@ void FMJSpecMarshal::FromMJSpec(const mjsLight* Src, FMJLightSpec& Out, const mj
 	Out.Type = FromMJ(Src->type);
 	Out.bOverride_bCastshadow = (Src->castshadow != DefaultSrc->castshadow);
 	Out.bCastshadow = (Src->castshadow != 0);
-	Out.bOverride_Bulbradius = !FMath::IsNearlyEqual(static_cast<double>(Src->bulbradius), static_cast<double>(DefaultSrc->bulbradius), 1e-9);
+	Out.bOverride_Bulbradius = ScalarsDiffer(static_cast<double>(Src->bulbradius), static_cast<double>(DefaultSrc->bulbradius));
 	Out.Bulbradius = static_cast<float>(FMJUnitConverter::MToCm(static_cast<double>(Src->bulbradius)));
-	Out.bOverride_Intensity = !FMath::IsNearlyEqual(static_cast<double>(Src->intensity), static_cast<double>(DefaultSrc->intensity), 1e-9);
+	Out.bOverride_Intensity = ScalarsDiffer(static_cast<double>(Src->intensity), static_cast<double>(DefaultSrc->intensity));
 	Out.Intensity = static_cast<float>(Src->intensity);
-	Out.bOverride_Range = !FMath::IsNearlyEqual(static_cast<double>(Src->range), static_cast<double>(DefaultSrc->range), 1e-9);
+	Out.bOverride_Range = ScalarsDiffer(static_cast<double>(Src->range), static_cast<double>(DefaultSrc->range));
 	Out.Range = static_cast<float>(FMJUnitConverter::MToCm(static_cast<double>(Src->range)));
 	Out.bOverride_Attenuation = ArraysDiffer(Src->attenuation, DefaultSrc->attenuation, 3);
 	Out.Attenuation.SetNum(3);
@@ -921,11 +927,11 @@ void FMJSpecMarshal::FromMJSpec(const mjsLight* Src, FMJLightSpec& Out, const mj
 	{
 		Out.Attenuation[i] = static_cast<float>(Src->attenuation[i]);
 	}
-	Out.bOverride_Cutoff = !FMath::IsNearlyEqual(static_cast<double>(Src->cutoff), static_cast<double>(DefaultSrc->cutoff), 1e-9);
+	Out.bOverride_Cutoff = ScalarsDiffer(static_cast<double>(Src->cutoff), static_cast<double>(DefaultSrc->cutoff));
 	Out.Cutoff = static_cast<float>(bIsDegrees ? static_cast<double>(Src->cutoff) : FMath::RadiansToDegrees(static_cast<double>(Src->cutoff)));
-	Out.bOverride_Softness = !FMath::IsNearlyEqual(static_cast<double>(Src->softness), static_cast<double>(DefaultSrc->softness), 1e-9);
+	Out.bOverride_Softness = ScalarsDiffer(static_cast<double>(Src->softness), static_cast<double>(DefaultSrc->softness));
 	Out.Softness = static_cast<float>(Src->softness);
-	Out.bOverride_Exponent = !FMath::IsNearlyEqual(static_cast<double>(Src->exponent), static_cast<double>(DefaultSrc->exponent), 1e-9);
+	Out.bOverride_Exponent = ScalarsDiffer(static_cast<double>(Src->exponent), static_cast<double>(DefaultSrc->exponent));
 	Out.Exponent = static_cast<float>(Src->exponent);
 	Out.bOverride_Ambient = ArraysDiffer(Src->ambient, DefaultSrc->ambient, 3);
 	Out.Ambient.SetNum(3);
@@ -1151,9 +1157,9 @@ void FMJSpecMarshal::FromMJSpec(const mjsActuator* Src, FMJActuatorSpec& Out, co
 	{
 		Out.Dynprm[i] = static_cast<double>(Src->dynprm[i]);
 	}
-	Out.bOverride_Actdim = !FMath::IsNearlyEqual(static_cast<double>(Src->actdim), static_cast<double>(DefaultSrc->actdim), 1e-9);
+	Out.bOverride_Actdim = ScalarsDiffer(static_cast<double>(Src->actdim), static_cast<double>(DefaultSrc->actdim));
 	Out.Actdim = static_cast<int32>(Src->actdim);
-	Out.bOverride_Ctrlspec = !FMath::IsNearlyEqual(static_cast<double>(Src->ctrlspec), static_cast<double>(DefaultSrc->ctrlspec), 1e-9);
+	Out.bOverride_Ctrlspec = ScalarsDiffer(static_cast<double>(Src->ctrlspec), static_cast<double>(DefaultSrc->ctrlspec));
 	Out.Ctrlspec = static_cast<int32>(Src->ctrlspec);
 	Out.bOverride_Velrange = ArraysDiffer(Src->velrange, DefaultSrc->velrange, 2);
 	Out.Velrange.SetNum(2);
@@ -1181,7 +1187,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsActuator* Src, FMJActuatorSpec& Out, co
 	const char* DefStr_refsite = DefaultSrc->refsite ? mjs_getString(DefaultSrc->refsite) : "";
 	Out.Refsite = UTF8_TO_TCHAR(SrcStr_refsite ? SrcStr_refsite : "");
 	Out.bOverride_Refsite = (FCStringAnsi::Strcmp(SrcStr_refsite ? SrcStr_refsite : "", DefStr_refsite ? DefStr_refsite : "") != 0);
-	Out.bOverride_Cranklength = !FMath::IsNearlyEqual(static_cast<double>(Src->cranklength), static_cast<double>(DefaultSrc->cranklength), 1e-9);
+	Out.bOverride_Cranklength = ScalarsDiffer(static_cast<double>(Src->cranklength), static_cast<double>(DefaultSrc->cranklength));
 	Out.Cranklength = static_cast<double>(Src->cranklength);
 	Out.bOverride_Lengthrange = ArraysDiffer(Src->lengthrange, DefaultSrc->lengthrange, 2);
 	Out.Lengthrange.SetNum(2);
@@ -1189,7 +1195,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsActuator* Src, FMJActuatorSpec& Out, co
 	{
 		Out.Lengthrange[i] = static_cast<double>(Src->lengthrange[i]);
 	}
-	Out.bOverride_Inheritrange = !FMath::IsNearlyEqual(static_cast<double>(Src->inheritrange), static_cast<double>(DefaultSrc->inheritrange), 1e-9);
+	Out.bOverride_Inheritrange = ScalarsDiffer(static_cast<double>(Src->inheritrange), static_cast<double>(DefaultSrc->inheritrange));
 	Out.Inheritrange = static_cast<double>(Src->inheritrange);
 	Out.bOverride_Damping = ArraysDiffer(Src->damping, DefaultSrc->damping, 3);
 	Out.Damping.SetNum(3);
@@ -1197,7 +1203,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsActuator* Src, FMJActuatorSpec& Out, co
 	{
 		Out.Damping[i] = static_cast<double>(Src->damping[i]);
 	}
-	Out.bOverride_Armature = !FMath::IsNearlyEqual(static_cast<double>(Src->armature), static_cast<double>(DefaultSrc->armature), 1e-9);
+	Out.bOverride_Armature = ScalarsDiffer(static_cast<double>(Src->armature), static_cast<double>(DefaultSrc->armature));
 	Out.Armature = static_cast<double>(Src->armature);
 	Out.bOverride_Ctrllimited = (Src->ctrllimited != DefaultSrc->ctrllimited);
 	Out.Ctrllimited = FromMJ(Src->ctrllimited);
@@ -1223,13 +1229,13 @@ void FMJSpecMarshal::FromMJSpec(const mjsActuator* Src, FMJActuatorSpec& Out, co
 	{
 		Out.Actrange[i] = static_cast<double>(Src->actrange[i]);
 	}
-	Out.bOverride_Group = !FMath::IsNearlyEqual(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group), 1e-9);
+	Out.bOverride_Group = ScalarsDiffer(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group));
 	Out.Group = static_cast<int32>(Src->group);
-	Out.bOverride_Nsample = !FMath::IsNearlyEqual(static_cast<double>(Src->nsample), static_cast<double>(DefaultSrc->nsample), 1e-9);
+	Out.bOverride_Nsample = ScalarsDiffer(static_cast<double>(Src->nsample), static_cast<double>(DefaultSrc->nsample));
 	Out.Nsample = static_cast<int32>(Src->nsample);
-	Out.bOverride_Interp = !FMath::IsNearlyEqual(static_cast<double>(Src->interp), static_cast<double>(DefaultSrc->interp), 1e-9);
+	Out.bOverride_Interp = ScalarsDiffer(static_cast<double>(Src->interp), static_cast<double>(DefaultSrc->interp));
 	Out.Interp = static_cast<int32>(Src->interp);
-	Out.bOverride_Delay = !FMath::IsNearlyEqual(static_cast<double>(Src->delay), static_cast<double>(DefaultSrc->delay), 1e-9);
+	Out.bOverride_Delay = ScalarsDiffer(static_cast<double>(Src->delay), static_cast<double>(DefaultSrc->delay));
 	Out.Delay = static_cast<double>(Src->delay);
 }
 
@@ -1323,17 +1329,17 @@ void FMJSpecMarshal::FromMJSpec(const mjsSensor* Src, FMJSensorSpec& Out, const 
 	Out.Datatype = FromMJ(Src->datatype);
 	Out.bOverride_Needstage = (Src->needstage != DefaultSrc->needstage);
 	Out.Needstage = FromMJ(Src->needstage);
-	Out.bOverride_Dim = !FMath::IsNearlyEqual(static_cast<double>(Src->dim), static_cast<double>(DefaultSrc->dim), 1e-9);
+	Out.bOverride_Dim = ScalarsDiffer(static_cast<double>(Src->dim), static_cast<double>(DefaultSrc->dim));
 	Out.Dim = static_cast<int32>(Src->dim);
-	Out.bOverride_Cutoff = !FMath::IsNearlyEqual(static_cast<double>(Src->cutoff), static_cast<double>(DefaultSrc->cutoff), 1e-9);
+	Out.bOverride_Cutoff = ScalarsDiffer(static_cast<double>(Src->cutoff), static_cast<double>(DefaultSrc->cutoff));
 	Out.Cutoff = static_cast<double>(Src->cutoff);
-	Out.bOverride_Noise = !FMath::IsNearlyEqual(static_cast<double>(Src->noise), static_cast<double>(DefaultSrc->noise), 1e-9);
+	Out.bOverride_Noise = ScalarsDiffer(static_cast<double>(Src->noise), static_cast<double>(DefaultSrc->noise));
 	Out.Noise = static_cast<double>(Src->noise);
-	Out.bOverride_Nsample = !FMath::IsNearlyEqual(static_cast<double>(Src->nsample), static_cast<double>(DefaultSrc->nsample), 1e-9);
+	Out.bOverride_Nsample = ScalarsDiffer(static_cast<double>(Src->nsample), static_cast<double>(DefaultSrc->nsample));
 	Out.Nsample = static_cast<int32>(Src->nsample);
-	Out.bOverride_Interp = !FMath::IsNearlyEqual(static_cast<double>(Src->interp), static_cast<double>(DefaultSrc->interp), 1e-9);
+	Out.bOverride_Interp = ScalarsDiffer(static_cast<double>(Src->interp), static_cast<double>(DefaultSrc->interp));
 	Out.Interp = static_cast<int32>(Src->interp);
-	Out.bOverride_Delay = !FMath::IsNearlyEqual(static_cast<double>(Src->delay), static_cast<double>(DefaultSrc->delay), 1e-9);
+	Out.bOverride_Delay = ScalarsDiffer(static_cast<double>(Src->delay), static_cast<double>(DefaultSrc->delay));
 	Out.Delay = static_cast<double>(Src->delay);
 	Out.bOverride_Interval = ArraysDiffer(Src->interval, DefaultSrc->interval, 2);
 	Out.Interval.SetNum(2);
@@ -1477,7 +1483,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsTendon* Src, FMJTendonSpec& Out, const 
 	{
 		Out.Springlength[i] = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->springlength[i])));
 	}
-	Out.bOverride_Springyield = !FMath::IsNearlyEqual(static_cast<double>(Src->springyield), static_cast<double>(DefaultSrc->springyield), 1e-9);
+	Out.bOverride_Springyield = ScalarsDiffer(static_cast<double>(Src->springyield), static_cast<double>(DefaultSrc->springyield));
 	Out.Springyield = static_cast<double>(Src->springyield);
 	Out.bOverride_Damping = ArraysDiffer(Src->damping, DefaultSrc->damping, 3);
 	Out.Damping.SetNum(3);
@@ -1485,7 +1491,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsTendon* Src, FMJTendonSpec& Out, const 
 	{
 		Out.Damping[i] = static_cast<double>(Src->damping[i]);
 	}
-	Out.bOverride_Frictionloss = !FMath::IsNearlyEqual(static_cast<double>(Src->frictionloss), static_cast<double>(DefaultSrc->frictionloss), 1e-9);
+	Out.bOverride_Frictionloss = ScalarsDiffer(static_cast<double>(Src->frictionloss), static_cast<double>(DefaultSrc->frictionloss));
 	Out.Frictionloss = static_cast<double>(Src->frictionloss);
 	Out.bOverride_SolrefFriction = ArraysDiffer(Src->solref_friction, DefaultSrc->solref_friction, 2);
 	Out.SolrefFriction.SetNum(2);
@@ -1499,7 +1505,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsTendon* Src, FMJTendonSpec& Out, const 
 	{
 		Out.SolimpFriction[i] = static_cast<double>(Src->solimp_friction[i]);
 	}
-	Out.bOverride_Armature = !FMath::IsNearlyEqual(static_cast<double>(Src->armature), static_cast<double>(DefaultSrc->armature), 1e-9);
+	Out.bOverride_Armature = ScalarsDiffer(static_cast<double>(Src->armature), static_cast<double>(DefaultSrc->armature));
 	Out.Armature = static_cast<double>(Src->armature);
 	Out.bOverride_Limited = (Src->limited != DefaultSrc->limited);
 	Out.Limited = FromMJ(Src->limited);
@@ -1517,7 +1523,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsTendon* Src, FMJTendonSpec& Out, const 
 	{
 		Out.Actfrcrange[i] = static_cast<double>(Src->actfrcrange[i]);
 	}
-	Out.bOverride_Margin = !FMath::IsNearlyEqual(static_cast<double>(Src->margin), static_cast<double>(DefaultSrc->margin), 1e-9);
+	Out.bOverride_Margin = ScalarsDiffer(static_cast<double>(Src->margin), static_cast<double>(DefaultSrc->margin));
 	Out.Margin = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->margin)));
 	Out.bOverride_SolrefLimit = ArraysDiffer(Src->solref_limit, DefaultSrc->solref_limit, 2);
 	Out.SolrefLimit.SetNum(2);
@@ -1531,11 +1537,11 @@ void FMJSpecMarshal::FromMJSpec(const mjsTendon* Src, FMJTendonSpec& Out, const 
 	{
 		Out.SolimpLimit[i] = static_cast<double>(Src->solimp_limit[i]);
 	}
-	Out.bOverride_Width = !FMath::IsNearlyEqual(static_cast<double>(Src->width), static_cast<double>(DefaultSrc->width), 1e-9);
+	Out.bOverride_Width = ScalarsDiffer(static_cast<double>(Src->width), static_cast<double>(DefaultSrc->width));
 	Out.Width = static_cast<double>(FMJUnitConverter::MToCm(static_cast<double>(Src->width)));
 	Out.bOverride_Rgba = ArraysDiffer(Src->rgba, DefaultSrc->rgba, 4);
 	Out.Rgba = FLinearColor(Src->rgba[0], Src->rgba[1], Src->rgba[2], Src->rgba[3]);
-	Out.bOverride_Group = !FMath::IsNearlyEqual(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group), 1e-9);
+	Out.bOverride_Group = ScalarsDiffer(static_cast<double>(Src->group), static_cast<double>(DefaultSrc->group));
 	Out.Group = static_cast<int32>(Src->group);
 }
 
@@ -1609,7 +1615,7 @@ void FMJSpecMarshal::ToMJSpec(const FMJTextureSpec& In, mjsTexture* Dst, bool bI
 	if (In.bOverride_Gridlayout)
 	{
 		std::memset(Dst->gridlayout, 0, 12);
-		FCStringAnsi::Strncpy(Dst->gridlayout, TCHAR_TO_UTF8(*In.Gridlayout), 12);
+		{ FTCHARToUTF8 Utf8(*In.Gridlayout); std::memcpy(Dst->gridlayout, Utf8.Get(), FMath::Min(Utf8.Length(), 12)); }
 	}
 	if (In.bOverride_bHflip)
 	{
@@ -1660,13 +1666,13 @@ void FMJSpecMarshal::FromMJSpec(const mjsTexture* Src, FMJTextureSpec& Out, cons
 	{
 		Out.Markrgb[i] = static_cast<double>(Src->markrgb[i]);
 	}
-	Out.bOverride_Random = !FMath::IsNearlyEqual(static_cast<double>(Src->random), static_cast<double>(DefaultSrc->random), 1e-9);
+	Out.bOverride_Random = ScalarsDiffer(static_cast<double>(Src->random), static_cast<double>(DefaultSrc->random));
 	Out.Random = static_cast<double>(Src->random);
-	Out.bOverride_Height = !FMath::IsNearlyEqual(static_cast<double>(Src->height), static_cast<double>(DefaultSrc->height), 1e-9);
+	Out.bOverride_Height = ScalarsDiffer(static_cast<double>(Src->height), static_cast<double>(DefaultSrc->height));
 	Out.Height = static_cast<int32>(Src->height);
-	Out.bOverride_Width = !FMath::IsNearlyEqual(static_cast<double>(Src->width), static_cast<double>(DefaultSrc->width), 1e-9);
+	Out.bOverride_Width = ScalarsDiffer(static_cast<double>(Src->width), static_cast<double>(DefaultSrc->width));
 	Out.Width = static_cast<int32>(Src->width);
-	Out.bOverride_Nchannel = !FMath::IsNearlyEqual(static_cast<double>(Src->nchannel), static_cast<double>(DefaultSrc->nchannel), 1e-9);
+	Out.bOverride_Nchannel = ScalarsDiffer(static_cast<double>(Src->nchannel), static_cast<double>(DefaultSrc->nchannel));
 	Out.Nchannel = static_cast<int32>(Src->nchannel);
 	Out.bOverride_Gridsize = ArraysDiffer(Src->gridsize, DefaultSrc->gridsize, 2);
 	Out.Gridsize.SetNum(2);
@@ -1674,8 +1680,8 @@ void FMJSpecMarshal::FromMJSpec(const mjsTexture* Src, FMJTextureSpec& Out, cons
 	{
 		Out.Gridsize[i] = static_cast<int32>(Src->gridsize[i]);
 	}
-	Out.Gridlayout = UTF8_TO_TCHAR(Src->gridlayout);
-	Out.bOverride_Gridlayout = (FCStringAnsi::Strncmp(Src->gridlayout, DefaultSrc->gridlayout, 12) != 0);
+	{ int32 Len = 0; while (Len < 12 && Src->gridlayout[Len] != '\0') { ++Len; } Out.Gridlayout = FString::ConstructFromPtrSize(UTF8_TO_TCHAR(Src->gridlayout), Len); }
+	Out.bOverride_Gridlayout = (std::memcmp(Src->gridlayout, DefaultSrc->gridlayout, 12) != 0);
 	Out.bOverride_bHflip = (Src->hflip != DefaultSrc->hflip);
 	Out.bHflip = (Src->hflip != 0);
 	Out.bOverride_bVflip = (Src->vflip != DefaultSrc->vflip);
@@ -1746,17 +1752,17 @@ void FMJSpecMarshal::FromMJSpec(const mjsMaterial* Src, FMJMaterialSpec& Out, co
 	{
 		Out.Texrepeat[i] = static_cast<float>(Src->texrepeat[i]);
 	}
-	Out.bOverride_Emission = !FMath::IsNearlyEqual(static_cast<double>(Src->emission), static_cast<double>(DefaultSrc->emission), 1e-9);
+	Out.bOverride_Emission = ScalarsDiffer(static_cast<double>(Src->emission), static_cast<double>(DefaultSrc->emission));
 	Out.Emission = static_cast<float>(Src->emission);
-	Out.bOverride_Specular = !FMath::IsNearlyEqual(static_cast<double>(Src->specular), static_cast<double>(DefaultSrc->specular), 1e-9);
+	Out.bOverride_Specular = ScalarsDiffer(static_cast<double>(Src->specular), static_cast<double>(DefaultSrc->specular));
 	Out.Specular = static_cast<float>(Src->specular);
-	Out.bOverride_Shininess = !FMath::IsNearlyEqual(static_cast<double>(Src->shininess), static_cast<double>(DefaultSrc->shininess), 1e-9);
+	Out.bOverride_Shininess = ScalarsDiffer(static_cast<double>(Src->shininess), static_cast<double>(DefaultSrc->shininess));
 	Out.Shininess = static_cast<float>(Src->shininess);
-	Out.bOverride_Reflectance = !FMath::IsNearlyEqual(static_cast<double>(Src->reflectance), static_cast<double>(DefaultSrc->reflectance), 1e-9);
+	Out.bOverride_Reflectance = ScalarsDiffer(static_cast<double>(Src->reflectance), static_cast<double>(DefaultSrc->reflectance));
 	Out.Reflectance = static_cast<float>(Src->reflectance);
-	Out.bOverride_Metallic = !FMath::IsNearlyEqual(static_cast<double>(Src->metallic), static_cast<double>(DefaultSrc->metallic), 1e-9);
+	Out.bOverride_Metallic = ScalarsDiffer(static_cast<double>(Src->metallic), static_cast<double>(DefaultSrc->metallic));
 	Out.Metallic = static_cast<float>(Src->metallic);
-	Out.bOverride_Roughness = !FMath::IsNearlyEqual(static_cast<double>(Src->roughness), static_cast<double>(DefaultSrc->roughness), 1e-9);
+	Out.bOverride_Roughness = ScalarsDiffer(static_cast<double>(Src->roughness), static_cast<double>(DefaultSrc->roughness));
 	Out.Roughness = static_cast<float>(Src->roughness);
 	Out.bOverride_Rgba = ArraysDiffer(Src->rgba, DefaultSrc->rgba, 4);
 	Out.Rgba = FLinearColor(Src->rgba[0], Src->rgba[1], Src->rgba[2], Src->rgba[3]);
@@ -1830,7 +1836,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsMesh* Src, FMJMeshSpec& Out, const mjsM
 	Out.bSmoothnormal = (Src->smoothnormal != 0);
 	Out.bOverride_bNeedsdf = (Src->needsdf != DefaultSrc->needsdf);
 	Out.bNeedsdf = (Src->needsdf != 0);
-	Out.bOverride_Maxhullvert = !FMath::IsNearlyEqual(static_cast<double>(Src->maxhullvert), static_cast<double>(DefaultSrc->maxhullvert), 1e-9);
+	Out.bOverride_Maxhullvert = ScalarsDiffer(static_cast<double>(Src->maxhullvert), static_cast<double>(DefaultSrc->maxhullvert));
 	Out.Maxhullvert = static_cast<int32>(Src->maxhullvert);
 	Out.Usernode.Empty();
 	if (Src->usernode)
@@ -1847,7 +1853,7 @@ void FMJSpecMarshal::FromMJSpec(const mjsMesh* Src, FMJMeshSpec& Out, const mjsM
 	const char* DefStr_material = DefaultSrc->material ? mjs_getString(DefaultSrc->material) : "";
 	Out.Material = UTF8_TO_TCHAR(SrcStr_material ? SrcStr_material : "");
 	Out.bOverride_Material = (FCStringAnsi::Strcmp(SrcStr_material ? SrcStr_material : "", DefStr_material ? DefStr_material : "") != 0);
-	Out.bOverride_OctreeMaxdepth = !FMath::IsNearlyEqual(static_cast<double>(Src->octree_maxdepth), static_cast<double>(DefaultSrc->octree_maxdepth), 1e-9);
+	Out.bOverride_OctreeMaxdepth = ScalarsDiffer(static_cast<double>(Src->octree_maxdepth), static_cast<double>(DefaultSrc->octree_maxdepth));
 	Out.OctreeMaxdepth = static_cast<int32>(Src->octree_maxdepth);
 }
 
@@ -1887,6 +1893,13 @@ FString FMJSpecMarshal::ApplyActuatorShortcut(mjsActuator* Dst, EMJActuatorShort
 void FMJSpecMarshal::ExtractActuatorShortcut(const mjsActuator* Src, EMJActuatorShortcut& OutShortcut, FMJActuatorShortcutParams& OutParams)
 {
 	if (!Src) { return; }
+	OutParams = FMJActuatorShortcutParams();
+	OutParams.bUseKv = false;
+	OutParams.Kv = 0.0;
+	OutParams.bUseDampRatio = false;
+	OutParams.DampRatio = 0.0;
+	OutParams.bUseTimeConst = false;
+	OutParams.TimeConst = 0.0;
 	switch (Src->type)
 	{
 	case mjACTUATOR_MOTOR: OutShortcut = EMJActuatorShortcut::Motor; break;
@@ -1895,7 +1908,7 @@ void FMJSpecMarshal::ExtractActuatorShortcut(const mjsActuator* Src, EMJActuator
 		OutParams.Kp = Src->gainprm[0];
 		if (Src->biasprm[2] < 0.0) { OutParams.bUseKv = true; OutParams.Kv = -Src->biasprm[2]; OutParams.bUseDampRatio = false; }
 		else if (Src->biasprm[2] > 0.0) { OutParams.bUseDampRatio = true; OutParams.DampRatio = Src->biasprm[2]; OutParams.bUseKv = false; }
-		if (Src->dynprm[0] > 0.0) { OutParams.bUseTimeConst = true; OutParams.TimeConst = Src->dynprm[0]; }
+		if (Src->dyntype != mjDYN_NONE && Src->dynprm[0] > 0.0) { OutParams.bUseTimeConst = true; OutParams.TimeConst = Src->dynprm[0]; }
 		OutParams.InheritRange = Src->inheritrange;
 		break;
 	case mjACTUATOR_VELOCITY:

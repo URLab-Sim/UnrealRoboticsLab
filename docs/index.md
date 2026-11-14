@@ -48,8 +48,7 @@ evaluating and visualising here.
   Python, for scripted control and running policies.
 - **[Architecture](architecture/intended_design.md)** explains how the pieces fit
   together under the hood.
-- **[The Component Model](concepts/model.md)** explains why the Unreal
-  components *are* the MuJoCo model.
+- **[The Component Model](concepts/model.md)** explains the `MuJoCoSpec` (`mjSpec`) component hierarchy and asset library.
 
 </div>
 

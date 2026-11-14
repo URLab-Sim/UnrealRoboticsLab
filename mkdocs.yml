@@ -117,7 +117,7 @@ nav:
     - MJCF Support: concepts/mjcf_support.md
   - Contributing:
     - Building from Source: contributing/building.md
-    - Regenerating the Profile: contributing/generation.md
+    - Regenerating MuJoCoSpec: contributing/generation.md
     - Bumping MuJoCo: contributing/bumping_mujoco.md
     - mjSpec Architecture: architecture_mjspec.md
   - Troubleshooting: troubleshooting.md

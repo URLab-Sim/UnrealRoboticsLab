@@ -7,9 +7,11 @@
 #include "Transport/LockedLatestFrame.h"
 #include "Transport/CameraStreamFrameCodec.h"
 #include "Transport/ZmqContext.h"
+#include "Utils/URLabLogging.h"
 
 #include <condition_variable>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
 
@@ -26,6 +28,16 @@ namespace
 FString MintId()
 {
 	return FGuid::NewGuid().ToString(EGuidFormats::Digits).ToLower();
+}
+
+/** Late ZMQ subscribers receive the newest frame within this interval even when idle. */
+constexpr std::chrono::milliseconds ZmqRepeatInterval(1000);
+
+/** Upper bound on the MessagePack envelope around the pixel payload. */
+int64 FrameEnvelopeBytes(const FURLabCameraStreamConfiguration& Configuration)
+{
+	return 1024 + 8 * (static_cast<int64>(Configuration.CameraName.Len())
+		+ Configuration.SourceRevision.Len());
 }
 
 bool IsValidConfiguration(const FURLabCameraStreamConfiguration& Configuration)
@@ -125,11 +137,6 @@ bool BuildWireFrame(const FPendingCameraFrame& Pending, uint64 Sequence,
 		Out.Pixels.Reserve(static_cast<int32>(PixelCount * 4));
 		for (float Cm : Frame.Depth)
 		{
-			if (FMath::IsNaN(Cm) || Cm < 0.0f)
-			{
-				OutError = TEXT("completed depth frame contains an invalid sample");
-				return false;
-			}
 			const float Metres = (FMath::IsFinite(Cm)
 				? FMath::Clamp(Cm, Pending.DepthNearCm, Pending.DepthFarCm)
 				: Pending.DepthFarCm) / 100.0f;
@@ -168,6 +175,8 @@ struct FURLabCameraStreamProducer::FImpl
 	std::mutex PendingMutex;
 	std::condition_variable Wakeup;
 	TSharedPtr<FPendingCameraFrame, ESPMode::ThreadSafe> Pending;
+	TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> LatestEncoded;
+	uint64 DropReportedGeneration = 0;
 	std::atomic<bool> bStopped{false};
 	bool bReady = false;
 	FString StartupError;
@@ -203,19 +212,38 @@ struct FURLabCameraStreamProducer::FImpl
 		for (;;)
 		{
 			TSharedPtr<FPendingCameraFrame, ESPMode::ThreadSafe> Candidate;
+			bool bWoken = false;
 			{
 				std::unique_lock<std::mutex> Lock(PendingMutex);
-				Wakeup.wait(Lock, [this] { return bStopped.load() || Pending.IsValid(); });
+				bWoken = Wakeup.wait_for(Lock, ZmqRepeatInterval,
+					[this] { return bStopped.load() || Pending.IsValid(); });
 				if (bStopped.load()) break;
 				Candidate = MoveTemp(Pending);
+			}
+			if (!bWoken)
+			{
+				TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> Repeat;
+				{
+					FScopeLock StateLock(&StateMutex);
+					Repeat = LatestEncoded;
+				}
+				if (Repeat.IsValid()) SendZmq(*Repeat);
+				continue;
 			}
 			FURLabCameraStreamFrame Wire;
 			TArray<uint8> Encoded;
 			FString Error;
-			if (!BuildWireFrame(*Candidate, Candidate->Sequence, Wire, Error)
-				|| !FURLabCameraStreamFrameCodec::Encode(Wire, Encoded, Error)
-				|| Encoded.Num() > Capacity)
+			if (BuildWireFrame(*Candidate, Candidate->Sequence, Wire, Error)
+				&& FURLabCameraStreamFrameCodec::Encode(Wire, Encoded, Error)
+				&& Encoded.Num() > static_cast<int64>(Capacity))
 			{
+				Error = FString::Printf(
+					TEXT("encoded camera frame of %d bytes exceeds the %u-byte stream capacity"),
+					Encoded.Num(), Capacity);
+			}
+			if (!Error.IsEmpty())
+			{
+				ReportDrop(Candidate->Descriptor, Error);
 				continue;
 			}
 			TSharedRef<const TArray<uint8>, ESPMode::ThreadSafe> Snapshot =
@@ -223,14 +251,30 @@ struct FURLabCameraStreamProducer::FImpl
 			FScopeLock StateLock(&StateMutex);
 			if (Candidate->Descriptor.StreamGeneration != Descriptor.StreamGeneration)
 				continue;
-			if (ShmWriter) ShmWriter->Submit(Snapshot, Error);
-			if (ZmqSocket && zmq_send(ZmqSocket, ZmqTopic.GetData(), ZmqTopic.Num(),
-				ZMQ_SNDMORE | ZMQ_DONTWAIT) >= 0)
-			{
-				zmq_send(ZmqSocket, Snapshot->GetData(), Snapshot->Num(), ZMQ_DONTWAIT);
-			}
+			if (ShmWriter && !ShmWriter->Submit(Snapshot, Error))
+				ReportDrop(Candidate->Descriptor, Error);
+			if (ZmqSocket) LatestEncoded = Snapshot;
+			SendZmq(*Snapshot);
 		}
 		CloseSocket();
+	}
+
+	void SendZmq(const TArray<uint8>& Frame)
+	{
+		if (ZmqSocket && zmq_send(ZmqSocket, ZmqTopic.GetData(), ZmqTopic.Num(),
+			ZMQ_SNDMORE | ZMQ_DONTWAIT) >= 0)
+		{
+			zmq_send(ZmqSocket, Frame.GetData(), Frame.Num(), ZMQ_DONTWAIT);
+		}
+	}
+
+	void ReportDrop(const FURLabCameraStreamDescriptor& Dropped, const FString& Error)
+	{
+		if (DropReportedGeneration == Dropped.StreamGeneration) return;
+		DropReportedGeneration = Dropped.StreamGeneration;
+		UE_LOG(LogURLabNet, Warning,
+			TEXT("[URLabCameraStream] camera '%s' generation %llu dropped a frame: %s"),
+			*Dropped.CameraName, Dropped.StreamGeneration, *Error);
 	}
 
 	void Ready(FString Error)
@@ -321,6 +365,16 @@ bool FURLabCameraStreamProducer::CommitCamera(
 		OutError = TEXT("camera-stream configuration is invalid");
 		return false;
 	}
+	const int64 FrameBytes = static_cast<int64>(Configuration.StrideBytes) * Configuration.Height
+		+ FrameEnvelopeBytes(Configuration);
+	if (FrameBytes > static_cast<int64>(Impl->Capacity))
+	{
+		OutError = FString::Printf(TEXT("camera-stream %s %dx%d frame needs %lld bytes but the ")
+			TEXT("stream capacity is %u bytes; reduce the resolution"),
+			*Configuration.Encoding, Configuration.Width, Configuration.Height,
+			FrameBytes, Impl->Capacity);
+		return false;
+	}
 	FScopeLock Lock(&Impl->StateMutex);
 	if (!Matches(Impl->Descriptor, Configuration)
 		|| Impl->DepthNearCm != Configuration.DepthNearCm
@@ -336,6 +390,7 @@ bool FURLabCameraStreamProducer::CommitCamera(
 			Impl->Pending.Reset();
 		}
 		if (Impl->ShmWriter && !Impl->ShmWriter->Clear(OutError)) return false;
+		Impl->LatestEncoded.Reset();
 		FURLabCameraStreamDescriptor Next = Impl->Descriptor;
 		Next.SourceRevision = Configuration.SourceRevision;
 		Next.CameraName = Configuration.CameraName;

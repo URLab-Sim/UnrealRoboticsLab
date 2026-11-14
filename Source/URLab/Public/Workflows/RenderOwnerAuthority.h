@@ -227,6 +227,8 @@ private:
 	bool IsExactScope(const FURLabRenderOwnerSessionScopePtr& Scope) const;
 	bool IsExactProof(const FURLabRenderOwnerProof& Proof) const;
 	bool IsExpiredAt(double NowSeconds) const;
+	/** Authorised use keeps the lease alive for its last granted TTL. */
+	void ExtendLease(double NowSeconds);
 	FURLabRenderOwnerProof MakeProof() const;
 	FURLabRenderOwnerStatus BuildStatusWithoutClock() const;
 	FURLabRenderOwnerStatus BuildStatusAt(double NowSeconds) const;
@@ -243,5 +245,6 @@ private:
 	uint64 AttachmentGeneration = 0;
 	FString ActiveOpaqueToken;
 	double LeaseDeadlineSeconds = 0.0;
+	double LeaseTtlSeconds = DefaultLeaseSeconds;
 	FURLabRenderOwnerRetirementToken ActiveRetirement;
 };

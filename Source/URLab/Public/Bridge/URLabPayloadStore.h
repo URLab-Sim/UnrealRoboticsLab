@@ -13,15 +13,15 @@
  */
 struct URLAB_API FURLabPayloadStoreLimits
 {
-	int64 MaxBlobBytes = 64ll * 1024 * 1024;
-	// Leaves room for a descriptor/envelope under the existing 256 KiB command reply cap.
-	int32 MaxChunkBytes = 128 * 1024;
-	int32 MaxChunksPerBlob = 4096;
-	int64 MaxSessionBytes = 128ll * 1024 * 1024;
-	int64 MaxGlobalBytes = 512ll * 1024 * 1024;
-	int32 MaxBlobCount = 256;
-	int32 MaxSessionBlobCount = 64;
-	int32 MaxSessionPhysicalObjectCount = 64;
+	int64 MaxBlobBytes = 1024ll * 1024 * 1024;
+	// Leaves room for a descriptor/envelope under the 64 MiB command reply cap.
+	int32 MaxChunkBytes = 62 * 1024 * 1024;
+	int32 MaxChunksPerBlob = 16384;
+	int64 MaxSessionBytes = 8192ll * 1024 * 1024;
+	int64 MaxGlobalBytes = 16384ll * 1024 * 1024;
+	int32 MaxBlobCount = 4096;
+	int32 MaxSessionBlobCount = 1024;
+	int32 MaxSessionPhysicalObjectCount = 4096;
 	int32 MaxActiveSessions = 16;
 	double StagingTtlSeconds = 300.0;
 	double SealedTtlSeconds = 300.0;
@@ -172,6 +172,7 @@ private:
 };
 
 using FURLabPayloadProducerPtr = TSharedPtr<FURLabPayloadProducer, ESPMode::ThreadSafe>;
+using FURLabPayloadFill = TFunctionRef<bool(TArrayView<uint8>, FString&)>;
 
 /** Immutable network bytes or retained sealed-file backing. The pin itself is read authority. */
 class URLAB_API FURLabImmutablePayload
@@ -294,6 +295,9 @@ public:
 		FURLabStoredPayloadDescriptor& OutDescriptor, FURLabPayloadPin& OutPin);
 	FURLabPayloadStoreStatus SealProduced(const FURLabPayloadOwner& Owner,
 		const FURLabPayloadProducerPtr& Producer, TArray<uint8>&& Bytes,
+		FURLabStoredPayloadDescriptor& OutDescriptor, FURLabPayloadPin& OutPin);
+	FURLabPayloadStoreStatus SealProducedWithFill(const FURLabPayloadOwner& Owner,
+		const FURLabPayloadProducerPtr& Producer, FURLabPayloadFill Fill,
 		FURLabStoredPayloadDescriptor& OutDescriptor, FURLabPayloadPin& OutPin);
 
 	FURLabPayloadStoreStatus Pin(const FURLabPayloadOwner& Owner, const FString& BlobId,

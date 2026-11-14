@@ -15,11 +15,19 @@ namespace
 {
 /** See SetUnboundForTest. */
 bool GUnboundForTest = false;
+
+/** See SetIsolatedEndpointForTest. */
+FString GIsolatedEndpointForTest;
 } // namespace
 
 void UURLabBridgeSubsystem::SetUnboundForTest(bool bUnbound)
 {
 	GUnboundForTest = bUnbound;
+}
+
+void UURLabBridgeSubsystem::SetIsolatedEndpointForTest(const FString& Endpoint)
+{
+	GIsolatedEndpointForTest = Endpoint;
 }
 
 UURLabBridgeServer* UURLabBridgeSubsystem::EnsureFor(UWorld* World)
@@ -47,7 +55,8 @@ UURLabBridgeServer* UURLabBridgeSubsystem::EnsureServer()
 	// The editor's bridge outlives PIE, so it is re-resolved every time rather than
 	// cached: the editor subsystem may have stopped and replaced it between cycles,
 	// and a stale pointer here would have this world talking to a dead dispatcher.
-	if (!bOwnsServer && !GUnboundForTest)
+	const bool bWorldOwnedForTest = GUnboundForTest || !GIsolatedEndpointForTest.IsEmpty();
+	if (!bOwnsServer && !bWorldOwnedForTest)
 	{
 		if (UURLabBridgeServer* Editor = URLabBridgeProvider::ResolveEditorServer())
 		{
@@ -67,10 +76,13 @@ UURLabBridgeServer* UURLabBridgeSubsystem::EnsureServer()
 	Server = NewObject<UURLabBridgeServer>(this, TEXT("BridgeServer"));
 	bOwnsServer = true;
 	const FURLabBridgeServerConfig& Config = Server->ResolveInstanceConfig();
-	const FString StepEndpoint = GUnboundForTest
-								 ? FString()
-								 : FString::Printf(TEXT("tcp://%s:%d"),
-									   *Config.BindAddress, Config.StepPort);
+	FString StepEndpoint;
+	if (!GUnboundForTest)
+	{
+		StepEndpoint = !GIsolatedEndpointForTest.IsEmpty()
+			? GIsolatedEndpointForTest
+			: FString::Printf(TEXT("tcp://%s:%d"), *Config.BindAddress, Config.StepPort);
+	}
 	Server->Start(StepEndpoint);
 	UE_LOG(LogURLab, Log,
 		TEXT("[BridgeSubsystem] bridge up on '%s' (no manager required)"), *StepEndpoint);

@@ -33,4 +33,4 @@ if [ ! -d "$protospec_root/protospec_gen" ]; then
 fi
 
 cd "$protospec_root"
-exec uv run python -m protospec_gen.emit_ue --out "$urlab_root" ${check:+$check}
+exec uv run --frozen python -m protospec_gen.emit_ue --out "$urlab_root" ${check:+$check}

@@ -2,7 +2,7 @@
 
 #include "Bridge/RenderSourceIngress.h"
 
-#include "Containers/ContainerAllocationPolicies.h"
+#include "Misc/ScopeExit.h"
 #include "Utils/AssetCache.h"
 
 namespace
@@ -12,13 +12,6 @@ struct FPinnedInput
 	FString Name;
 	FURLabPayloadPin Pin;
 	FURLabStoredPayloadDescriptor Descriptor;
-};
-
-struct FChargedSource
-{
-	// Reverse destruction is load-bearing: arrays release before their quota handles.
-	TArray<FURLabPayloadPhysicalReservationPtr> Reservations;
-	FMjModelSourcePayload Source;
 };
 
 bool Fail(FString& OutError, const FString& Message)
@@ -56,20 +49,6 @@ bool PinExact(FURLabPayloadStore& Store, const FURLabPayloadOwner& Owner,
 	Out.Name = Name;
 	Out.Pin = MoveTemp(Pin);
 	Out.Descriptor = MoveTemp(Descriptor);
-	return true;
-}
-
-bool ReserveDestination(FURLabPayloadStore& Store, const FURLabPayloadOwner& Owner,
-	int64 ByteLength, FURLabPayloadPhysicalReservationPtr& OutReservation,
-	int32& OutCapacity, FString& OutError)
-{
-	if (ByteLength <= 0 || ByteLength > MAX_int32)
-		return Fail(OutError, TEXT("source payload is not representable as a TArray"));
-	OutCapacity = DefaultCalculateSlackReserve<int32>(static_cast<int32>(ByteLength),
-		sizeof(uint8), true, alignof(uint8));
-	const FURLabPayloadStoreStatus Status = Store.ReservePhysicalCapacity(
-		Owner, OutCapacity, OutReservation);
-	if (!Status) return Fail(OutError, Status.Message);
 	return true;
 }
 
@@ -114,8 +93,16 @@ bool FURLabRenderSourceIngress::Prepare(
 	if (!Store || Owner.BootId.IsEmpty() || Owner.SessionId.IsEmpty()
 		|| !Owner.Session || SceneRevision.IsEmpty())
 		return Fail(OutError, TEXT("source ingress requires store, owner, and scene revision"));
-	if (Request.Label.Len() > MaxLabelChars || Request.Assets.Num() > MaxSourceRefs - 1)
-		return Fail(OutError, TEXT("source label or reference count exceeds its bound"));
+	bool bPrepared = false;
+	ON_SCOPE_EXIT
+	{
+		if (!bPrepared) ReleaseReferencedPayloads(*Store, Owner, Request);
+	};
+	if (Request.Label.Len() > MaxLabelChars)
+		return Fail(OutError, TEXT("source label exceeds its bound"));
+	if (Request.Assets.Num() > MaxAssets)
+		return Fail(OutError, FString::Printf(TEXT("source has %d assets; at most %d are accepted"),
+			Request.Assets.Num(), MaxAssets));
 	if (Request.Kind != EMjModelSourceKind::Mjb
 		&& Request.Kind != EMjModelSourceKind::Mjz
 		&& Request.Kind != EMjModelSourceKind::XmlWithAssets)
@@ -155,33 +142,38 @@ bool FURLabRenderSourceIngress::Prepare(
 	if (AggregateBytes > Limits.MaxSessionBytes || Inputs.Num() > Limits.MaxSessionBlobCount)
 		return Fail(OutError, TEXT("source aggregate exceeds payload-store session bounds"));
 
-	FChargedSource Charged;
-	Charged.Source.Kind = Request.Kind;
-	Charged.Source.Label = Request.Label;
-	Charged.Reservations.Reserve(Inputs.Num());
-	for (const FPinnedInput& Input : Inputs)
-	{
-		FURLabPayloadPhysicalReservationPtr Reservation;
-		int32 Capacity = 0;
-		if (!ReserveDestination(*Store, Owner, Input.Pin->Num(), Reservation,
-			Capacity, OutError)) return false;
-		Charged.Reservations.Add(MoveTemp(Reservation));
-		(void)Capacity;
-	}
-
-	Charged.Source.PrimaryBytes.Reserve(static_cast<int32>(Inputs[0].Pin->Num()));
-	if (!CopyPinned(*Store, Inputs[0], Charged.Source.PrimaryBytes, OutError)) return false;
+	FMjModelSourcePayload Source;
+	Source.Kind = Request.Kind;
+	Source.Label = Request.Label;
+	if (!CopyPinned(*Store, Inputs[0], Source.PrimaryBytes, OutError)) return false;
 	for (int32 Index = 1; Index < Inputs.Num(); ++Index)
 	{
 		TArray<uint8> Bytes;
-		Bytes.Reserve(static_cast<int32>(Inputs[Index].Pin->Num()));
 		if (!CopyPinned(*Store, Inputs[Index], Bytes, OutError)) return false;
-		Charged.Source.Assets.Add(Inputs[Index].Name, MoveTemp(Bytes));
+		Source.Assets.Add(Inputs[Index].Name, MoveTemp(Bytes));
 	}
 
 	FMjRenderKinematicsCandidate Prepared;
-	if (!FMjRenderKinematicsCandidate::Prepare(MoveTemp(Charged.Source), SceneRevision,
+	if (!FMjRenderKinematicsCandidate::Prepare(MoveTemp(Source), SceneRevision,
 		Options, Prepared, OutError)) return false;
 	OutCandidate = MoveTemp(Prepared);
+	bPrepared = true;
 	return true;
+}
+
+void FURLabRenderSourceIngress::ReleaseReferencedPayloads(FURLabPayloadStore& Store,
+	const FURLabPayloadOwner& Owner, const FURLabRenderSourceRequest& Request)
+{
+	TSet<FString> Released;
+	const auto ReleaseOnce = [&Store, &Owner, &Released](const FString& BlobId)
+	{
+		if (BlobId.IsEmpty() || Released.Contains(BlobId)) return;
+		Released.Add(BlobId);
+		(void)Store.Release(Owner, BlobId);
+	};
+	ReleaseOnce(Request.Primary.BlobId);
+	for (const FURLabRenderSourceAssetRef& Asset : Request.Assets)
+	{
+		ReleaseOnce(Asset.Payload.BlobId);
+	}
 }

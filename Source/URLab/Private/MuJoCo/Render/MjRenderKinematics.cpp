@@ -143,12 +143,16 @@ struct FMjRenderKinematics::FInstalled
 {
 	~FInstalled()
 	{
+		FMjRenderSceneAdapter::FreeFlexScratch(FlexScratch);
 		if (ScratchData) mj_deleteData(ScratchData);
 		if (Model) mj_deleteModel(Model);
 	}
 
 	mjModel* Model = nullptr;
 	mjData* ScratchData = nullptr;
+	mjvScene* FlexScratch = nullptr;
+	/** Model-default mocap poses, 7 values per mocap body. */
+	TArray<double> DefaultMocap;
 	TUniquePtr<FMjRenderSceneAdapter> Adapter;
 	FString SceneRevision;
 	FMjModelSourceInfo SourceInfo;
@@ -198,6 +202,16 @@ bool FMjRenderKinematics::Commit(FMjRenderKinematicsCandidate&& Candidate,
 		Replacement->Adapter = MoveTemp(Candidate.Adapter);
 		Replacement->SceneRevision = Candidate.SceneRevision;
 		Replacement->SourceInfo = MoveTemp(Candidate.ModelCandidate.SourceInfo);
+		Replacement->FlexScratch = FMjRenderSceneAdapter::MakeFlexScratch(Replacement->Model);
+		mj_resetData(Replacement->Model, Replacement->ScratchData);
+		Replacement->DefaultMocap.SetNumUninitialized(7 * Replacement->Model->nmocap);
+		for (int32 Mocap = 0; Mocap < Replacement->Model->nmocap; ++Mocap)
+		{
+			FMemory::Memcpy(Replacement->DefaultMocap.GetData() + 7 * Mocap,
+				Replacement->ScratchData->mocap_pos + 3 * Mocap, 3 * sizeof(double));
+			FMemory::Memcpy(Replacement->DefaultMocap.GetData() + 7 * Mocap + 3,
+				Replacement->ScratchData->mocap_quat + 4 * Mocap, 4 * sizeof(double));
+		}
 		Candidate.ModelCandidate.Model = nullptr;
 		RetiredPreparedData = Candidate.ModelCandidate.Data;
 		Candidate.ModelCandidate.Data = nullptr;
@@ -229,7 +243,8 @@ bool FMjRenderKinematics::RebaseSceneRevision(const FString& ExpectedRevision,
 
 bool FMjRenderKinematics::FrameFromQpos(const FString& SceneRevision,
 	TConstArrayView<double> Qpos, uint64 FrameId, double SourceTime,
-	bool bHasSourceTime, uint64 ClockEpoch, FRenderFrame& OutFrame, FString& OutError)
+	bool bHasSourceTime, uint64 ClockEpoch, FRenderFrame& OutFrame, FString& OutError,
+	const FMjRenderQposExtras& Extras)
 {
 	FScopeLock Lock(&Mutex);
 	if (!Installed || SceneRevision.IsEmpty() || SceneRevision != Installed->SceneRevision)
@@ -257,21 +272,78 @@ bool FMjRenderKinematics::FrameFromQpos(const FString& SceneRevision,
 		}
 	}
 
-	// Deterministic qpos-only FK: every request begins from model defaults. No
-	// controls, mocap, velocities, activation, or plugin state carries over.
-	mj_resetData(Installed->Model, Installed->ScratchData);
+	const mjModel* Model = Installed->Model;
+	mjData* Data = Installed->ScratchData;
+	if (!Extras.Mocap.IsEmpty() && Extras.Mocap.Num() != 7 * Model->nmocap)
+	{
+		OutError = FString::Printf(TEXT("qpos frame has %d mocap values; expected %d"),
+			Extras.Mocap.Num(), 7 * Model->nmocap);
+		return false;
+	}
+	const TConstArrayView<double> MocapSource = Extras.Mocap.IsEmpty()
+		? TConstArrayView<double>(Installed->DefaultMocap) : Extras.Mocap;
+	TArray<double, TInlineAllocator<28>> Mocap;
+	Mocap.Append(MocapSource.GetData(), MocapSource.Num());
+	for (int32 Body = 0; Body < Model->nmocap; ++Body)
+	{
+		double* Pose = Mocap.GetData() + 7 * Body;
+		double NormSquared = 0.0;
+		for (int32 Index = 0; Index < 7; ++Index)
+		{
+			if (!FMath::IsFinite(Pose[Index]))
+			{
+				OutError = FString::Printf(TEXT("mocap pose %d is non-finite"), Body);
+				return false;
+			}
+			if (Index >= 3) NormSquared += Pose[Index] * Pose[Index];
+		}
+		if (FMath::Abs(FMath::Sqrt(NormSquared) - 1.0) > 1.e-3)
+		{
+			OutError = FString::Printf(TEXT("mocap quaternion %d is not near unit length"), Body);
+			return false;
+		}
+		for (int32 Index = 3; Index < 7; ++Index) Pose[Index] /= FMath::Sqrt(NormSquared);
+	}
+	if (Extras.UserCameraSceneTransform.IsSet() && !Installed->Adapter->HasUserCamera())
+	{
+		OutError = TEXT("qpos frame supplies a user camera pose but the scene has no user camera");
+		return false;
+	}
+
+	if (Installed->Adapter->RequiresDynamics())
+	{
+		mj_resetData(Model, Data);
+	}
 	if (Qpos.Num() > 0)
 	{
-		FMemory::Memcpy(Installed->ScratchData->qpos, Qpos.GetData(),
-			Qpos.Num() * sizeof(double));
+		FMemory::Memcpy(Data->qpos, Qpos.GetData(), Qpos.Num() * sizeof(double));
 	}
-	mj_forward(Installed->Model, Installed->ScratchData);
+	for (int32 Body = 0; Body < Model->nmocap; ++Body)
+	{
+		FMemory::Memcpy(Data->mocap_pos + 3 * Body, Mocap.GetData() + 7 * Body,
+			3 * sizeof(double));
+		FMemory::Memcpy(Data->mocap_quat + 4 * Body, Mocap.GetData() + 7 * Body + 3,
+			4 * sizeof(double));
+	}
+	if (Installed->Adapter->RequiresDynamics())
+	{
+		mj_forward(Model, Data);
+	}
+	else
+	{
+		mj_kinematics(Model, Data);
+		mj_comPos(Model, Data);
+		mj_camlight(Model, Data);
+		if (Model->nflex > 0) mj_flex(Model, Data);
+	}
 	FRenderFrame CandidateFrame;
-	if (!Installed->Adapter->FrameFromData(Installed->ScratchData, FrameId,
-		CandidateFrame, OutError))
+	if (!Installed->Adapter->FrameFromData(Data, FrameId, CandidateFrame, OutError,
+		Installed->FlexScratch))
 	{
 		return false;
 	}
+	if (Extras.UserCameraSceneTransform.IsSet())
+		CandidateFrame.UserCameraSceneTransform = Extras.UserCameraSceneTransform;
 	CandidateFrame.Identity.SourceTime = bHasSourceTime ? SourceTime : 0.0;
 	CandidateFrame.Identity.bHasSourceTime = bHasSourceTime;
 	CandidateFrame.Identity.ClockEpoch = ClockEpoch;
@@ -296,6 +368,12 @@ int32 FMjRenderKinematics::GetQposWidth() const
 {
 	FScopeLock Lock(&Mutex);
 	return Installed ? Installed->Model->nq : 0;
+}
+
+int32 FMjRenderKinematics::GetMocapCount() const
+{
+	FScopeLock Lock(&Mutex);
+	return Installed ? Installed->Model->nmocap : 0;
 }
 
 bool FMjRenderKinematics::GetSourceInfo(FMjModelSourceInfo& OutSource) const

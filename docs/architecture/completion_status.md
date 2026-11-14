@@ -20,4 +20,4 @@ This checkpoint partially removes original-source resources and author-specific 
 2. Prove nested child Blueprint workflows, supported native resource coverage, and source-free export/compile/save/reopen/cook from editable UE state.
 3. Run a fresh corpus comparison and packaged RGB/depth acceptance through the existing physics-service → MuJoCo-adapter → neutral-renderer path. The older packaged authoring run used NullRHI and did not prove pixels.
 
-Task logic, runtime `name`/ID bindings, live authored-field mutation/recompile, save-back, ROS alignment, recording/replay, Gym/task wrappers, VR, DLSS, and ray tracing remain deferred. Local `audit_docs` artifacts are historical evidence outside this plugin repository.
+Task logic, runtime `name`/ID bindings, live authored-field mutation/recompile, save-back, ROS alignment, recording/replay, Gym/task wrappers, VR, DLSS, and ray tracing remain deferred.

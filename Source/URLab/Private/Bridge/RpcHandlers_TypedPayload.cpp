@@ -4,6 +4,8 @@
 #include "Bridge/RetainedCompletion.h"
 #include "Wire/UrlabWire.gen.h"
 #include "Async/Async.h"
+#include "HAL/PlatformTime.h"
+#include "Transport/PayloadReadEncoding.h"
 
 namespace
 {
@@ -303,11 +305,32 @@ void ExecuteTypedPayload(
 			Body.FindMapValue(TEXT("byte_length"))->GetInt(), Copy);
 		if (Status)
 		{
-			TArray<uint8> Bytes = Copy->GetBytes();
+			// The reply shares the pinned copy's storage instead of duplicating it;
+			// the pin (and its capacity reservation) lives until the reply is sent.
+			const TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> Raw(Copy, &Copy->GetBytes());
+			const FPayloadValue* Encoding = Body.FindMapValue(TEXT("encoding"));
+			FURLabPayloadReadEncoded Encoded;
+			if (Encoding && Encoding->GetType() == EURLabWireValueType::String
+				&& Encoding->GetString() == URLabPayloadReadEncoding::ZstdDelta32
+				&& URLabPayloadReadEncoding::EncodeZstdDelta32(*Raw, Encoded))
+			{
+				TArray<FPayloadValue> Sizes;
+				Sizes.Reserve(Encoded.ChunkSizes.Num());
+				for (const int64 Size : Encoded.ChunkSizes) Sizes.Add(FPayloadValue::MakeInt(Size));
+				Completion->Publish(FURLabReplyEnvelope::MakeResult(Completion->Request, PayloadMap({
+					{TEXT("blob_id"), FPayloadValue::MakeString(BlobId)},
+					{TEXT("offset"), FPayloadValue::MakeInt(Offset)},
+					{TEXT("data"), FPayloadValue::MakeBinary(MoveTemp(Encoded.Bytes))},
+					{TEXT("encoding"), FPayloadValue::MakeString(URLabPayloadReadEncoding::ZstdDelta32)},
+					{TEXT("raw_byte_length"), FPayloadValue::MakeInt(Raw->Num())},
+					{TEXT("chunk_bytes"), FPayloadValue::MakeInt(URLabPayloadReadEncoding::ChunkBytes)},
+					{TEXT("chunk_sizes"), FPayloadValue::MakeArray(MoveTemp(Sizes))}})));
+				return;
+			}
 			Completion->Publish(FURLabReplyEnvelope::MakeResult(Completion->Request, PayloadMap({
 				{TEXT("blob_id"), FPayloadValue::MakeString(BlobId)},
 				{TEXT("offset"), FPayloadValue::MakeInt(Offset)},
-				{TEXT("data"), FPayloadValue::MakeBinary(MoveTemp(Bytes))}})));
+				{TEXT("data"), FPayloadValue::MakeBinaryShared(Raw)}})));
 			return;
 		}
 	}
@@ -390,8 +413,14 @@ bool FURLabRpcDispatcher::DispatchTypedPayload(const FURLabRequestEnvelope& Requ
 	if (bStartDrain && bPayloadQueueAutoDrainForTest.load(std::memory_order_acquire))
 	{
 		const TSharedRef<FURLabSerialCommandQueue, ESPMode::ThreadSafe> Queue = PayloadCommandQueue;
-		Async(EAsyncExecution::ThreadPool, [Queue]() { Queue->Drain(); });
+		if (!IsInGameThread())
+		{
+			Queue->Drain();
+		}
+		else
+		{
+			Async(EAsyncExecution::ThreadPool, [Queue]() { Queue->Drain(); });
+		}
 	}
-	return FURLabRequestEnvelopeCodec::EncodeReply(
-		FURLabReplyEnvelope::MakePending(Request), OutReplyBytes).IsOk();
+	return EncodeSettledReply(Request, Digest, Session, OutReplyBytes);
 }

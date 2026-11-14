@@ -156,6 +156,16 @@ int SaveMeshAsOBJComplex(const FString& FilePath, const Chaos::TArrayCollectionA
 	const TArray<Chaos::TVector<IndexType, 3>>& Indices, float Threshold = 0.05f,
 	bool bExtrude = false, double ExtrudeMargin = 0.01)
 {
+#if !WITH_EDITOR
+	(void)FilePath;
+	(void)Vertices;
+	(void)Indices;
+	(void)Threshold;
+	(void)bExtrude;
+	(void)ExtrudeMargin;
+	UE_LOG(LogURLab, Error, TEXT("CoACD decomposition requires an editor build"));
+	return 0;
+#else
 	CoACD_Mesh inputMesh = CoacdInterface::ConvertToCoACDMesh(Vertices, Indices);
 
 	CoACD_MeshArray result = CoACD_run(inputMesh, Threshold, -1, preprocess_auto, 30, 1000, 20, 150, 3, false, true, false, 100,
@@ -168,6 +178,7 @@ int SaveMeshAsOBJComplex(const FString& FilePath, const Chaos::TArrayCollectionA
 	CoacdInterface::SaveCoACDMeshArrayAsOBJ(result, FilePath);
 	CoACD_freeMeshArray(result);
 	return MeshCount;
+#endif
 }
 
 template <typename VertexType, typename IndexType>

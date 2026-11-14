@@ -111,7 +111,7 @@ TArray<FVector> WorldTriangleCorners(const mjModel& Model, mjData& Data, int32 G
 		for (int32 Corner = 0; Corner < 3; ++Corner)
 		{
 			const int32 VertexId = Model.mesh_face[3 * (FaceAddress + Face) + Corner];
-			const mjtNum* Vertex = Model.mesh_vert + 3 * (VertexAddress + VertexId);
+			const float* Vertex = Model.mesh_vert + 3 * (VertexAddress + VertexId);
 			Out.Emplace(
 				(float)(Rotation[0] * Vertex[0] + Rotation[1] * Vertex[1] + Rotation[2] * Vertex[2] + Translation[0]),
 				(float)(Rotation[3] * Vertex[0] + Rotation[4] * Vertex[1] + Rotation[5] * Vertex[2] + Translation[1]),

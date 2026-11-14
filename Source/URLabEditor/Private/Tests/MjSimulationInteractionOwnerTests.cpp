@@ -117,7 +117,7 @@ bool FMjSimulationInteractionOwnerTest::RunTest(const FString&)
 	TestTrue(TEXT("step after reset integrates"), Runtime.AuthorizedStep(Claim.Handle, 1).IsOk());
 	TestEqual(TEXT("epoch change rejects queued interaction"),
 		Sink->Results[TEXT("stale-after-reset")].Terminal,
-		EURLabInteractionTerminal::RejectedStale);
+		EURLabInteractionTerminal::RejectedSource);
 
 	FURLabInteractionGrant ViewerA;
 	FURLabInteractionGrant ViewerB;
@@ -178,6 +178,165 @@ bool FMjSimulationInteractionOwnerTest::RunTest(const FString&)
 		Runtime, ReplacementClaim.Handle, SourceR2, TEXT("viewer-boot"), 5.0,
 		Unsupported, Error));
 	Runtime.SetInteractionOwner(nullptr);
+	return !HasAnyErrors();
+}
+
+namespace URLabSimulationInteractionTest
+{
+const char* FrameXml = R"(
+<mujoco model="interaction_frames">
+  <option timestep="0.01" gravity="0 0 0"/>
+  <worldbody>
+    <body name="slider" euler="0 0 90">
+      <joint name="slide" type="slide" axis="1 0 0"/>
+      <geom type="sphere" size="0.05" mass="1"/>
+    </body>
+    <body name="spinner" pos="0 0 1">
+      <joint name="spin" type="hinge" axis="0 0 1"/>
+      <geom type="sphere" size="0.05" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>)";
+
+struct FFixture
+{
+	FMjSimulationRuntime Runtime;
+	TSharedPtr<FMjSimulationInteractionOwner, ESPMode::ThreadSafe> Owner;
+	TSharedPtr<FSink, ESPMode::ThreadSafe> Sink;
+	FMjSimulationControlHandle Control;
+	FURLabInteractionGrant Grant;
+	bool bReady = false;
+
+	explicit FFixture(const char* ModelXml)
+	{
+		TArray<uint8> Bytes;
+		Bytes.Append(reinterpret_cast<const uint8*>(ModelXml), FCStringAnsi::Strlen(ModelXml));
+		FMjOwnedModelCandidate Candidate;
+		FString Error;
+		if (!FMjOwnedModelCandidate::FromBytes(EMjModelSourceKind::XmlWithAssets, Bytes, {},
+			Candidate, Error, TEXT("interaction frame fixture")))
+		{
+			return;
+		}
+		const FMjSimulationInstallResult Installed = Runtime.Install(MoveTemp(Candidate));
+		if (!Installed.bCommitted) return;
+		Owner = MakeShared<FMjSimulationInteractionOwner, ESPMode::ThreadSafe>();
+		Runtime.SetInteractionOwner(Owner);
+		if (!Owner->BindSource(Descriptor(TEXT("scene-r1")), Error)) return;
+		auto Session = FMjSimulationControlSessionLifetime::CreateLocal(
+			TEXT("interaction-control"), Runtime.GetControlClock(), Error);
+		FMjSimulationControlClaimRequest ClaimRequest;
+		ClaimRequest.Session = Session;
+		ClaimRequest.SourceKind = EMjSimulationControlSourceKind::Local;
+		ClaimRequest.ExpectedModelGeneration = Installed.Generation;
+		const FMjSimulationControlClaimResult Claim = Runtime.ClaimControl(ClaimRequest);
+		if (!Claim.IsOk()) return;
+		Control = Claim.Handle;
+		Sink = MakeShared<FSink, ESPMode::ThreadSafe>();
+		bReady = Owner->IssueGrant(Runtime, Control, {TEXT("simulation-boot"),
+			TEXT("simulation-poses"), 1, TEXT("scene-r1")}, TEXT("viewer-boot"), 30.0, Grant, Error);
+	}
+
+	~FFixture()
+	{
+		Runtime.SetInteractionOwner(nullptr);
+	}
+
+	double Qvel(int32 Index)
+	{
+		FMjModelObservation Observation;
+		return Runtime.GetObservation(Observation) && Observation.Qvel.IsValidIndex(Index)
+			? Observation.Qvel[Index] : TNumericLimits<double>::Max();
+	}
+};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSimulationInteractionFramesTest,
+	"URLab.Runtime.InteractionOwner.BodyFrameAndPointOfApplication",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSimulationInteractionFramesTest::RunTest(const FString&)
+{
+	using namespace URLabSimulationInteractionTest;
+	FFixture Fixture(FrameXml);
+	if (!TestTrue(TEXT("frame fixture is ready"), Fixture.bReady)) return false;
+	auto World = Request(Fixture.Grant, TEXT("world-x"));
+	TestEqual(TEXT("world-frame wrench enqueues"), Fixture.Owner->Enqueue(World, Fixture.Sink).Admission,
+		EURLabInteractionAdmission::Accepted);
+	TestTrue(TEXT("world step"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 1).IsOk());
+	TestTrue(TEXT("world +X is orthogonal to the rotated slide axis"),
+		FMath::Abs(Fixture.Qvel(0)) < 1e-12);
+	auto Body = Request(Fixture.Grant, TEXT("body-x"));
+	Body.bBodyFrame = true;
+	Fixture.Owner->Enqueue(Body, Fixture.Sink);
+	TestTrue(TEXT("body step"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 1).IsOk());
+	TestTrue(TEXT("body-frame +X follows the slide axis"),
+		FMath::IsNearlyEqual(Fixture.Qvel(0), 0.01, 1e-9));
+	auto Lever = Request(Fixture.Grant, TEXT("lever"));
+	Lever.BodyIndex = 2;
+	Lever.ForceNewton = FVector3d(0.0, 1.0, 0.0);
+	Lever.bHasPoint = true;
+	Lever.PointMetre = FVector3d(1.0, 0.0, 1.0);
+	Fixture.Owner->Enqueue(Lever, Fixture.Sink);
+	TestTrue(TEXT("lever step"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 1).IsOk());
+	TestTrue(TEXT("off-COM force produces (p - com) x F torque"), Fixture.Qvel(1) > 0.0);
+	TestEqual(TEXT("lever applied"), Fixture.Sink->Results[TEXT("lever")].Terminal,
+		EURLabInteractionTerminal::Applied);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSimulationInteractionHoldTest,
+	"URLab.Runtime.InteractionOwner.HeldWrenchImpulseRevokeAndInputPermission",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSimulationInteractionHoldTest::RunTest(const FString&)
+{
+	using namespace URLabSimulationInteractionTest;
+	FFixture Fixture(Xml);
+	if (!TestTrue(TEXT("hold fixture is ready"), Fixture.bReady)) return false;
+	auto Held = Request(Fixture.Grant, TEXT("held"));
+	Held.DurationSeconds = 0.1;
+	TestEqual(TEXT("hold enqueues"), Fixture.Owner->Enqueue(Held, Fixture.Sink).Admission,
+		EURLabInteractionAdmission::Accepted);
+	TestTrue(TEXT("hold steps"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 20).IsOk());
+	TestTrue(TEXT("held impulse equals force * duration"),
+		FMath::IsNearlyEqual(Fixture.Qvel(0), 0.1, 1e-9));
+	TestEqual(TEXT("hold reports its first step"),
+		Fixture.Sink->Results[TEXT("held")].AppliedFrame.FrameId, uint64(1));
+	TestEqual(TEXT("elapsed hold is gone"), Fixture.Owner->NumHolds(), 0);
+
+	auto Long = Request(Fixture.Grant, TEXT("long"));
+	Long.DurationSeconds = 10.0;
+	Fixture.Owner->Enqueue(Long, Fixture.Sink);
+	TestTrue(TEXT("long hold starts"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 5).IsOk());
+	const double BeforeRevoke = Fixture.Qvel(0);
+	FString Error;
+	TestTrue(TEXT("revoke mid-hold"), Fixture.Owner->RevokeGrant(Fixture.Runtime, Fixture.Control,
+		Fixture.Grant.Source, Fixture.Grant.Token, Error));
+	TestTrue(TEXT("steps after revoke"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 5).IsOk());
+	TestTrue(TEXT("revoked hold stops before the next step"),
+		FMath::IsNearlyEqual(Fixture.Qvel(0), BeforeRevoke, 1e-12));
+
+	bool bInputAllowed = true;
+	Fixture.Owner->SetInputPermission([&bInputAllowed]() { return bInputAllowed; });
+	FURLabInteractionGrant Second;
+	TestTrue(TEXT("grant issues while input is allowed"), Fixture.Owner->IssueGrant(Fixture.Runtime,
+		Fixture.Control, Fixture.Grant.Source, TEXT("viewer-boot"), 30.0, Second, Error));
+	auto Input = Request(Second, TEXT("input-hold"));
+	Input.DurationSeconds = 10.0;
+	Fixture.Owner->Enqueue(Input, Fixture.Sink);
+	TestTrue(TEXT("input hold starts"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 1).IsOk());
+	bInputAllowed = false;
+	const double BeforeWithdraw = Fixture.Qvel(0);
+	TestTrue(TEXT("steps after withdrawal"), Fixture.Runtime.AuthorizedStep(Fixture.Control, 3).IsOk());
+	TestTrue(TEXT("withdrawn accept_input ends the hold"),
+		FMath::IsNearlyEqual(Fixture.Qvel(0), BeforeWithdraw, 1e-12));
+	TestEqual(TEXT("withdrawn accept_input revokes grants"), Fixture.Owner->NumGrants(), 0);
+	FURLabInteractionGrant Refused;
+	TestFalse(TEXT("no grant issues without accept_input"), Fixture.Owner->IssueGrant(
+		Fixture.Runtime, Fixture.Control, Fixture.Grant.Source, TEXT("viewer-boot"), 30.0,
+		Refused, Error));
+	TestTrue(TEXT("refusal names accept_input"), Error.Contains(TEXT("accept_input")));
 	return !HasAnyErrors();
 }
 #endif

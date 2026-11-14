@@ -30,7 +30,7 @@ public:
 		FURLabRequestEnvelope InRequest, FURLabRequestDigest InDigest);
 
 	void Publish(FURLabReplyEnvelope Reply,
-		const FString& ResultFailureCode = TEXT("encoding_error")) const;
+		const FString& ResultFailureCode = TEXT("server_schema_error")) const;
 	void Error(const FString& Code, const FString& Message) const;
 
 	/** Encode every non-Accepted ledger disposition without executing domain work. */

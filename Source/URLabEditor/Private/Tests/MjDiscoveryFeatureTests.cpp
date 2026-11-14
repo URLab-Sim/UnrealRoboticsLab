@@ -40,6 +40,11 @@
 
 #include "Bridge/InstanceRegistry.h"
 #include "Bridge/BridgeServerConfig.h"
+#include "Bridge/BridgeServerConfigUtils.h"
+#include "Bridge/BridgeServerConfigUtils.h"
+#include "Bridge/BridgeServerConfigUtils.h"
+#include "Bridge/BridgeServerConfigUtils.h"
+#include "Bridge/BridgeServerConfigUtils.h"
 #include "MuJoCo/Render/MjDriverDiscovery.h"
 
 #include "Dom/JsonObject.h"
@@ -209,7 +214,7 @@ bool FMjDiscoveryRoundTrip::RunTest(const FString& Parameters)
 	}
 
 	const FMjDriverInfo& D = Drivers[0];
-	const FString Host = FPlatformProcess::ComputerName();
+	const FString Host = URLabBridgeServerConfigUtils::ResolveDialHost(Owner);
 	TestEqual(TEXT("instance_id round-trips"), D.InstanceId, FString(TEXT("round_trip_owner")));
 	TestEqual(TEXT("host round-trips"), D.Host, Host);
 	TestEqual(TEXT("scene round-trips"), D.Scene, FString(TEXT("round_trip_owner")));

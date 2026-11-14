@@ -43,6 +43,7 @@ struct FRenderCameraOptics
 	float VerticalFovDegrees = 45.0f;
 	float OrthographicWidthCm = 0.0f;
 	bool bHasIntrinsics = false;
+	/** Pinhole intrinsics in OpenCV pixel convention: origin at the top-left corner, +x right, +y down. */
 	float FocalPixelsX = 0.0f;
 	float FocalPixelsY = 0.0f;
 	float PrincipalPixelsX = 320.0f;

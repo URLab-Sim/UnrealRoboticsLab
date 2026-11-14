@@ -34,6 +34,13 @@ public:
 		const FString& ExactToken, FString& OutError);
 	FURLabInteractionAdmissionResult Enqueue(const FURLabInteractionWrenchRequest& Request,
 		TSharedPtr<IURLabInteractionCompletionSink, ESPMode::ThreadSafe> CompletionSink);
+	int32 NumHolds() const;
+	int32 NumGrants() const;
+	/**
+	 * Optional live input permission. While it returns false no grant can be
+	 * issued, and every grant (with its held wrenches) is revoked at the next step.
+	 */
+	void SetInputPermission(TFunction<bool()> Predicate);
 
 	virtual bool ValidateTarget(int32 BodyIndex, FString& OutError) override;
 	virtual bool ApplyNextStepContribution(const FURLabInteractionWrenchRequest& Request,
@@ -49,4 +56,5 @@ private:
 	void AfterStepLocked(const FURLabInteractionOwnerContext& Context,
 		uint64 FrameId, double SourceTime);
 	void AbortStepLocked();
+	void OverlayLastStepWrenchesLocked(const mjModel_* Model, mjData_* Scratch) const;
 };

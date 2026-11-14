@@ -20,6 +20,8 @@ static_assert(UE_ARRAY_COUNT(RoleParameters) == static_cast<int32>(ERenderMateri
 
 constexpr const TCHAR* MasterMaterialPath =
 	TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo_Master.M_MuJoCo_Master");
+constexpr const TCHAR* TranslucentMasterMaterialPath =
+	TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo_Master_Translucent.M_MuJoCo_Master_Translucent");
 constexpr const TCHAR* NeutralWhitePath =
 	TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
 constexpr const TCHAR* NeutralLinearWhitePath =
@@ -54,6 +56,25 @@ UTexture2D* RenderNeutralTexture(ERenderMaterialRole Role)
 UMaterialInterface* LoadRenderMasterMaterial()
 {
 	return LoadObject<UMaterialInterface>(nullptr, MasterMaterialPath);
+}
+
+UMaterialInterface* LoadRenderTranslucentMasterMaterial()
+{
+	if (UMaterialInterface* Translucent = LoadObject<UMaterialInterface>(
+		nullptr, TranslucentMasterMaterialPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
+	{
+		return Translucent;
+	}
+	return LoadRenderMasterMaterial();
+}
+
+bool UsesTranslucentRenderMaterial(
+	const FRenderMaterialResource& Material, const FLinearColor& BaseColor)
+{
+	return BaseColor.A < 1.0f - KINDA_SMALL_NUMBER
+		|| Material.Rgba.A < 1.0f - KINDA_SMALL_NUMBER
+		|| Material.Textures[static_cast<int32>(ERenderMaterialRole::Opacity)].TextureIndex != INDEX_NONE
+		|| Material.Textures[static_cast<int32>(ERenderMaterialRole::Rgba)].TextureIndex != INDEX_NONE;
 }
 
 bool EnsureRenderMaterialsReadyForWorld(const UWorld& World,

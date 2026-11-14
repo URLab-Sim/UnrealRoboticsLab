@@ -2,6 +2,50 @@
 
 #include "Bridge/RequestLedger.h"
 
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+
+namespace
+{
+struct FSharedReplySinkState
+{
+	int32 Depth = 0;
+	FURLabSharedReplySink::FBytesPtr Bytes;
+};
+thread_local FSharedReplySinkState GSharedReplySink;
+}
+
+FURLabSharedReplySink::FScope::FScope()
+{
+	++GSharedReplySink.Depth;
+	GSharedReplySink.Bytes.Reset();
+}
+
+FURLabSharedReplySink::FScope::~FScope()
+{
+	--GSharedReplySink.Depth;
+	GSharedReplySink.Bytes.Reset();
+}
+
+bool FURLabSharedReplySink::CanAccept(int64 NumBytes)
+{
+	return GSharedReplySink.Depth > 0 && !GSharedReplySink.Bytes.IsValid() && NumBytes >= MinBytes;
+}
+
+void FURLabSharedReplySink::Offer(FBytesPtr Bytes)
+{
+	check(GSharedReplySink.Depth > 0);
+	GSharedReplySink.Bytes = MoveTemp(Bytes);
+}
+
+FURLabSharedReplySink::FBytesPtr FURLabSharedReplySink::Take()
+{
+	FBytesPtr Out = MoveTemp(GSharedReplySink.Bytes);
+	GSharedReplySink.Bytes.Reset();
+	return Out;
+}
+
 namespace
 {
 using ETerminal = FURLabRequestLedger::ETerminal;
@@ -29,6 +73,10 @@ struct FURLabRequestLedger::FState
 	mutable FCriticalSection Mutex;
 	int32 Pending = 0;
 	int64 RetainedBytes = 0;
+
+	std::mutex CompletionMutex;
+	std::condition_variable CompletionSignal;
+	uint64 CompletionSerial = 0;
 };
 
 class FURLabRequestLedger::FSession
@@ -240,32 +288,64 @@ bool FURLabRequestLedger::Complete(const FSessionRef& Session, int64 RequestId,
 	if (&Session->SharedState.Get() != &State.Get())
 		return false;
 	FState& Shared = *Session->SharedState;
-	FScopeLock Lock(&Shared.Mutex);
-	FRecord* Record = Session->Records.Find(static_cast<uint64>(RequestId));
-	if (!Record || !Record->bPending || !(Record->Digest == Digest))
-		return false;
-
-	Record->bPending = false;
-	--Session->Pending;
-	--Shared.Pending;
-	const bool bOversized = ReplyBytes.Num() > MaxInlineReplyBytes;
-	Record->Terminal = bOversized ? ETerminal::ResultUnavailable : ETerminal::Completed;
-	if (bOversized)
-		Record->ReplyBytes.Reset();
-	else
-		Record->ReplyBytes = OwnedBytes(MoveTemp(ReplyBytes));
-	const int64 ActualBytes = Record->ReplyBytes.IsValid() ? Record->ReplyBytes->Num() : 0;
-	Session->RetainedBytes += ActualBytes - Record->AccountedBytes;
-	Shared.RetainedBytes += ActualBytes - Record->AccountedBytes;
-	Record->AccountedBytes = ActualBytes;
-
-	if (!Session->bOpen)
 	{
-		Session->RetainedBytes -= Record->AccountedBytes;
-		Shared.RetainedBytes -= Record->AccountedBytes;
-		Session->Records.Remove(static_cast<uint64>(RequestId));
+		FScopeLock Lock(&Shared.Mutex);
+		FRecord* Record = Session->Records.Find(static_cast<uint64>(RequestId));
+		if (!Record || !Record->bPending || !(Record->Digest == Digest))
+			return false;
+
+		Record->bPending = false;
+		--Session->Pending;
+		--Shared.Pending;
+		const bool bOversized = ReplyBytes.Num() > MaxInlineReplyBytes;
+		Record->Terminal = bOversized ? ETerminal::ResultUnavailable : ETerminal::Completed;
+		if (bOversized)
+			Record->ReplyBytes.Reset();
+		else
+			Record->ReplyBytes = OwnedBytes(MoveTemp(ReplyBytes));
+		const int64 ActualBytes = Record->ReplyBytes.IsValid() ? Record->ReplyBytes->Num() : 0;
+		Session->RetainedBytes += ActualBytes - Record->AccountedBytes;
+		Shared.RetainedBytes += ActualBytes - Record->AccountedBytes;
+		Record->AccountedBytes = ActualBytes;
+
+		if (!Session->bOpen)
+		{
+			Session->RetainedBytes -= Record->AccountedBytes;
+			Shared.RetainedBytes -= Record->AccountedBytes;
+			Session->Records.Remove(static_cast<uint64>(RequestId));
+		}
 	}
+	{
+		std::lock_guard<std::mutex> Signal(Shared.CompletionMutex);
+		++Shared.CompletionSerial;
+	}
+	Shared.CompletionSignal.notify_all();
 	return true;
+}
+
+FURLabRequestLedger::FAdmissionResult FURLabRequestLedger::AwaitTerminal(
+	const FSessionRef& Session, int64 RequestId, const FURLabRequestDigest& Digest,
+	double TimeoutSeconds)
+{
+	FState& Shared = *Session->SharedState;
+	const auto Deadline = std::chrono::steady_clock::now()
+		+ std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+			std::chrono::duration<double>(FMath::Max(0.0, TimeoutSeconds)));
+	for (;;)
+	{
+		uint64 Observed;
+		{
+			std::lock_guard<std::mutex> Signal(Shared.CompletionMutex);
+			Observed = Shared.CompletionSerial;
+		}
+		FAdmissionResult Result = Admit(Session, RequestId, Digest);
+		if (Result.Status != EAdmission::ExistingPending)
+			return Result;
+		std::unique_lock<std::mutex> Signal(Shared.CompletionMutex);
+		if (!Shared.CompletionSignal.wait_until(Signal, Deadline,
+				[&]() { return Shared.CompletionSerial != Observed; }))
+			return Result;
+	}
 }
 
 FURLabRequestLedger::FStats FURLabRequestLedger::GetStats() const

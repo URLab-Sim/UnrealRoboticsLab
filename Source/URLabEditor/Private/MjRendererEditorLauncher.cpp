@@ -13,6 +13,12 @@
 
 #include "Editor.h"
 #include "Engine/World.h"
+#include "Misc/PackageName.h"
+
+namespace
+{
+const TCHAR* const RenderMapPath = TEXT("/Game/FastPath/FastPathRender");
+} // namespace
 
 void UMjRendererEditorLauncher::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -74,9 +80,14 @@ bool UMjRendererEditorLauncher::TryLaunch(float DeltaTime)
 					MjDriveToken(Plan.Drive));
 				return false;
 			}
+			// The same map the packaged server and the python launcher default to. An
+			// existing one is the host project's render map, lit to its taste, so it is
+			// opened rather than replaced.
 			FString LevelPath, Err;
-			if (!URLabLevelOps::CreateLevelSync(TEXT("FastPathRender"), /*bForceOverwrite=*/true,
-					LevelPath, Err))
+			const bool bReady = FPackageName::DoesPackageExist(RenderMapPath)
+				? URLabLevelOps::LoadLevelSync(RenderMapPath, LevelPath, Err)
+				: URLabLevelOps::CreateLevelSync(RenderMapPath, /*bForceOverwrite=*/false, LevelPath, Err);
+			if (!bReady)
 			{
 				UE_LOG(LogURLabEditor, Error,
 					TEXT("[MjRenderer] editor launch: level setup failed: %s"), *Err);

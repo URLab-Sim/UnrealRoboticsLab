@@ -38,6 +38,8 @@ FURLabRpcDispatcher::FURLabRpcDispatcher()
 	, PayloadStore(MakeShared<FURLabPayloadStore, ESPMode::ThreadSafe>(BootId))
 	, SessionClockOverrideForTest(MakeShared<std::atomic<double>, ESPMode::ThreadSafe>(-1.0))
 {
+	FURLabGameThreadCommandQueue::RegisterQueue(SimulationCommandQueue);
+	FURLabGameThreadCommandQueue::RegisterQueue(RenderCommandQueue);
 	const FURLabShmExactStatus ShmStatus =
 		FURLabShmExactRegion::CreateForBoot(BootId, ShmRegion);
 	if (!ShmStatus)
@@ -438,77 +440,34 @@ void FURLabRpcDispatcher::Shutdown()
 	RetiredRuntime.Reset();
 }
 
-bool FURLabRpcDispatcher::ValidateSession(const FString& ClientSessionId) const
+bool FURLabRpcDispatcher::EncodeSettledReply(const FURLabRequestEnvelope& Request,
+	const FURLabRequestDigest& Digest, const FURLabRequestLedger::FSessionRef& Session,
+	TArray<uint8>& OutReplyBytes)
 {
-	if (ClientSessionId.IsEmpty())
+	const int64 RequestId = static_cast<int64>(Request.RequestId);
+	const bool bMayWait = !IsInGameThread() && !bDraining.load(std::memory_order_acquire);
+	const FURLabRequestLedger::FAdmissionResult Settled = bMayWait
+		? RequestLedger->AwaitTerminal(Session, RequestId, Digest, kSettleWaitSeconds)
+		: RequestLedger->Admit(Session, RequestId, Digest);
+	if (Settled.Terminal == FURLabRequestLedger::Completed && Settled.ReplyBytes)
 	{
-		return false;
-	}
-	FScopeLock Lock(&DispatchMutex);
-	const double Now = SessionNow();
-	for (const FSession& S : ActiveSessions)
-	{
-		if (S.Id.Equals(ClientSessionId) && S.Adapter == TEXT("native") &&
-			Now - S.LastSeenSeconds < kSessionIdleTimeoutSeconds)
+		if (FURLabSharedReplySink::CanAccept(Settled.ReplyBytes->Num()))
 		{
+			FURLabSharedReplySink::Offer(Settled.ReplyBytes);
+			OutReplyBytes.Reset();
 			return true;
 		}
+		OutReplyBytes = *Settled.ReplyBytes;
+		return true;
 	}
-	return false;
-}
-
-bool FURLabRpcDispatcher::ValidateAndTouchSession(const FString& ClientSessionId)
-{
-	if (ClientSessionId.IsEmpty())
+	if (Settled.Terminal == FURLabRequestLedger::ResultUnavailable)
 	{
-		return false;
+		return FURLabRequestEnvelopeCodec::EncodeReply(FURLabReplyEnvelope::MakeError(Request,
+			TEXT("result_unavailable"), TEXT("The retained result exceeded the inline reply limit"),
+			EURLabExecution::Terminal), OutReplyBytes).IsOk();
 	}
-	FRetiredSessionScopes RetiredScopes;
-	TSharedPtr<FMjSimulationRuntime, ESPMode::ThreadSafe> Runtime;
-	bool bFound = false;
-	double Now = 0.0;
-	{
-		FScopeLock Lock(&DispatchMutex);
-		Runtime = SimulationRuntime;
-		Now = SessionNow();
-		ActiveSessions.RemoveAll([this, Now, &RetiredScopes](const FSession& S) {
-			if (Now - S.LastSeenSeconds < kSessionIdleTimeoutSeconds) return false;
-			DeactivateSessionLocked(S, RetiredScopes);
-			return true;
-		});
-		for (int32 Index = 0; Index < ActiveSessions.Num(); ++Index)
-		{
-			FSession& S = ActiveSessions[Index];
-			if (!S.Id.Equals(ClientSessionId) || S.Adapter != TEXT("native")) continue;
-			if (!S.ControlSession->Touch())
-			{
-				DeactivateSessionLocked(S, RetiredScopes);
-				ActiveSessions.RemoveAt(Index);
-				break;
-			}
-			S.LastSeenSeconds = Now;
-			bFound = true;
-			break;
-		}
-	}
-	RevokeSessionScopes(Runtime, PayloadStore, RetiredScopes);
-	return bFound;
-}
-
-FString FURLabRpcDispatcher::GetActiveSessionId() const
-{
-	FScopeLock Lock(&DispatchMutex);
-	const double Now = SessionNow();
-	const FSession* Best = nullptr;
-	for (const FSession& S : ActiveSessions)
-	{
-		if (Now - S.LastSeenSeconds < kSessionIdleTimeoutSeconds &&
-			(Best == nullptr || S.LastSeenSeconds > Best->LastSeenSeconds))
-		{
-			Best = &S;
-		}
-	}
-	return Best != nullptr ? Best->Id : FString();
+	return FURLabRequestEnvelopeCodec::EncodeReply(
+		FURLabReplyEnvelope::MakePending(Request), OutReplyBytes).IsOk();
 }
 
 void FURLabRpcDispatcher::SetActiveSessionIdForTest(const FString& Id)

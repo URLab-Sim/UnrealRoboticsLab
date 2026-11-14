@@ -416,8 +416,14 @@ def collect(schema: dict) -> dict:
         cap_model.setdefault(entry.get("kind", "unknown"), []).append(entry)
         caps.append(entry)
 
-    # Which permission each op requires. Absent = the declared default, `none`.
-    op_perms = dict(((model.get("op_permissions") or {}).get("ops") or {}))
+    # Which permission each op requires, taken from each active op's own
+    # `permission:`. Absent = `none`.
+    if (model.get("op_permissions") or {}).get("ops"):
+        raise ValueError(
+            "capability_model.op_permissions.ops is derived from each op's "
+            "`permission:`; delete the hand-written table"
+        )
+    op_perms: dict[str, str] = {}
     op_adapters: dict[str, list[str]] = {}
 	# Active strict-envelope operations are deliberately separate from the
 	# historical inventory: only these are callable on the production byte path.
@@ -464,6 +470,8 @@ def collect(schema: dict) -> dict:
             }
             if message["permission"] != "none" and message["permission"] not in permission_names:
                 raise ValueError(f"active typed op {message['op']!r} names an unknown permission")
+            if message["permission"] != "none":
+                op_perms[message["op"]] = message["permission"]
             for key in ("authority", "execution"):
                 if not isinstance(message[key], str) or not message[key]:
                     raise ValueError(
@@ -554,6 +562,9 @@ def collect(schema: dict) -> dict:
         "request_shapes": request_shapes,
         "typed_ops": typed_ops,
         "typed_op_errors": typed_op_errors,
+        "dispatcher_errors": tuple(
+            entry["code"] for entry in (schema.get("dispatcher_errors") or [])
+        ),
         "connect_limits": fixed_limits,
         "configurable_connect_limits": configurable_limits,
         "typed_services": schema.get("protocol_v2_services") or [],
@@ -643,9 +654,8 @@ def emit_python(data: dict, digest: str) -> str:
             a(f'    "{e["name"]}": "{e["cli"]}",')
     a("}")
     a("")
-    a("# The permission each op requires before the dispatcher will run it.")
-    a("# An op absent from this table requires none: that is the declared default,")
-    a("# not an omission.")
+    a("# The permission each active op declares. Its service handler checks the")
+    a("# grant when the op executes. An op absent from this table requires none.")
     a("OP_PERMISSIONS: dict[str, str] = {")
     for op, perm in sorted(data["op_perms"].items()):
         a(f'    "{op}": "{perm}",')
@@ -663,6 +673,8 @@ def emit_python(data: dict, digest: str) -> str:
     a(f"TYPED_REQUEST_SHAPES = {data['request_shapes']!r}")
     a(f"TYPED_OP_METADATA = {data['typed_ops']!r}")
     a(f"TYPED_OP_ERRORS = {data['typed_op_errors']!r}")
+    a("# Codes any op may return from the shared dispatch path.")
+    a(f"DISPATCHER_ERRORS = frozenset({data['dispatcher_errors']!r})")
     a(f"CONNECT_LIMITS = {data['connect_limits']!r}")
     a(f"CONFIGURABLE_CONNECT_LIMITS = {data['configurable_connect_limits']!r}")
     a(f"ACTIVE_TYPED_SERVICES = {_pytuple(data['typed_services'])}")
@@ -830,10 +842,8 @@ def emit_cpp(data: dict, digest: str) -> str:
     a("")
 
     a("// --- op permissions -------------------------------------------------------")
-    a("// The permission each op requires before the dispatcher will run it. An op")
-    a("// absent from this table requires none, which is the DECLARED default rather")
-    a("// than an omission: a hand-written check inside a handler is what this")
-    a("// replaces, and a check that lives in a handler is one no caller can read.")
+    a("// The permission each active op declares. Its service handler checks the")
+    a("// grant when the op executes. An op absent from this table requires none.")
     a("namespace OpPermission")
     a("{")
     a("struct FEntry { const TCHAR* Op; const TCHAR* Permission; };")
@@ -924,6 +934,15 @@ def emit_cpp(data: dict, digest: str) -> str:
     a("{")
     a("\treturn Find(Op) != nullptr;")
     a("}")
+    a("}")
+    a("// Codes any op may return from the shared dispatch path.")
+    a("namespace DispatcherError")
+    a("{")
+    a("inline const TCHAR* const All[] = {")
+    for code in data["dispatcher_errors"]:
+        a(f'\tTEXT("{code}"),')
+    a("};")
+    a(f"inline constexpr int32 Count = {len(data['dispatcher_errors'])};")
     a("}")
     a("namespace TypedOpError")
     a("{")

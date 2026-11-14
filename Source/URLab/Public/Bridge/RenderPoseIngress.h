@@ -17,8 +17,16 @@ struct URLAB_API FURLabRenderPoseRequest
 {
 	EURLabRenderPoseKind Kind = EURLabRenderPoseKind::Qpos;
 	TOptional<FURLabRenderSourceBlobRef> Payload;
+	/** Alternative to Payload for small poses: the same little-endian float64
+	 *  layout carried inline in the submit request, which saves the client the
+	 *  payload_begin/write/commit/release round trips on every frame. */
+	TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> InlineValues;
 	TOptional<FURLabWireValue> Visualization;
 	FRenderFrameIdentity Identity;
+	/** Qpos only: the payload continues with 7 doubles per mocap body. */
+	bool bMocap = false;
+	/** Qpos only: the payload ends with one 7-double optical user camera pose. */
+	bool bUserCamera = false;
 };
 
 struct URLAB_API FURLabDecodedRenderPose
@@ -35,6 +43,8 @@ struct URLAB_API FURLabDecodedRenderPose
 	FRenderCameraCaptureLifetimeLeasePtr PresentationLease;
 	EURLabRenderPoseKind Kind = EURLabRenderPoseKind::Qpos;
 	TArray<double> Qpos;
+	TArray<double> Mocap;
+	TOptional<FTransform> UserCameraSceneTransform;
 	FRenderFrame Cartesian;
 };
 

@@ -317,7 +317,9 @@ void ExecuteTypedSimulation(
 			Completion->Request.Body.FindMapValue(TEXT("viewer_boot_id"))->GetString(),
 			Ttl, Grant, Error))
 		{
-			Completion->Error(Error.Contains(TEXT("control")) ? TEXT("control_invalid")
+			Completion->Error(Error.Contains(TEXT("accept_input")) ? TEXT("capability_disabled")
+				: Error.Contains(TEXT("capacity")) ? TEXT("service_unavailable")
+				: Error.Contains(TEXT("control")) ? TEXT("control_invalid")
 				: Error.Contains(TEXT("TTL")) ? TEXT("bad_request")
 				: TEXT("source_revision_conflict"), Error);
 			return;
@@ -670,6 +672,5 @@ bool FURLabRpcDispatcher::DispatchTypedSimulation(const FURLabRequestEnvelope& R
 			SimulationCommandQueue;
 		AsyncTask(ENamedThreads::GameThread, [Queue]() { Queue->Drain(); });
 	}
-	FURLabRequestEnvelopeCodec::EncodeReply(FURLabReplyEnvelope::MakePending(Request), OutReplyBytes);
-	return true;
+	return EncodeSettledReply(Request, Digest, Session, OutReplyBytes);
 }

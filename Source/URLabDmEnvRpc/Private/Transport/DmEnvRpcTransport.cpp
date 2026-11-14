@@ -77,7 +77,7 @@ THIRD_PARTY_INCLUDES_END
 #include "URLabDmEnvRpc.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/BridgeServerConfig.h"
-#include "Dom/JsonObject.h"
+#include "Bridge/RequestLedger.h"
 #include "HAL/PlatformTime.h"
 #include "Wire/RequestEnvelope.h"
 #include "Wire/UrlabWire.gen.h"
@@ -93,7 +93,7 @@ namespace
 // The MessagePack decoder accepts at most 4 MiB. gRPC applies its limit to the
 // complete EnvironmentRequest/Response protobuf, so allow a fixed amount for the
 // Any type URL, UrlabPacket fields, op and sequence around the bounded payload.
-constexpr int32 MaxCommandEnvelopeBytes = 4 * 1024 * 1024;
+constexpr int32 MaxCommandEnvelopeBytes = 64 * 1024 * 1024;
 constexpr int32 GrpcOuterAllowanceBytes = 1024;
 constexpr int32 MaxGrpcRequestBytes = MaxCommandEnvelopeBytes + GrpcOuterAllowanceBytes;
 constexpr int32 MaxGrpcReplyBytes =
@@ -184,16 +184,22 @@ public:
 						reinterpret_cast<const uint8*>(InPacket.payload().data()),
 						PayloadSize);
 					TArray<uint8> OutReplyBytes;
+					FURLabSharedReplySink::FBytesPtr SharedReply;
 
 					if (Transport->GetOwningBridge())
 					{
 						// DispatchBytes synchronizes typed domain access and schedules any
 						// deferred work itself. Dispatching inline keeps request, op, reply,
-						// service and transport lifetimes inside this Process call.
+						// service and transport lifetimes inside this Process call. Large
+						// retained replies arrive as shared ledger storage (no copy).
+						FURLabSharedReplySink::FScope ReplyScope;
 						Transport->ProcessRequestBytes(InBytes, OutReplyBytes, &PacketOp);
+						SharedReply = FURLabSharedReplySink::Take();
 					}
+					const uint8* ReplyData = SharedReply.IsValid() ? SharedReply->GetData() : OutReplyBytes.GetData();
+					const int64 ReplySize = SharedReply.IsValid() ? SharedReply->Num() : OutReplyBytes.Num();
 
-					if (OutReplyBytes.Num() > URLabWire::Limits::MaxInlineReplyBytes)
+					if (ReplySize > URLabWire::Limits::MaxInlineReplyBytes)
 					{
 						Response.mutable_extension()->PackFrom(MakeStatusPacket(InPacket,
 							grpc::StatusCode::RESOURCE_EXHAUSTED,
@@ -201,11 +207,37 @@ public:
 					}
 					else
 					{
-						urlab::dm_env_rpc::v1::UrlabPacket OutPacket;
-						OutPacket.set_op(InPacket.op());
-						OutPacket.set_sequence_id(InPacket.sequence_id());
-						OutPacket.set_payload(OutReplyBytes.GetData(), OutReplyBytes.Num());
-						Response.mutable_extension()->PackFrom(OutPacket);
+						// Serialize UrlabPacket{op=1, payload=2, sequence_id=3} straight
+						// into Any.value: one copy of the reply instead of three
+						// (set_payload, PackFrom's serialization, then Write's).
+						google::protobuf::Any* Extension = Response.mutable_extension();
+						Extension->set_type_url("type.googleapis.com/urlab.dm_env_rpc.v1.UrlabPacket");
+						std::string* Value = Extension->mutable_value();
+						Value->clear();
+						auto PutVarint = [Value](uint64 V)
+						{
+							while (V >= 0x80) { Value->push_back(static_cast<char>((V & 0x7F) | 0x80)); V >>= 7; }
+							Value->push_back(static_cast<char>(V));
+						};
+						const std::string& Op = InPacket.op();
+						Value->reserve(Op.size() + static_cast<size_t>(ReplySize) + 32);
+						if (!Op.empty())
+						{
+							Value->push_back(static_cast<char>((1 << 3) | 2));
+							PutVarint(Op.size());
+							Value->append(Op);
+						}
+						if (ReplySize > 0)
+						{
+							Value->push_back(static_cast<char>((2 << 3) | 2));
+							PutVarint(static_cast<uint64>(ReplySize));
+							Value->append(reinterpret_cast<const char*>(ReplyData), static_cast<size_t>(ReplySize));
+						}
+						if (InPacket.sequence_id() != 0)
+						{
+							Value->push_back(static_cast<char>((3 << 3) | 0));
+							PutVarint(static_cast<uint64>(InPacket.sequence_id()));
+						}
 					}
 				}
 				else
@@ -376,15 +408,6 @@ void UURLabDmEnvRpcTransport::RequestServerStop()
 	}
 }
 
-void UURLabDmEnvRpcTransport::AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const
-{
-	if (Reply.IsValid())
-	{
-		Reply->SetNumberField(TEXT("dmenvrpc_port"), ListenPort);
-		Reply->SetStringField(TEXT("dmenvrpc_transport"), TEXT("active"));
-	}
-}
-
 void UURLabDmEnvRpcTransport::RunServerLoop()
 {
 	// Honour the configured interface rather than always binding every one: an
@@ -407,6 +430,11 @@ void UURLabDmEnvRpcTransport::RunServerLoop()
 	Builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
 	Builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, 10000);
 	Builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, 0);
+
+	// gRPC-core enables SO_REUSEPORT by default on Linux, which lets a second
+	// server bind the same port and silently receive a share of the connections.
+	// A port must belong to exactly one instance, so a taken port fails the bind.
+	Builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
 
 	Builder.AddListeningPort(ServerAddress, grpc::InsecureServerCredentials());
 	Builder.RegisterService(&Service);

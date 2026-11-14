@@ -37,7 +37,7 @@ The dashboard appears automatically when you hit Play, as long as:
 
 **Keyframe dropdown.** Lists the keyframes on the selected articulation, with **Reset to Keyframe** and a **Hold / Stop Hold** toggle. Reset snaps the pose; Hold maintains it continuously. See [Articulations](articulations.md).
 
-**Snapshots.** Capture the full simulation state and restore it later, for A/B testing or hand-authoring poses. Combine with paused mouse perturbation to dial in a pose by hand, then snapshot it, as described in [Interaction](interaction.md).
+**Snapshots.** Capture the full simulation state and restore it later, for A/B testing or hand-authoring poses. Combine with external perturbations ([Interaction](interaction.md)) to push the model into a pose, then snapshot it.
 
 **Recording and replay.** Start and stop recording, load a saved session, and pick a session to replay. See [Recording & Replay](recording.md).
 
@@ -45,6 +45,6 @@ The dashboard appears automatically when you hit Play, as long as:
 
 ## Next steps
 
-- [Interaction](interaction.md) for possession, twist control, and mouse perturbation.
+- [Interaction](interaction.md) for possession, twist control, and external perturbations.
 - [Debug Visualization](debug.md) for the PIE overlays and their hotkeys.
 - [Recording & Replay](recording.md) for capturing and playing back episodes.

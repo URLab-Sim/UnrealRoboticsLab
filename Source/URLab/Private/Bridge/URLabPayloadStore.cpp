@@ -1018,6 +1018,20 @@ FURLabPayloadStoreStatus FURLabPayloadStore::SealProduced(const FURLabPayloadOwn
 {
 	OutDescriptor = {};
 	OutPin.Reset();
+	FString PrecomputedNetworkSha;
+	if (Producer && Producer->BackingKind == EURLabPayloadBackingKind::NetworkBytes
+		&& Bytes.Num() > 0 && Bytes.Num() == Producer->DeclaredByteLength)
+	{
+		if (Bytes.Num() <= 256 * 1024)
+		{
+			PrecomputedNetworkSha = FURLabAssetCache::Sha256Hex(Bytes);
+		}
+		else
+		{
+			PrecomputedNetworkSha = FURLabAssetCache::Sha256Hex(
+				Bytes.GetData(), FMath::Min<int32>(Bytes.Num(), 4096));
+		}
+	}
 	FPayloadDeferredReclaims Deferred;
 	FURLabShmExactRegionPtr ShmRegion;
 	bool bSealShm = false;
@@ -1065,7 +1079,8 @@ FURLabPayloadStoreStatus FURLabPayloadStore::SealProduced(const FURLabPayloadOwn
 
 		if (bNetworkEntry)
 		{
-			const FString ActualSha = FURLabAssetCache::Sha256Hex(Bytes);
+			const FString ActualSha = PrecomputedNetworkSha.IsEmpty()
+				? FURLabAssetCache::Sha256Hex(Bytes) : PrecomputedNetworkSha;
 			FURLabStoredPayloadDescriptor Descriptor;
 			Descriptor.BlobId = Producer->BlobId;
 			Descriptor.BootId = Owner.BootId;
@@ -1202,6 +1217,203 @@ FURLabPayloadStoreStatus FURLabPayloadStore::SealProduced(const FURLabPayloadOwn
 		// Keep this admission non-retryable until every candidate file and file
 		// descriptor from the failed attempt has been retired. The producer's
 		// retained region is immutable until a successful catalog publication.
+		bool bCandidateRetired = bBackingRetrySafe;
+		if (SealedCandidate)
+		{
+			bCandidateRetired = ShmRegion->Release(Owner, SealedCandidate).IsOk();
+		}
+		SealedCandidate.Reset();
+		FScopeLock Lock(&State->Mutex);
+		if (FState::FStaging* Entry = State->Staging.Find(Producer->BlobId);
+			Entry && Entry->Owner == Owner && Entry->Producer == Producer
+			&& Entry->Kind == FState::FStaging::EKind::ShmProducerSealing
+			&& Producer->BackingKind == EURLabPayloadBackingKind::ShmSealedFile
+			&& Producer->ShmRegion == ShmRegion)
+		{
+			if (bCandidateRetired)
+			{
+				Entry->Kind = FState::FStaging::EKind::ShmProducerReady;
+			}
+			else
+			{
+				State->DeferStaging(*Entry, Deferred);
+				State->Staging.Remove(Producer->BlobId);
+				FinalizeStatus = Fail(EURLabPayloadStoreError::BackingFailure,
+					TEXT("failed SHM candidate could not be retired; producer admission was closed"));
+			}
+		}
+	}
+	return FinalizeStatus;
+}
+
+FURLabPayloadStoreStatus FURLabPayloadStore::SealProducedWithFill(
+	const FURLabPayloadOwner& Owner, const FURLabPayloadProducerPtr& Producer,
+	FURLabPayloadFill Fill, FURLabStoredPayloadDescriptor& OutDescriptor,
+	FURLabPayloadPin& OutPin)
+{
+	OutDescriptor = {};
+	OutPin.Reset();
+	FPayloadDeferredReclaims Deferred;
+	FURLabShmExactRegionPtr ShmRegion;
+	int64 DeclaredByteLength = 0;
+	bool bSealShm = false;
+	{
+		FScopeLock Lock(&State->Mutex);
+		double Now = 0.0;
+		if (FURLabPayloadStoreStatus Status = State->ReadNow(Now); !Status) return Status;
+		FURLabPayloadSweepResult Ignored;
+		State->SweepExpiredLocked(Now, Ignored, Deferred);
+		if (FURLabPayloadStoreStatus Status = State->ValidateOwner(Owner); !Status) return Status;
+		if (!Producer || Producer->BlobId.IsEmpty())
+			return Fail(EURLabPayloadStoreError::InvalidIdentity,
+				TEXT("producer handle must be minted by this payload store"));
+		FState::FStaging* Entry = State->Staging.Find(Producer->BlobId);
+		if (!Entry) return State->Missing(Owner, Producer->BlobId);
+		const bool bNetworkEntry = Entry->Kind == FState::FStaging::EKind::Producer
+			&& Producer->BackingKind == EURLabPayloadBackingKind::NetworkBytes;
+		const bool bShmEntry = Entry->Kind == FState::FStaging::EKind::ShmProducerReady
+			&& Producer->BackingKind == EURLabPayloadBackingKind::ShmSealedFile;
+		if (!(Entry->Owner == Owner) || Entry->Producer != Producer
+			|| (!bNetworkEntry && !bShmEntry))
+		{
+			return Fail(EURLabPayloadStoreError::IdentityMismatch,
+				TEXT("producer admission belongs to another payload owner or generation"));
+		}
+		if (!Producer->Reservation || (bShmEntry
+			&& (!Producer->ShmReservation || !Producer->ShmRegion)))
+		{
+			return Fail(EURLabPayloadStoreError::InvalidIdentity,
+				TEXT("producer admission has already been consumed or lost its backing"));
+		}
+		if (Entry->DeclaredByteLength != Producer->DeclaredByteLength
+			|| Producer->DeclaredByteLength <= 0
+			|| Producer->DeclaredByteLength > MAX_int32)
+		{
+			return Fail(EURLabPayloadStoreError::InvalidDeclaration,
+				TEXT("produced byte length is outside the admitted bounds"));
+		}
+		DeclaredByteLength = Producer->DeclaredByteLength;
+		if (bShmEntry)
+		{
+			Entry->Kind = FState::FStaging::EKind::ShmProducerSealing;
+			ShmRegion = Producer->ShmRegion;
+			bSealShm = true;
+		}
+	}
+
+	if (!bSealShm)
+	{
+		TArray<uint8> Bytes;
+		Bytes.Reserve(static_cast<int32>(DeclaredByteLength));
+		Bytes.SetNumUninitialized(static_cast<int32>(DeclaredByteLength));
+		FString FillError;
+		if (!Fill(MakeArrayView(Bytes), FillError))
+		{
+			return Fail(EURLabPayloadStoreError::InvalidDeclaration, FillError.IsEmpty()
+				? FString(TEXT("produced bytes could not be filled")) : MoveTemp(FillError));
+		}
+		Bytes.Shrink();
+		return SealProduced(Owner, Producer, MoveTemp(Bytes), OutDescriptor, OutPin);
+	}
+
+	FURLabShmExactSealedPayloadPtr SealedCandidate;
+	bool bBackingRetrySafe = true;
+	const FURLabShmExactStatus SealStatus = ShmRegion->CreateFilledRetained(
+		Owner, DeclaredByteLength, Fill, Producer->ShmReservation, SealedCandidate,
+		bBackingRetrySafe);
+	bool bRestoreReadyAfterCandidateRetirement = false;
+	FURLabPayloadStoreStatus FinalizeStatus = [&]() -> FURLabPayloadStoreStatus
+	{
+		FScopeLock Lock(&State->Mutex);
+		double Now = 0.0;
+		if (FURLabPayloadStoreStatus Status = State->ReadNow(Now); !Status)
+		{
+			bRestoreReadyAfterCandidateRetirement = true;
+			return Status;
+		}
+		FURLabPayloadSweepResult Ignored;
+		State->SweepExpiredLocked(Now, Ignored, Deferred);
+		FState::FStaging* Entry = State->Staging.Find(Producer->BlobId);
+		if (!Entry) return State->Missing(Owner, Producer->BlobId);
+		if (!(Entry->Owner == Owner) || Entry->Producer != Producer
+			|| Entry->Kind != FState::FStaging::EKind::ShmProducerSealing
+			|| Producer->BackingKind != EURLabPayloadBackingKind::ShmSealedFile
+			|| Producer->ShmRegion != ShmRegion)
+		{
+			return Fail(EURLabPayloadStoreError::IdentityMismatch,
+				TEXT("SHM producer admission changed while publishing"));
+		}
+		if (FURLabPayloadStoreStatus Status = State->ValidateOwner(Owner); !Status)
+		{
+			State->DeferStaging(*Entry, Deferred);
+			State->Staging.Remove(Producer->BlobId);
+			return Status;
+		}
+		if (!SealStatus)
+		{
+			if (bBackingRetrySafe)
+			{
+				bRestoreReadyAfterCandidateRetirement = true;
+			}
+			else
+			{
+				State->DeferStaging(*Entry, Deferred);
+				State->Staging.Remove(Producer->BlobId);
+			}
+			return FromShm(SealStatus);
+		}
+		if (!SealedCandidate)
+		{
+			bRestoreReadyAfterCandidateRetirement = true;
+			return Fail(EURLabPayloadStoreError::BackingFailure,
+				TEXT("SHM producer publication returned no retained sealed handle"));
+		}
+
+		const FURLabShmExactSealedDescriptor& Native = SealedCandidate->GetDescriptor();
+		if (Native.RegionId != ShmRegion->GetDescriptor().RegionId
+			|| Native.Generation != ShmRegion->GetDescriptor().Generation
+			|| Native.ByteLength != Producer->DeclaredByteLength
+			|| Native.ByteLength != Entry->DeclaredByteLength
+			|| !FURLabAssetCache::IsValidSha256Hex(Native.Sha256))
+		{
+			bRestoreReadyAfterCandidateRetirement = true;
+			return Fail(EURLabPayloadStoreError::IdentityMismatch,
+				TEXT("SHM produced backing disagrees with its exact admission"));
+		}
+
+		FURLabStoredPayloadDescriptor Descriptor;
+		Descriptor.BackingKind = EURLabPayloadBackingKind::ShmSealedFile;
+		Descriptor.BlobId = Producer->BlobId;
+		Descriptor.BootId = Owner.BootId;
+		Descriptor.SessionId = Owner.SessionId;
+		Descriptor.ByteLength = Native.ByteLength;
+		Descriptor.Sha256 = Native.Sha256;
+		Descriptor.RegionId = Native.RegionId;
+		Descriptor.RegionGeneration = Native.Generation;
+		Descriptor.ObjectName = Native.ObjectName;
+		FURLabPayloadPin Payload = MakeShareable(new FURLabImmutablePayload(
+			Owner, State->Identity, Native.Sha256, Native.ByteLength,
+			ShmRegion, SealedCandidate));
+		FState::FSealed Sealed;
+		Sealed.Owner = Owner;
+		Sealed.Descriptor = Descriptor;
+		Sealed.Payload = Payload;
+		Sealed.ShmRegion = ShmRegion;
+		Sealed.ShmSealed = SealedCandidate;
+		Sealed.ExpiresAt = Now + State->Limits.SealedTtlSeconds;
+		State->Sealed.Add(Descriptor.BlobId, MoveTemp(Sealed));
+		Deferred.Reservations.Add(MoveTemp(Producer->Reservation));
+		Deferred.Reservations.Add(MoveTemp(Producer->ShmReservation));
+		Producer->ShmRegion.Reset();
+		State->DeferStaging(*Entry, Deferred);
+		State->Staging.Remove(Producer->BlobId);
+		OutDescriptor = State->Describe(*State->Sealed.Find(Descriptor.BlobId), Now);
+		OutPin = MoveTemp(Payload);
+		return Ok();
+	}();
+
+	if (bRestoreReadyAfterCandidateRetirement)
+	{
 		bool bCandidateRetired = bBackingRetrySafe;
 		if (SealedCandidate)
 		{

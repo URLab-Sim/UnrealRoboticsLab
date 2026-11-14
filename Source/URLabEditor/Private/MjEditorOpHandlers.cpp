@@ -1665,6 +1665,20 @@ void RegisterAll()
 		GameThreadHandler(&HandleImportXml),
 		/*Reply=*/{TEXT("op:string"), TEXT("blueprint_class_path:string"), TEXT("blueprint_short_name:string"), TEXT("imported_now:bool")},
 		/*Required=*/{TEXT("path")});
+	RegEditor(TEXT("op_status"), TEXT("scene"),
+		[](FURLabRpcDispatcher&, const TSharedPtr<FJsonObject>& Req) {
+			return HandleOpStatus(Req);
+		},
+		/*Reply=*/{TEXT("op:string"), TEXT("job_id:string"), TEXT("state:string"),
+			TEXT("progress:string?"), TEXT("result:object?")},
+		/*Required=*/{TEXT("job_id")});
+	RegEditor(TEXT("op_status"), TEXT("scene"),
+		[](FURLabRpcDispatcher&, const TSharedPtr<FJsonObject>& Req) {
+			return HandleOpStatus(Req);
+		},
+		/*Reply=*/{TEXT("op:string"), TEXT("job_id:string"), TEXT("state:string"),
+			TEXT("progress:string?"), TEXT("result:object?")},
+		/*Required=*/{TEXT("job_id")});
 	RegEditor(TEXT("create_level"), TEXT("scene"),
 		GameThreadHandler(&HandleCreateLevel),
 		/*Reply=*/{TEXT("op:string"), TEXT("level_path:string")},
@@ -1786,6 +1800,8 @@ void UnregisterAll()
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_light"));
 	URLabOpRegistry::UnregisterHandler(TEXT("remove_actor"));
 	URLabOpRegistry::UnregisterHandler(TEXT("op_status"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_op_status"));
+	URLabOpRegistry::UnregisterHandler(TEXT("__typed_editor_op_status"));
 	URLabOpRegistry::UnregisterHandler(TEXT("set_actor_transform"));
 	URLabOpRegistry::UnregisterHandler(TEXT("begin_pie"));
 	URLabOpRegistry::UnregisterHandler(TEXT("stop_pie"));

@@ -66,6 +66,8 @@ bool FURLabRenderOwnerExclusiveLeaseTest::RunTest(const FString&)
 	TestTrue(TEXT("exact wire credentials reconstruct an owned proof"), Authorized.IsOk());
 	TestTrue(TEXT("reconstructed proof authorizes queued mutation"),
 		Authority.Validate(Authorized.Proof).IsOk());
+	TestEqual(TEXT("authorized use extends the lease by its TTL"),
+		Authority.Status().Status.SecondsRemaining, 10.0);
 
 	Now = 105.0;
 	const FURLabRenderOwnerLeaseResult Renewed = Authority.Renew(Attached.Proof, 20.0);

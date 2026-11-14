@@ -117,7 +117,7 @@ struct FMjBootScene
  * @brief The -URLabNet sub-keys that identify and address THIS instance.
  *
  * The port-arithmetic keys (portbase/stride/step/state/bus/cam/control) stay with the
- * bridge config, which owns the derivation; these four are boot identity and are read
+ * bridge config, which owns the derivation; these are boot identity and are read
  * here so the config no longer parses a command line of its own.
  */
 struct FMjBootNet
@@ -130,6 +130,8 @@ struct FMjBootNet
 	int32 GrpcPort = 0;
 	/** bind=<addr>. */
 	FString BindAddress;
+	/** parent=<pid>: exit when that process is gone, or 0 when absent. */
+	uint32 ParentPid = 0;
 };
 
 /**

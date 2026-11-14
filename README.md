@@ -54,7 +54,7 @@ dynamics and render them with Unreal's lighting, materials, and cameras.
 - **Render from Python.** Attach an owner to a render service, install a source,
   and request exact camera captures; or drive a visible viewer with Cartesian poses.
 - **Debug visually.** Body-island and segmentation overlays, tendon and muscle
-  rendering, collision overlays, and mouse-driven body perturbation.
+  rendering, collision overlays, and granted external body perturbations.
 
 ## Quick install
 
@@ -92,7 +92,7 @@ Full documentation is at
 URLab uses ZMQ commands with network or negotiated shared-memory data.
 On Linux, gRPC (`dm_env_rpc`) carries URLab render extensions with network data;
 it does not provide general simulation control or a continuous viewer bus. The companion
-[urlab_bridge](https://github.com/URLab-Sim/urlab_bridge) package (separate
+[urlab_bridge](https://github.com/URLab-Sim/URLab_Bridge) package (separate
 repository) provides Python middleware for remote control and ROS 2 bridging, and
   the typed clients for simulation, render and viewer services described under
 [Render Server](https://urlab-sim.github.io/UnrealRoboticsLab/concepts/render_roles/).

@@ -140,8 +140,10 @@ bool FMjPushRenderServerHasNoManager::RunTest(const FString& Parameters)
 {
 	using namespace MjRenderFeatureTest;
 
+	// `-discoverable` keeps this throwaway bridge out of the instance registry, where
+	// it would share (and on teardown remove) the editor bridge's entry.
 	FScopedCommandLine CommandLine(
-		TEXT("-URLabWorkflow=render -URLabCaps=rpc,camera_rpc,accept_model_load"));
+		TEXT("-URLabWorkflow=render -URLabCaps=rpc,camera_rpc,accept_model_load,-discoverable"));
 	// A request server serves the render requests that drive it, so it wants a bridge
 	// without ever naming the capability. This is the implication that used to spawn
 	// a manager.
@@ -157,10 +159,12 @@ bool FMjPushRenderServerHasNoManager::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Own the bridge in this world and skip the listener bind, so the test drives the
-	// cooked branch without fighting the editor's bridge for the configured port.
-	UURLabBridgeSubsystem::SetUnboundForTest(true);
-	ON_SCOPE_EXIT { UURLabBridgeSubsystem::SetUnboundForTest(false); };
+	// Own the bridge in this world and bind it to an ephemeral loopback port. The
+	// request boot verifies that its ZMQ command socket is bound before it reports
+	// success, so the listener is real; a wildcard port keeps it from fighting the
+	// editor's bridge (which holds the configured step port) or any other process.
+	UURLabBridgeSubsystem::SetIsolatedEndpointForTest(TEXT("tcp://127.0.0.1:*"));
+	ON_SCOPE_EXIT { UURLabBridgeSubsystem::SetIsolatedEndpointForTest(FString()); };
 	TArray<FMjExternalRpcTransportFactory> SavedExternalFactories =
 		MoveTemp(FMjExternalTransportProvider::ControlRpcTransportFactories);
 	FMjExternalTransportProvider::ControlRpcTransportFactories.Reset();
@@ -182,6 +186,20 @@ bool FMjPushRenderServerHasNoManager::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestTrue(TEXT("the bridge is running"), Bridge->IsRunning());
+	{
+		FString VerifyError;
+		TestTrue(TEXT("the request boot's command transport is bound"),
+			Bridge->VerifyCommandTransportsBound(VerifyError));
+		TArray<FString> CommandEndpoints;
+		Bridge->CollectCommandEndpoints(CommandEndpoints);
+		if (TestEqual(TEXT("one command endpoint is advertised"), CommandEndpoints.Num(), 1))
+		{
+			TestTrue(TEXT("the advertised endpoint is loopback"),
+				CommandEndpoints[0].StartsWith(TEXT("tcp://127.0.0.1:")));
+			TestFalse(TEXT("the advertised endpoint names the bound port, not the wildcard"),
+				CommandEndpoints[0].EndsWith(TEXT(":*")));
+		}
+	}
 	TestTrue(TEXT("render camera RPC grant is active"),
 		Bridge->GrantsPermission(EMjCapability::CameraRpc));
 	TestTrue(TEXT("explicit model load grant is active"),

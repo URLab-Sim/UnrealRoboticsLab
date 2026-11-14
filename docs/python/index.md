@@ -1,6 +1,6 @@
 # Python and external control
 
-The companion [urlab_bridge](https://github.com/URLab-Sim/urlab_bridge) repository provides the current typed Python clients. Install it with `uv sync` (Python 3.11 or 3.12); add `uv sync --extra grpc` only for the Linux gRPC render extension. The [bridge README](https://github.com/URLab-Sim/urlab_bridge#readme) is the Python entry point.
+The companion [urlab_bridge](https://github.com/URLab-Sim/URLab_Bridge) repository provides the current typed Python clients; start with its Getting Started guide (`docs/getting_started.md` in [URLab_Bridge](https://github.com/URLab-Sim/URLab_Bridge)). Install it with `uv sync` (Python 3.11 or 3.12); add `uv sync --extra grpc` only for the Linux gRPC render extension. The [bridge README](https://github.com/URLab-Sim/URLab_Bridge#readme) is the Python entry point.
 
 Create a `Connection` to an already running service and call `connect()` explicitly. Connecting is passive. Compose the client for the service advertised by that connection:
 
@@ -13,7 +13,7 @@ Create a `Connection` to an already running service and call `connect()` explici
 | Publish Cartesian poses or read advertised pose/camera output | `PoseStreamPublisher` or passive `OutputReader` |
 | Distribute captures among independent render workers | `RenderPool`; connect, attach owners, then install the source |
 
-The [typed render guide](https://github.com/URLab-Sim/urlab_bridge/blob/main/docs/render_server.md) shows an owner, source install, capture and result release. The [pool guide](https://github.com/URLab-Sim/urlab_bridge/blob/main/docs/render_pool.md) shows multiple workers. Runnable bridge examples include `examples/render_client_example.py`, `examples/render_server_viewer.py` (an OpenCV display of render-server pixels), and `examples/owner_viewer_bunny.py` (a visible Unreal viewer).
+The typed render guide (`docs/render_server.md` in [URLab_Bridge](https://github.com/URLab-Sim/URLab_Bridge)) shows an owner, source install, capture and result release. The pool guide (`docs/render_pool.md` in [URLab_Bridge](https://github.com/URLab-Sim/URLab_Bridge)) shows multiple workers. Runnable bridge examples include `examples/render_client_example.py`, `examples/render_server_viewer.py` (an OpenCV display of render-server pixels), and `examples/owner_viewer_bunny.py` (a visible Unreal viewer).
 
 ## Data and transport
 

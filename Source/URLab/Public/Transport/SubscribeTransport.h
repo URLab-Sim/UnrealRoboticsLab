@@ -16,9 +16,6 @@
  * Drains whatever an external controller sent since the last step and applies
  * it to the authoritative mjData just before mj_step. That is why it lives on
  * the physics thread's PreStep and has no worker of its own.
- *
- * Distinct from `UURLabClientSubscribeTransport`, which is a client-side render
- * sink with no bridge, no step hooks and no authority over the sim.
  */
 UCLASS(Abstract)
 class URLAB_API UURLabSubscribeTransport : public UURLabTransportBase

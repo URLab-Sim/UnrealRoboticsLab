@@ -148,6 +148,11 @@ bool ExportHulls(UStaticMeshComponent& Smc, bool bComplex, float CoacdThreshold,
 		return true;
 	}
 
+#if !WITH_EDITOR
+	(void)CoacdThreshold;
+	OutError = TEXT("quick-convert complex convex decomposition requires an editor build");
+	return false;
+#else
 	CoACD_Mesh Input{};
 	TArray<double> InputVertices;
 	TArray<int> InputTriangles;
@@ -224,6 +229,7 @@ bool ExportHulls(UStaticMeshComponent& Smc, bool bComplex, float CoacdThreshold,
 	}
 	CoACD_freeMeshArray(Result);
 	return true;
+#endif
 }
 } // namespace
 

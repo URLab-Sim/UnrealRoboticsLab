@@ -26,8 +26,6 @@
 #include "Bridge/BridgeServer.h"
 #include "Bridge/BridgeServerConfig.h"
 #include "MjClientTransportDoubles.h"
-#include "Transport/CameraPublishTransport.h"
-#include "Transport/ClientSubscribeTransport.h"
 #include "Transport/MjExternalTransportProvider.h"
 #include "Transport/PublishTransport.h"
 #include "Transport/RpcClientTransport.h"
@@ -53,10 +51,8 @@ bool FMjTransportOneBase::RunTest(const FString& Parameters)
 	const TArray<UClass*> Roles = {
 		UURLabPublishTransport::StaticClass(),
 		UURLabSubscribeTransport::StaticClass(),
-		UURLabClientSubscribeTransport::StaticClass(),
 		UURLabRpcTransport::StaticClass(),
 		UURLabRpcClientTransport::StaticClass(),
-		UURLabCameraPublishTransport::StaticClass(),
 	};
 	for (UClass* Role : Roles)
 	{

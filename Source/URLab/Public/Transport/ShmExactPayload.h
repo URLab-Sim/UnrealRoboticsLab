@@ -316,6 +316,10 @@ private:
 		const FURLabPayloadOwner& Owner, TConstArrayView<uint8> Bytes,
 		const FURLabPayloadPhysicalReservationPtr& Reservation,
 		FURLabShmExactSealedPayloadPtr& OutSealed, bool& bOutRetrySafe);
+	FURLabShmExactStatus CreateFilledRetained(
+		const FURLabPayloadOwner& Owner, int64 ByteLength, FURLabPayloadFill Fill,
+		const FURLabPayloadPhysicalReservationPtr& Reservation,
+		FURLabShmExactSealedPayloadPtr& OutSealed, bool& bOutRetrySafe);
 	struct FState;
 	explicit FURLabShmExactRegion(TUniquePtr<FState>&& InState);
 

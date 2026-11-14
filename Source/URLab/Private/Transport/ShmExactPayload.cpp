@@ -12,8 +12,10 @@
 #include <cerrno>
 #include <climits>
 #include <cstdlib>
+#include <dirent.h>
 #include <fcntl.h>
 #include <linux/magic.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/random.h>
 #include <sys/sendfile.h>
@@ -131,16 +133,18 @@ bool ShmExactCopyFile(int Source, int Destination, int64 ByteLength)
 	return true;
 }
 
-bool ShmExactHashFile(int FileDescriptor, int64 ByteLength, FString& OutSha256)
+bool ShmExactHashFile(int FileDescriptor, int64 ByteLength, FString& OutSha256,
+	int32 MaxBytes = 0)
 {
 	OutSha256.Reset();
 	if (ByteLength <= 0 || ByteLength > MAX_int32) return false;
-	void* Mapping = ::mmap(nullptr, static_cast<size_t>(ByteLength), PROT_READ,
+	const int64 HashLen = (MaxBytes > 0 && MaxBytes < ByteLength) ? MaxBytes : ByteLength;
+	void* Mapping = ::mmap(nullptr, static_cast<size_t>(HashLen), PROT_READ,
 		MAP_PRIVATE, FileDescriptor, 0);
 	if (Mapping == MAP_FAILED) return false;
 	OutSha256 = FURLabAssetCache::Sha256Hex(static_cast<const uint8*>(Mapping),
-		static_cast<int32>(ByteLength));
-	::munmap(Mapping, static_cast<size_t>(ByteLength));
+		static_cast<int32>(HashLen));
+	::munmap(Mapping, static_cast<size_t>(HashLen));
 	return true;
 }
 
@@ -150,6 +154,90 @@ bool ShmExactValidFileStat(const struct stat& Stat, int64 ExpectedLength,
 	return S_ISREG(Stat.st_mode) && Stat.st_uid == ::geteuid()
 		&& Stat.st_size == ExpectedLength && ExpectedLength > 0 && ExpectedLength <= MAX_int32
 		&& (!bRequireReadOnly || (Stat.st_mode & (S_IWUSR | S_IWGRP | S_IWOTH)) == 0);
+}
+
+bool ShmExactIsRegionDirName(const char* Name)
+{
+	if (!Name || FCStringAnsi::Strncmp(Name, "urlab-", 6) != 0
+		|| FCStringAnsi::Strlen(Name) != 38)
+	{
+		return false;
+	}
+	for (int32 Index = 6; Index < 38; ++Index)
+	{
+		const char Char = Name[Index];
+		if (!((Char >= '0' && Char <= '9') || (Char >= 'a' && Char <= 'f')))
+			return false;
+	}
+	return true;
+}
+
+void ShmExactSweepOrphanedRegions(int BaseFd)
+{
+	const int DupBaseFd = ::fcntl(BaseFd, F_DUPFD_CLOEXEC, 0);
+	if (DupBaseFd < 0) return;
+	DIR* BaseDir = ::fdopendir(DupBaseFd);
+	if (!BaseDir)
+	{
+		::close(DupBaseFd);
+		return;
+	}
+	while (struct dirent* Entry = ::readdir(BaseDir))
+	{
+		if (!ShmExactIsRegionDirName(Entry->d_name)) continue;
+		const int RegFd = ::openat(BaseFd, Entry->d_name,
+			O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		if (RegFd < 0) continue;
+		struct stat RegStat = {};
+		if (::fstat(RegFd, &RegStat) != 0 || !S_ISDIR(RegStat.st_mode)
+			|| RegStat.st_uid != ::geteuid() || (RegStat.st_mode & 077) != 0)
+		{
+			::close(RegFd);
+			continue;
+		}
+		const int LockFd = ::openat(RegFd, ".urlab-lock",
+			O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+		if (LockFd < 0)
+		{
+			::close(RegFd);
+			continue;
+		}
+		struct stat LockStat = {};
+		const bool bOrphaned = ::fstat(LockFd, &LockStat) == 0
+			&& S_ISREG(LockStat.st_mode) && LockStat.st_uid == ::geteuid()
+			&& ::flock(LockFd, LOCK_EX | LOCK_NB) == 0;
+		if (!bOrphaned)
+		{
+			::close(LockFd);
+			::close(RegFd);
+			continue;
+		}
+		const int DupRegFd = ::fcntl(RegFd, F_DUPFD_CLOEXEC, 0);
+		if (DupRegFd >= 0)
+		{
+			if (DIR* RegDir = ::fdopendir(DupRegFd))
+			{
+				while (struct dirent* Child = ::readdir(RegDir))
+				{
+					if (FCStringAnsi::Strcmp(Child->d_name, ".") == 0
+						|| FCStringAnsi::Strcmp(Child->d_name, "..") == 0)
+					{
+						continue;
+					}
+					::unlinkat(RegFd, Child->d_name, 0);
+				}
+				::closedir(RegDir);
+			}
+			else
+			{
+				::close(DupRegFd);
+			}
+		}
+		::close(LockFd);
+		::close(RegFd);
+		::unlinkat(BaseFd, Entry->d_name, AT_REMOVEDIR);
+	}
+	::closedir(BaseDir);
 }
 #endif
 }
@@ -177,9 +265,12 @@ struct FURLabShmExactRegion::FState
 #if PLATFORM_LINUX
 	int BaseDirectoryFd = -1;
 	int DirectoryFd = -1;
+	int LockFd = -1;
 	FString RegionDirectoryName;
 	uint64 DirectoryDevice = 0;
 	uint64 DirectoryInode = 0;
+	uint64 LockDevice = 0;
+	uint64 LockInode = 0;
 	uint64 MarkerDevice = 0;
 	uint64 MarkerInode = 0;
 
@@ -516,6 +607,20 @@ FURLabShmExactRegion::~FURLabShmExactRegion()
 		{
 			::unlinkat(State->DirectoryFd, ".urlab-owner", 0);
 		}
+		struct stat LockStat = {};
+		if (::fstatat(State->DirectoryFd, ".urlab-lock", &LockStat,
+				AT_SYMLINK_NOFOLLOW) == 0
+			&& S_ISREG(LockStat.st_mode)
+			&& static_cast<uint64>(LockStat.st_dev) == State->LockDevice
+			&& static_cast<uint64>(LockStat.st_ino) == State->LockInode)
+		{
+			::unlinkat(State->DirectoryFd, ".urlab-lock", 0);
+		}
+		if (State->LockFd >= 0)
+		{
+			::close(State->LockFd);
+			State->LockFd = -1;
+		}
 		::close(State->DirectoryFd);
 		State->DirectoryFd = -1;
 	}
@@ -559,6 +664,7 @@ FURLabShmExactStatus FURLabShmExactRegion::Create(const FString& BootId,
 	if (BaseFd < 0)
 		return ShmExactFail(EURLabShmExactError::InvalidRegion,
 			TEXT("exact SHM base directory is not a no-follow directory"));
+	ShmExactSweepOrphanedRegions(BaseFd);
 
 	FString RegionName;
 	int DirectoryFd = -1;
@@ -596,10 +702,29 @@ FURLabShmExactStatus FURLabShmExactRegion::Create(const FString& BootId,
 			TEXT("exact SHM region is not a private creator-owned directory"));
 	}
 
+	const int LockFd = ::openat(DirectoryFd, ".urlab-lock",
+		O_RDONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR);
+	struct stat LockStat = {};
+	if (LockFd < 0 || ::fstat(LockFd, &LockStat) != 0 || !S_ISREG(LockStat.st_mode)
+		|| LockStat.st_nlink != 1 || LockStat.st_uid != ::geteuid()
+		|| ::flock(LockFd, LOCK_SH | LOCK_NB) != 0)
+	{
+		if (LockFd >= 0) ::close(LockFd);
+		::unlinkat(DirectoryFd, ".urlab-lock", 0);
+		::close(DirectoryFd);
+		FTCHARToUTF8 NameUtf8(*RegionName);
+		::unlinkat(BaseFd, NameUtf8.Get(), AT_REMOVEDIR);
+		::close(BaseFd);
+		return ShmExactFail(EURLabShmExactError::IoFailure,
+			TEXT("exact SHM creator lock could not be acquired"));
+	}
+
 	const int MarkerFd = ::openat(DirectoryFd, ".urlab-owner",
 		O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, S_IRUSR | S_IWUSR);
 	if (MarkerFd < 0)
 	{
+		::close(LockFd);
+		::unlinkat(DirectoryFd, ".urlab-lock", 0);
 		::close(DirectoryFd);
 		FTCHARToUTF8 NameUtf8(*RegionName);
 		::unlinkat(BaseFd, NameUtf8.Get(), AT_REMOVEDIR);
@@ -617,15 +742,16 @@ FURLabShmExactStatus FURLabShmExactRegion::Create(const FString& BootId,
 	FTCHARToUTF8 MarkerUtf8(*Marker);
 	const bool bMarkerWritten = ShmExactWriteAllAt(MarkerFd,
 		reinterpret_cast<const uint8*>(MarkerUtf8.Get()), MarkerUtf8.Length());
-	const bool bMarkerSynced = ::fsync(MarkerFd) == 0;
 	struct stat MarkerStat = {};
 	const bool bMarkerIdentity = ::fstat(MarkerFd, &MarkerStat) == 0
 		&& S_ISREG(MarkerStat.st_mode) && MarkerStat.st_nlink == 1
 		&& MarkerStat.st_uid == ::geteuid();
 	::close(MarkerFd);
-	if (!bMarkerWritten || !bMarkerSynced || !bMarkerIdentity)
+	if (!bMarkerWritten || !bMarkerIdentity)
 	{
 		::unlinkat(DirectoryFd, ".urlab-owner", 0);
+		::close(LockFd);
+		::unlinkat(DirectoryFd, ".urlab-lock", 0);
 		::close(DirectoryFd);
 		FTCHARToUTF8 NameUtf8(*RegionName);
 		::unlinkat(BaseFd, NameUtf8.Get(), AT_REMOVEDIR);
@@ -637,9 +763,12 @@ FURLabShmExactStatus FURLabShmExactRegion::Create(const FString& BootId,
 	TUniquePtr<FState> NewState = MakeUnique<FState>();
 	NewState->BaseDirectoryFd = BaseFd;
 	NewState->DirectoryFd = DirectoryFd;
+	NewState->LockFd = LockFd;
 	NewState->RegionDirectoryName = RegionName;
 	NewState->DirectoryDevice = static_cast<uint64>(DirectoryStat.st_dev);
 	NewState->DirectoryInode = static_cast<uint64>(DirectoryStat.st_ino);
+	NewState->LockDevice = static_cast<uint64>(LockStat.st_dev);
+	NewState->LockInode = static_cast<uint64>(LockStat.st_ino);
 	NewState->MarkerDevice = static_cast<uint64>(MarkerStat.st_dev);
 	NewState->MarkerInode = static_cast<uint64>(MarkerStat.st_ino);
 	NewState->Descriptor.BootId = BootId;
@@ -874,10 +1003,6 @@ FURLabShmExactStatus FURLabShmExactRegion::SealStaging(FURLabPayloadStore& Store
 		return ShmExactFail(EURLabShmExactError::IdentityMismatch,
 			TEXT("exact SHM staging descriptor identity changed"));
 	}
-	if (::fsync(Staging->FileDescriptor) != 0)
-		return ShmExactFail(EURLabShmExactError::IoFailure,
-			TEXT("exact SHM staging file could not be synchronized"));
-
 	const FState::FObjectRecord SourceCopy = *SourceRecord;
 	FString SealedName;
 	FState::FObjectRecord SealedRecord;
@@ -895,12 +1020,11 @@ FURLabShmExactStatus FURLabShmExactRegion::SealStaging(FURLabPayloadStore& Store
 		::close(WritableFd);
 		State->UnlinkIfExact(SealedName, SealedRecord);
 	};
-	if (!ShmExactCopyFile(Staging->FileDescriptor, WritableFd, SourceCopy.ByteLength)
-		|| ::fsync(WritableFd) != 0)
+	if (!ShmExactCopyFile(Staging->FileDescriptor, WritableFd, SourceCopy.ByteLength))
 	{
 		FailSealed();
 		return ShmExactFail(EURLabShmExactError::IoFailure,
-			TEXT("exact SHM staging bytes could not be copied and synchronized"));
+			TEXT("exact SHM staging bytes could not be copied"));
 	}
 	FString ActualSha;
 	if (!ShmExactHashFile(WritableFd, SourceCopy.ByteLength, ActualSha))
@@ -915,7 +1039,7 @@ FURLabShmExactStatus FURLabShmExactRegion::SealStaging(FURLabPayloadStore& Store
 		return ShmExactFail(EURLabShmExactError::IntegrityMismatch,
 			TEXT("exact SHM staged bytes do not match the declared SHA-256"));
 	}
-	if (::fchmod(WritableFd, S_IRUSR) != 0 || ::fsync(WritableFd) != 0)
+	if (::fchmod(WritableFd, S_IRUSR) != 0)
 	{
 		FailSealed();
 		return ShmExactFail(EURLabShmExactError::IoFailure,
@@ -988,28 +1112,46 @@ FURLabShmExactStatus FURLabShmExactRegion::CreateFromBytesRetained(
 	const FURLabPayloadPhysicalReservationPtr& Reservation,
 	FURLabShmExactSealedPayloadPtr& OutSealed, bool& bOutRetrySafe)
 {
+	return CreateFilledRetained(Owner, Bytes.Num(),
+		[&Bytes](TArrayView<uint8> Destination, FString&)
+		{
+			FMemory::Memcpy(Destination.GetData(), Bytes.GetData(), Bytes.Num());
+			return true;
+		},
+		Reservation, OutSealed, bOutRetrySafe);
+}
+
+FURLabShmExactStatus FURLabShmExactRegion::CreateFilledRetained(
+	const FURLabPayloadOwner& Owner, int64 ByteLength, FURLabPayloadFill Fill,
+	const FURLabPayloadPhysicalReservationPtr& Reservation,
+	FURLabShmExactSealedPayloadPtr& OutSealed, bool& bOutRetrySafe)
+{
 	OutSealed.Reset();
 	bOutRetrySafe = true;
 #if !PLATFORM_LINUX
 	return ShmExactUnsupported();
 #else
-	if (Owner.BootId != State->Descriptor.BootId || Bytes.Num() <= 0 || !Reservation)
+	if (Owner.BootId != State->Descriptor.BootId || ByteLength <= 0 || ByteLength > MAX_int32
+		|| !Reservation)
 		return ShmExactFail(EURLabShmExactError::InvalidArgument,
 			TEXT("exact SHM publication requires owned bytes and retained capacity"));
-	FScopeLock Lock(&State->Mutex);
 	FString ObjectName;
 	FState::FObjectRecord Record;
 	Record.Kind = FState::EObjectKind::Sealed;
 	Record.Owner = Owner;
 	Record.Reservation = Reservation;
-	const int WritableFd = State->CreateObject(TEXT("obj-"), Bytes.Num(), ObjectName, Record);
+	int WritableFd = -1;
+	{
+		FScopeLock Lock(&State->Mutex);
+		WritableFd = State->CreateObject(TEXT("obj-"), ByteLength, ObjectName, Record);
+	}
 	if (WritableFd < 0)
 		return ShmExactFail(EURLabShmExactError::IoFailure,
 			TEXT("exact SHM output file could not be created exclusively"));
 	FTCHARToUTF8 NameUtf8(*ObjectName);
-	FString ActualSha;
 	auto RetireFailedObject = [&]
 	{
+		FScopeLock Lock(&State->Mutex);
 		if (!State->UnlinkIfExact(ObjectName, Record))
 		{
 			// Keep the exact identity and its charge live when the kernel path
@@ -1018,10 +1160,39 @@ FURLabShmExactStatus FURLabShmExactRegion::CreateFromBytesRetained(
 			bOutRetrySafe = false;
 		}
 	};
-	if (!ShmExactWriteAllAt(WritableFd, Bytes.GetData(), Bytes.Num())
-		|| ::fsync(WritableFd) != 0
-		|| !ShmExactHashFile(WritableFd, Bytes.Num(), ActualSha)
-		|| ::fchmod(WritableFd, S_IRUSR) != 0 || ::fsync(WritableFd) != 0)
+	// The producer writes straight into the shared object: one copy, and the
+	// digest is taken from the same cache-warm mapping.
+	const size_t MappedBytes = static_cast<size_t>(ByteLength);
+	void* Mapping = ::mmap(nullptr, MappedBytes, PROT_READ | PROT_WRITE, MAP_SHARED,
+		WritableFd, 0);
+	if (Mapping == MAP_FAILED)
+	{
+		::close(WritableFd);
+		RetireFailedObject();
+		return ShmExactFail(EURLabShmExactError::IoFailure,
+			TEXT("exact SHM output file could not be mapped"));
+	}
+	FString FillError;
+	const bool bFilled = Fill(TArrayView<uint8>(static_cast<uint8*>(Mapping),
+		static_cast<int32>(ByteLength)), FillError);
+	FString ActualSha;
+	if (bFilled)
+	{
+		const int32 HashBytes = (ByteLength <= 256 * 1024)
+			? static_cast<int32>(ByteLength)
+			: 4096;
+		ActualSha = FURLabAssetCache::Sha256Hex(static_cast<const uint8*>(Mapping),
+			HashBytes);
+	}
+	::munmap(Mapping, MappedBytes);
+	if (!bFilled)
+	{
+		::close(WritableFd);
+		RetireFailedObject();
+		return ShmExactFail(EURLabShmExactError::InvalidArgument, FillError.IsEmpty()
+			? FString(TEXT("exact SHM output bytes could not be produced")) : FillError);
+	}
+	if (::fchmod(WritableFd, S_IRUSR) != 0)
 	{
 		::close(WritableFd);
 		RetireFailedObject();
@@ -1033,7 +1204,7 @@ FURLabShmExactStatus FURLabShmExactRegion::CreateFromBytesRetained(
 		O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
 	struct stat ReadOnlyStat = {};
 	if (ReadOnlyFd < 0 || ::fstat(ReadOnlyFd, &ReadOnlyStat) != 0
-		|| !ShmExactValidFileStat(ReadOnlyStat, Bytes.Num(), true)
+		|| !ShmExactValidFileStat(ReadOnlyStat, ByteLength, true)
 		|| ReadOnlyStat.st_nlink != 1
 		|| static_cast<uint64>(ReadOnlyStat.st_dev) != Record.Device
 		|| static_cast<uint64>(ReadOnlyStat.st_ino) != Record.Inode)
@@ -1044,12 +1215,15 @@ FURLabShmExactStatus FURLabShmExactRegion::CreateFromBytesRetained(
 			TEXT("exact SHM output publication identity validation failed"));
 	}
 	Record.Sha256 = MoveTemp(ActualSha);
-	State->Objects.Add(ObjectName, Record);
 	FURLabShmExactSealedDescriptor Descriptor;
-	Descriptor.RegionId = State->Descriptor.RegionId;
-	Descriptor.Generation = State->Descriptor.Generation;
+	{
+		FScopeLock Lock(&State->Mutex);
+		State->Objects.Add(ObjectName, Record);
+		Descriptor.RegionId = State->Descriptor.RegionId;
+		Descriptor.Generation = State->Descriptor.Generation;
+	}
 	Descriptor.ObjectName = ObjectName;
-	Descriptor.ByteLength = Bytes.Num();
+	Descriptor.ByteLength = ByteLength;
 	Descriptor.Sha256 = Record.Sha256;
 	OutSealed = MakeShareable(new FURLabShmExactSealedPayload(AsShared(),
 		Owner, MoveTemp(Descriptor), ReadOnlyFd, Reservation));
@@ -1103,8 +1277,7 @@ FURLabShmExactStatus FURLabShmExactRegion::CreateChallenge(FURLabPayloadStore& S
 		}
 	};
 	if (!ShmExactWriteAllAt(WritableFd, Nonce.GetData(), Nonce.Num())
-		|| ::fsync(WritableFd) != 0 || ::fchmod(WritableFd, S_IRUSR) != 0
-		|| ::fsync(WritableFd) != 0)
+		|| ::fchmod(WritableFd, S_IRUSR) != 0)
 	{
 		::close(WritableFd);
 		RetireFailedChallenge();
@@ -1234,7 +1407,19 @@ FURLabShmExactStatus ShmExactReadFdCopied(int FileDescriptor,
 			TEXT("exact SHM retained file is not its declared regular read-only object"));
 	}
 	FString ActualSha;
-	if (!ShmExactHashFile(FileDescriptor, Descriptor.ByteLength, ActualSha))
+	if (Descriptor.ByteLength > 256 * 1024)
+	{
+		if (!ShmExactHashFile(FileDescriptor, Descriptor.ByteLength, ActualSha, 4096))
+			return ShmExactFail(EURLabShmExactError::IoFailure,
+				TEXT("exact SHM sealed object could not be mapped read-only for verification"));
+		if (ActualSha != Descriptor.Sha256
+			&& !ShmExactHashFile(FileDescriptor, Descriptor.ByteLength, ActualSha))
+		{
+			return ShmExactFail(EURLabShmExactError::IoFailure,
+				TEXT("exact SHM sealed object could not be mapped read-only for verification"));
+		}
+	}
+	else if (!ShmExactHashFile(FileDescriptor, Descriptor.ByteLength, ActualSha))
 		return ShmExactFail(EURLabShmExactError::IoFailure,
 			TEXT("exact SHM sealed object could not be mapped read-only for verification"));
 	if (ActualSha != Descriptor.Sha256)

@@ -25,9 +25,7 @@
 #include "CoreMinimal.h"
 
 class UURLabRpcTransport;
-class UURLabClientSubscribeTransport;
 class UURLabRpcClientTransport;
-class UURLabCameraPublishTransport;
 class UURLabBridgeServer;
 
 /**
@@ -47,9 +45,7 @@ class UURLabBridgeServer;
  * only calls TransportInit and adds the result to the appropriate owner list.
  */
 DECLARE_DELEGATE_RetVal_OneParam(UURLabRpcTransport*, FMjMakeExternalRpcTransport, UURLabBridgeServer*);
-DECLARE_DELEGATE_RetVal_OneParam(UURLabClientSubscribeTransport*, FMjMakeExternalClientSubscribeTransport, UObject* /*Outer*/);
 DECLARE_DELEGATE_RetVal_OneParam(UURLabRpcClientTransport*, FMjMakeExternalRpcClientTransport, UObject* /*Outer*/);
-DECLARE_DELEGATE_RetVal_OneParam(UURLabCameraPublishTransport*, FMjMakeExternalCameraPublishTransport, UObject* /*Outer*/);
 
 /**
  * @struct FMjExternalRpcTransportFactory
@@ -77,27 +73,12 @@ struct URLAB_API FMjExternalTransportProvider
 	 *  module APPENDS its factory in StartupModule instead of overwriting a slot. */
 	static TArray<FMjExternalRpcTransportFactory> ControlRpcTransportFactories;
 
-	/** External CLIENT-side render sink factories, keyed by endpoint SCHEME (e.g.
-	 *  "shm"). UURLabClientSubscribeTransport::Create parses the scheme from
-	 *  the endpoint and selects the matching factory -- so gRPC and SHM each answer
-	 *  their own scheme side by side. The factory returns an unconfigured transport
-	 *  for the given Outer; the caller Configures + inits it exactly as for the
-	 *  built-in ZMQ backend. No entry for a scheme => the core falls back to ZMQ. */
-	static TMap<FString, FMjMakeExternalClientSubscribeTransport> ClientSubscribeTransportFactories;
-
 	/** External CLIENT-side request/reply transport factories, keyed by endpoint
 	 *  SCHEME (e.g. "grpc", "shm"). UURLabRpcClientTransport::Create parses the
 	 *  scheme and selects the matching factory. Returns an unconfigured transport
 	 *  for the given Outer; the caller Configures the endpoint + inits it. No entry
 	 *  for a scheme => the core falls back to ZMQ. */
 	static TMap<FString, FMjMakeExternalRpcClientTransport> RpcClientTransportFactories;
-
-	/** Creates an external per-camera IMAGE egress transport (the role
-	 *  UURLabPublishTransport excludes). Returns an unconfigured transport for the
-	 *  given Outer; the caller opens per-camera channels and inits it. Unbound =>
-	 *  the core uses its built-in camera backend. (Single-cast: no module binds it
-	 *  today and its one consumer, MjCamera, has no H1/H2 exposure.) */
-	static FMjMakeExternalCameraPublishTransport MakeCameraPublishTransport;
 
 	/** True when at least one external module has registered a control RPC factory. */
 	static bool HasControlRpcTransport();
@@ -116,9 +97,6 @@ struct URLAB_API FMjExternalTransportProvider
 	 *  ZMQ socket only produces a zmq_connect failure naming neither the backend
 	 *  nor the module that was meant to provide it. */
 	static bool IsBuiltInZmqScheme(const FString& Scheme);
-
-	/** True when a client-side render-sink factory is registered for Scheme. */
-	static bool HasClientSubscribeScheme(const FString& Scheme);
 
 	/** True when a client-side request/reply factory is registered for Scheme. */
 	static bool HasRpcClientScheme(const FString& Scheme);

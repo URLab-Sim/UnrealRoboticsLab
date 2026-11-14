@@ -207,6 +207,12 @@ bool UMjSimulationWorldSubsystem::AttachBridge(FString& OutError)
 		Candidate->StreamProducer = MakeShareable(Created.Release());
 		Candidate->InteractionOwner = MakeShared<FMjSimulationInteractionOwner,
 			ESPMode::ThreadSafe>();
+		Candidate->InteractionOwner->SetInputPermission(
+			[WeakBridge = Candidate->Bridge]()
+			{
+				const UURLabBridgeServer* Owner = WeakBridge.Get();
+				return Owner && Owner->GrantsPermission(EMjCapability::AcceptInput);
+			});
 		Runtime->SetInteractionOwner(Candidate->InteractionOwner);
 		Candidate->StreamBinding = MakeShared<FURLabPoseStreamServiceBinding,
 			ESPMode::ThreadSafe>(Candidate->StreamProducer.ToSharedRef(),

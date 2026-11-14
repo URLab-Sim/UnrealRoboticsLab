@@ -219,3 +219,6 @@ URLAB_API void MjBindNeutralMaterialTextures(class UMaterialInstanceDynamic& Ins
 
 /** The plugin's master material, or null when the content is missing. */
 URLAB_API class UMaterialInterface* MjLoadMasterMaterial();
+
+/** The plugin's translucent master material, falling back to the opaque master if absent. */
+URLAB_API class UMaterialInterface* MjLoadTranslucentMasterMaterial();

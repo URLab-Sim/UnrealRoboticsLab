@@ -453,4 +453,96 @@ bool FURLabCapturePayloadCapacityLifetimeTest::RunTest(const FString&)
 	TestFalse(TEXT("expired cached result exposes no pin"), ExpiredCached.Pin.IsValid());
 	return !HasAnyErrors();
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabCapturePayloadMaterializeTimingTest,
+	"URLab.Perf.RenderCapturePayload.MaterializeTiming",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FURLabCapturePayloadMaterializeTimingTest::RunTest(const FString&)
+{
+	using namespace URLabRenderCapturePayloadAdapterTest;
+	FPlanAuthority Authority;
+	FString AuthorityError;
+	if (!TestTrue(TEXT("plan authority creates"), Authority.Create(AuthorityError))) return false;
+	struct FCase { const TCHAR* Label; ERenderCameraMode Mode; FIntPoint Resolution; };
+	const FCase Cases[] = {
+		{TEXT("rgba 640x480"), ERenderCameraMode::Real, FIntPoint(640, 480)},
+		{TEXT("depth 640x480"), ERenderCameraMode::Depth, FIntPoint(640, 480)},
+		{TEXT("seg 640x480"), ERenderCameraMode::InstanceSegmentation, FIntPoint(640, 480)},
+		{TEXT("rgba 1920x1080"), ERenderCameraMode::Real, FIntPoint(1920, 1080)},
+		{TEXT("depth 1920x1080"), ERenderCameraMode::Depth, FIntPoint(1920, 1080)},
+		{TEXT("seg 1920x1080"), ERenderCameraMode::InstanceSegmentation, FIntPoint(1920, 1080)}};
+	constexpr int32 Iterations = 5;
+	for (const bool bShm : {false, true})
+	{
+#if !PLATFORM_LINUX
+		if (bShm) continue;
+#endif
+		auto Store = MakeShared<FURLabPayloadStore, ESPMode::ThreadSafe>(
+			TEXT("payload-timing"), Limits(256ll << 20));
+		FURLabPayloadOwner Owner;
+		if (!Open(*this, *Store, TEXT("payload-timing"), bShm ? TEXT("shm") : TEXT("net"), Owner))
+			return false;
+		FURLabShmExactRegionPtr Region;
+		if (bShm && !TestTrue(TEXT("SHM region creates"),
+			FURLabShmExactRegion::CreateForBoot(TEXT("payload-timing"), Region).IsOk())) return false;
+		for (const FCase& Case : Cases)
+		{
+			FURLabRenderExactCapturePlan CapturePlan = Plan(Authority.Producer, {{TEXT("cam"), Case.Mode}});
+			FRenderCameraConfigurationSnapshot& Camera = CapturePlan.Cameras[0];
+			Camera.Resolution = Case.Resolution;
+			int32 Elements = 0;
+			FString Error;
+			RenderCheckedCameraBufferSizing(Camera.Mode, Camera.Resolution, Elements,
+				Camera.LogicalPixelBytes, Camera.PhysicalArrayBytes, Error);
+			CapturePlan.AggregateLogicalPixelBytes = Camera.LogicalPixelBytes;
+			CapturePlan.AggregatePhysicalArrayBytes = Camera.PhysicalArrayBytes;
+			auto Native = MakeShared<FRenderCameraFrame>(*Frame(Camera, 7));
+			const int32 Pixels = Case.Resolution.X * Case.Resolution.Y;
+			Native->Color.Reset(); Native->Depth.Reset(); Native->Seg.Reset();
+			if (Case.Mode == ERenderCameraMode::Real)
+			{
+				Native->Color.SetNumUninitialized(Pixels);
+				for (int32 Index = 0; Index < Pixels; ++Index)
+					Native->Color[Index] = FColor(uint8(Index), uint8(Index >> 8), uint8(Index >> 16), 255);
+			}
+			else if (Case.Mode == ERenderCameraMode::Depth)
+			{
+				Native->Depth.SetNumUninitialized(Pixels);
+				for (int32 Index = 0; Index < Pixels; ++Index) Native->Depth[Index] = 10.0f + Index % 997;
+			}
+			else
+			{
+				Native->Seg.SetNumUninitialized(Pixels * 2);
+				for (int32 Index = 0; Index < Pixels * 2; ++Index) Native->Seg[Index] = Index % 31;
+			}
+			FURLabRenderCaptureJobSnapshot Complete;
+			Complete.State = EURLabRenderCaptureJobState::Succeeded;
+			Complete.SceneRevision = CapturePlan.SceneRevision;
+			Complete.CameraNames.Add(Camera.CanonicalName);
+			Complete.Frames.Add(Native);
+			double Best = TNumericLimits<double>::Max();
+			double Total = 0.0;
+			for (int32 Iteration = 0; Iteration < Iterations; ++Iteration)
+			{
+				FURLabCapturePayloadAdmissionResult Admission = FURLabCapturePayloadAdmission::Admit(
+					Store, Owner, bShm ? EURLabPayloadBackingKind::ShmSealedFile
+						: EURLabPayloadBackingKind::NetworkBytes, Region, CapturePlan);
+				if (!TestTrue(TEXT("timing capture admits"), Admission.bAccepted)) return false;
+				const double Started = FPlatformTime::Seconds();
+				FURLabCapturePayloadMaterialization Result =
+					Admission.Admission->Materialize(Identity(), Complete);
+				const double Elapsed = (FPlatformTime::Seconds() - Started) * 1000.0;
+				if (!TestTrue(TEXT("timing capture materializes"), Result.bSucceeded)) return false;
+				Best = FMath::Min(Best, Elapsed);
+				Total += Elapsed;
+				Result.Pin.Reset();
+				Admission.Admission->Abort();
+			}
+			AddInfo(FString::Printf(TEXT("Materialize %s %s: best %.2f ms, mean %.2f ms"),
+				bShm ? TEXT("shm") : TEXT("network"), Case.Label, Best, Total / Iterations));
+		}
+	}
+	return !HasAnyErrors();
+}
 #endif

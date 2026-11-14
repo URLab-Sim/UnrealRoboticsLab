@@ -90,6 +90,12 @@ public:
 		Pin->TryGetNetworkBytes(Network);
 	}
 
+	/** Reads from inline request bytes; the caller keeps them alive. */
+	FDoubleReader(FURLabPayloadStore& InStore, TConstArrayView<uint8> InlineBytes)
+		: Store(InStore), Network(InlineBytes)
+	{
+	}
+
 	bool Read(int32 Index, double& Out, FString& OutError)
 	{
 		const int64 Offset = static_cast<int64>(Index) * sizeof(double);
@@ -145,6 +151,8 @@ FURLabDecodedRenderPose& FURLabDecodedRenderPose::operator=(
 	PresentationLease = MoveTemp(Other.PresentationLease);
 	Kind = Other.Kind;
 	Qpos = MoveTemp(Other.Qpos);
+	Mocap = MoveTemp(Other.Mocap);
+	UserCameraSceneTransform = MoveTemp(Other.UserCameraSceneTransform);
 	Cartesian = MoveTemp(Other.Cartesian);
 	return *this;
 }
@@ -152,6 +160,8 @@ FURLabDecodedRenderPose& FURLabDecodedRenderPose::operator=(
 void FURLabDecodedRenderPose::Reset()
 {
 	Qpos.Empty();
+	Mocap.Empty();
+	UserCameraSceneTransform.Reset();
 	Cartesian.BodySceneTransforms.Empty();
 	Cartesian.CameraSceneTransforms.Empty();
 	Cartesian.UserCameraSceneTransform.Reset();
@@ -243,6 +253,14 @@ bool FURLabRenderPoseIngress::Decode(
 		return Fail(OutError, TEXT("installed source does not support qpos"));
 	if (Request.Kind != EURLabRenderPoseKind::Cartesian && Request.Visualization.IsSet())
 		return Fail(OutError, TEXT("dynamic visualization requires Cartesian pose"));
+	if (Request.Kind != EURLabRenderPoseKind::Qpos && (Request.bMocap || Request.bUserCamera))
+		return Fail(OutError, TEXT("mocap and user camera extras require a qpos pose"));
+	if (Request.bMocap && Description.MocapCount < 0)
+		return Fail(OutError, TEXT("installed source has an invalid mocap count"));
+	if (Request.bUserCamera && !Description.UserCamera.IsSet())
+		return Fail(OutError, TEXT("qpos user camera pose requires a scene installed with a user camera"));
+	const int64 MocapScalars = Request.bMocap ? 7 * static_cast<int64>(Description.MocapCount) : 0;
+	const int64 UserCameraScalars = Request.bUserCamera ? 7 : 0;
 
 	const int64 BodyCount = Description.BodyNames.Num();
 	const int64 CameraCount = Description.ModelCameras.Num();
@@ -253,7 +271,7 @@ bool FURLabRenderPoseIngress::Decode(
 		|| !CheckedAdd(LightCount, TransformCount))
 		return Fail(OutError, TEXT("Cartesian transform count overflows"));
 	int64 ScalarCount = Request.Kind == EURLabRenderPoseKind::Qpos
-		? Description.QposWidth : 0;
+		? Description.QposWidth + MocapScalars + UserCameraScalars : 0;
 	if (Request.Kind == EURLabRenderPoseKind::Cartesian
 		&& !CheckedMultiply(TransformCount, 7, ScalarCount))
 		return Fail(OutError, TEXT("Cartesian scalar count overflows"));
@@ -262,17 +280,22 @@ bool FURLabRenderPoseIngress::Decode(
 		|| ExpectedBytes > MAX_int32)
 		return Fail(OutError, TEXT("pose payload length is not representable"));
 
+	if (Request.Payload.IsSet() && Request.InlineValues.IsValid())
+		return Fail(OutError, TEXT("pose must carry either a payload or inline values, not both"));
+	const bool bHasPoseData = Request.Payload.IsSet() || Request.InlineValues.IsValid();
 	if (ExpectedBytes == 0)
 	{
-		if (Request.Payload.IsSet())
+		if (bHasPoseData)
 			return Fail(OutError, TEXT("zero-width pose must omit its payload"));
 	}
-	else if (!Request.Payload.IsSet())
+	else if (!bHasPoseData)
 		return Fail(OutError, TEXT("pose payload is required"));
+	if (Request.InlineValues.IsValid() && Request.InlineValues->Num() != ExpectedBytes)
+		return Fail(OutError, TEXT("inline pose values length mismatch"));
 
 	int64 QposBytes = 0, BodyBytes = 0, CameraBytes = 0, LightBytes = 0, FrameBytes = 0;
 	if (!ArrayPhysicalBytes<double>(Request.Kind == EURLabRenderPoseKind::Qpos
-		? Description.QposWidth : 0, QposBytes)
+		? Description.QposWidth + MocapScalars : 0, QposBytes)
 		|| !ArrayPhysicalBytes<FTransform>(Description.BodyNames.Num(), BodyBytes)
 		|| !ArrayPhysicalBytes<FTransform>(Description.ModelCameras.Num(), CameraBytes)
 		|| !ArrayPhysicalBytes<FTransform>(Description.LightNames.Num(), LightBytes)
@@ -314,10 +337,19 @@ bool FURLabRenderPoseIngress::Decode(
 		return true;
 	}
 
-	FURLabPayloadPin Pin;
-	if (!PinExact(*Store, Owner, Request.Payload.GetValue(), ExpectedBytes, Pin, OutError))
-		return false;
-	FDoubleReader Reader(*Store, MoveTemp(Pin));
+	TOptional<FDoubleReader> ReaderStorage;
+	if (Request.InlineValues.IsValid())
+	{
+		ReaderStorage.Emplace(*Store, TConstArrayView<uint8>(*Request.InlineValues));
+	}
+	else
+	{
+		FURLabPayloadPin Pin;
+		if (!PinExact(*Store, Owner, Request.Payload.GetValue(), ExpectedBytes, Pin, OutError))
+			return false;
+		ReaderStorage.Emplace(*Store, MoveTemp(Pin));
+	}
+	FDoubleReader& Reader = ReaderStorage.GetValue();
 	if (Request.Kind == EURLabRenderPoseKind::Qpos)
 	{
 		Candidate.Qpos.Reserve(Description.QposWidth);
@@ -327,6 +359,35 @@ bool FURLabRenderPoseIngress::Decode(
 				|| !FMath::IsFinite(Candidate.Qpos[Index]))
 				return Fail(OutError, OutError.IsEmpty()
 					? TEXT("qpos contains a non-finite value") : OutError);
+		int32 Scalar = Description.QposWidth;
+		Candidate.Mocap.SetNumUninitialized(static_cast<int32>(MocapScalars));
+		for (double& Value : Candidate.Mocap)
+			if (!Reader.Read(Scalar++, Value, OutError) || !FMath::IsFinite(Value))
+				return Fail(OutError, OutError.IsEmpty()
+					? TEXT("mocap pose contains a non-finite value") : OutError);
+		for (int32 Body = 0; 7 * Body < Candidate.Mocap.Num(); ++Body)
+		{
+			const double* Quat = Candidate.Mocap.GetData() + 7 * Body + 3;
+			const double Norm = FMath::Sqrt(Quat[0] * Quat[0] + Quat[1] * Quat[1]
+				+ Quat[2] * Quat[2] + Quat[3] * Quat[3]);
+			if (!FMath::IsFinite(Norm) || FMath::Abs(Norm - 1.0) > QuaternionNormTolerance)
+				return Fail(OutError, TEXT("mocap quaternion is not near unit length"));
+		}
+		if (Request.bUserCamera)
+		{
+			double Values[7];
+			for (double& Value : Values)
+				if (!Reader.Read(Scalar++, Value, OutError) || !FMath::IsFinite(Value))
+					return Fail(OutError, OutError.IsEmpty()
+						? TEXT("user camera pose contains a non-finite value") : OutError);
+			const double Norm = FMath::Sqrt(Values[3] * Values[3] + Values[4] * Values[4]
+				+ Values[5] * Values[5] + Values[6] * Values[6]);
+			if (!FMath::IsFinite(Norm) || FMath::Abs(Norm - 1.0) > QuaternionNormTolerance)
+				return Fail(OutError, TEXT("user camera quaternion is not near unit length"));
+			for (int32 Index = 3; Index < 7; ++Index) Values[Index] /= Norm;
+			Candidate.UserCameraSceneTransform =
+				URLabCoordinateConversion::RightHandedOpticalPoseToUnreal(Values, Values + 3);
+		}
 	}
 	else
 	{

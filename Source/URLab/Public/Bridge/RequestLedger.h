@@ -15,9 +15,9 @@ public:
 	static constexpr uint64 WindowWidth = 1024;
 	static constexpr int32 MaxPendingPerSession = 32;
 	static constexpr int32 MaxPendingGlobal = 256;
-	static constexpr int64 MaxInlineReplyBytes = 256 * 1024;
-	static constexpr int64 MaxRetainedBytesPerSession = 8 * 1024 * 1024;
-	static constexpr int64 MaxRetainedBytesGlobal = 64 * 1024 * 1024;
+	static constexpr int64 MaxInlineReplyBytes = 64 * 1024 * 1024;
+	static constexpr int64 MaxRetainedBytesPerSession = 512ll * 1024 * 1024;
+	static constexpr int64 MaxRetainedBytesGlobal = 4096ll * 1024 * 1024;
 
 	enum EAdmission : uint8
 	{
@@ -73,6 +73,11 @@ public:
 	bool Complete(const FSessionRef& Session, int64 RequestId,
 		const FURLabRequestDigest& Digest, TArray<uint8>&& ReplyBytes);
 
+	/** Blocks until an admitted record is terminal or the timeout elapses and
+	 *  returns the admission view of the record at that point. */
+	FAdmissionResult AwaitTerminal(const FSessionRef& Session, int64 RequestId,
+		const FURLabRequestDigest& Digest, double TimeoutSeconds);
+
 	FStats GetStats() const;
 	FStats GetSessionStats(const FSessionRef& Session) const;
 	uint64 GetRetiredWatermark(const FSessionRef& Session) const;
@@ -82,3 +87,34 @@ private:
 	struct FState;
 	TSharedRef<FState, ESPMode::ThreadSafe> State;
 };
+
+/**
+ * Per-thread handoff that lets a transport ship a large retained reply without
+ * copying it out of the ledger.
+ *
+ * A transport opens an FScope around one ProcessRequestBytes call. When the
+ * settled reply is at least MinBytes, the dispatcher offers the ledger's shared,
+ * immutable reply storage here and leaves the TArray out-parameter empty; the
+ * transport then sends from the shared storage (ZMQ zero-copy, gRPC one copy).
+ * Without an open scope nothing changes: the reply is copied as before.
+ */
+struct URLAB_API FURLabSharedReplySink
+{
+	using FBytesPtr = TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe>;
+	static constexpr int32 MinBytes = 1024 * 1024;
+
+	struct URLAB_API FScope
+	{
+		FScope();
+		~FScope();
+		FScope(const FScope&) = delete;
+		FScope& operator=(const FScope&) = delete;
+	};
+
+	/** True when the current thread has an open scope that has not been filled. */
+	static bool CanAccept(int64 NumBytes);
+	static void Offer(FBytesPtr Bytes);
+	/** Removes the offered reply, if any, from the current thread's scope. */
+	static FBytesPtr Take();
+};
+

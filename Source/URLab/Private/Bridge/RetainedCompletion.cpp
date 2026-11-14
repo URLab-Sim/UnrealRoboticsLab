@@ -35,9 +35,7 @@ void FURLabRetainedCompletion::Publish(FURLabReplyEnvelope Reply,
 	{
 		const bool bOversize = Status.Code == EURLabWireError::OutputTooLarge;
 		Reply = FURLabReplyEnvelope::MakeError(Request,
-			ResultFailureCode == TEXT("encoding_error")
-				? (bOversize ? TEXT("result_unavailable") : TEXT("encoding_error"))
-				: ResultFailureCode,
+			bOversize ? TEXT("result_unavailable") : TEXT("encoding_error"),
 			bOversize ? TEXT("The terminal result exceeded the inline reply limit")
 				: TEXT("The terminal result could not be represented on the wire"),
 			EURLabExecution::Terminal);
@@ -68,6 +66,12 @@ EURLabRetainedAdmissionReply FURLabRetainedCompletion::EncodeAdmission(
 	{
 		if (Admission.Terminal == FURLabRequestLedger::Completed && Admission.ReplyBytes)
 		{
+			if (FURLabSharedReplySink::CanAccept(Admission.ReplyBytes->Num()))
+			{
+				FURLabSharedReplySink::Offer(Admission.ReplyBytes);
+				OutReplyBytes.Reset();
+				return EURLabRetainedAdmissionReply::Replied;
+			}
 			OutReplyBytes = *Admission.ReplyBytes;
 			return EURLabRetainedAdmissionReply::Replied;
 		}
@@ -84,7 +88,7 @@ EURLabRetainedAdmissionReply FURLabRetainedCompletion::EncodeAdmission(
 		const TCHAR* Code = Admission.Status == FURLabRequestLedger::Conflict
 			? TEXT("request_id_conflict")
 			: Admission.Status == FURLabRequestLedger::Retired ? TEXT("request_retired")
-			: Admission.Status == FURLabRequestLedger::Closed ? TEXT("outcome_unknown")
+			: Admission.Status == FURLabRequestLedger::Closed ? TEXT("session_expired")
 			: TEXT("request_capacity");
 		const EURLabExecution Execution = Admission.Status == FURLabRequestLedger::Closed
 			|| Admission.Status == FURLabRequestLedger::Retired

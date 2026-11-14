@@ -215,30 +215,111 @@ bool FURLabRenderSourceIngressValidationTest::RunTest(const FString&)
 	return !HasAnyErrors();
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabRenderSourceIngressQuotaRollbackTest,
-	"URLab.Workflows.RenderSourceIngress.QuotaRollback",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabRenderSourceIngressTransientCopyTest,
+	"URLab.Workflows.RenderSourceIngress.TransientCopyIsNotCharged",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FURLabRenderSourceIngressQuotaRollbackTest::RunTest(const FString&)
+bool FURLabRenderSourceIngressTransientCopyTest::RunTest(const FString&)
 {
 	using namespace URLabRenderSourceIngressTest;
 	const TArray<uint8> XmlBytes = Bytes(SimpleXml);
-	const int64 Budget = XmlBytes.Num() * 2 - 1;
 	auto Store = MakeShared<FURLabPayloadStore, ESPMode::ThreadSafe>(
-		TEXT("ingress-quota"), Limits(Budget));
+		TEXT("ingress-transient"), Limits(XmlBytes.Num()));
 	FURLabPayloadOwner Owner;
-	if (!Open(*this, *Store, TEXT("ingress-quota"), TEXT("owner"), Owner)) return false;
+	if (!Open(*this, *Store, TEXT("ingress-transient"), TEXT("owner"), Owner)) return false;
 	FURLabRenderSourceRequest Request;
 	Request.Kind = EMjModelSourceKind::XmlWithAssets;
 	if (!Put(*this, *Store, Owner, XmlBytes, {}, Request.Primary)) return false;
 	const FURLabPayloadStoreStats Before = Store->GetStats();
 	FMjRenderKinematicsCandidate Candidate;
-	FString Error;
-	TestFalse(TEXT("destination quota rejects prepare"), FURLabRenderSourceIngress::Prepare(
-		Store, Owner, Request, TEXT("quota"), {}, Candidate, Error));
+	if (!Prepare(*this, Store, Owner, Request, TEXT("transient"), Candidate)) return false;
 	const FURLabPayloadStoreStats After = Store->GetStats();
-	TestEqual(TEXT("failed prepare rolls back physical bytes"), After.PhysicalBytes, Before.PhysicalBytes);
-	TestEqual(TEXT("failed prepare rolls back physical objects"), After.PhysicalBlobCount, Before.PhysicalBlobCount);
+	TestEqual(TEXT("prepare leaves physical bytes unchanged"), After.PhysicalBytes, Before.PhysicalBytes);
+	TestEqual(TEXT("prepare leaves physical objects unchanged"), After.PhysicalBlobCount, Before.PhysicalBlobCount);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabRenderSourceIngressAssetLimitTest,
+	"URLab.Workflows.RenderSourceIngress.AdvertisedAssetLimit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FURLabRenderSourceIngressAssetLimitTest::RunTest(const FString&)
+{
+	using namespace URLabRenderSourceIngressTest;
+	const auto Install = [this](int32 AssetCount, FString& OutError)
+	{
+		const FString Boot = FString::Printf(TEXT("ingress-limit-%d"), AssetCount);
+		auto Store = MakeShared<FURLabPayloadStore, ESPMode::ThreadSafe>(Boot, FURLabPayloadStoreLimits());
+		FURLabPayloadOwner Owner;
+		if (!Open(*this, *Store, Boot, TEXT("owner"), Owner)) return false;
+		FString Xml = TEXT("<mujoco model=\"many\"><asset>");
+		FString Geoms;
+		FURLabRenderSourceRequest Request;
+		Request.Kind = EMjModelSourceKind::XmlWithAssets;
+		for (int32 Index = 0; Index < AssetCount; ++Index)
+		{
+			Xml += FString::Printf(TEXT("<mesh name=\"m%d\" file=\"tetra_%d.obj\"/>"), Index, Index);
+			Geoms += FString::Printf(TEXT("<geom type=\"mesh\" mesh=\"m%d\" pos=\"%d 0 0\"/>"), Index, Index);
+			FURLabRenderSourceAssetRef& Asset = Request.Assets.AddDefaulted_GetRef();
+			Asset.Name = FString::Printf(TEXT("tetra_%d.obj"), Index);
+			if (!Put(*this, *Store, Owner, Bytes(TetraObj), {}, Asset.Payload)) return false;
+		}
+		Xml += FString::Printf(TEXT("</asset><worldbody>%s</worldbody></mujoco>"), *Geoms);
+		if (!Put(*this, *Store, Owner, Bytes(TCHAR_TO_UTF8(*Xml)), {}, Request.Primary)) return false;
+		FMjRenderKinematicsCandidate Candidate;
+		const bool bOk = FURLabRenderSourceIngress::Prepare(Store, Owner, Request,
+			TEXT("limit"), FMjRenderKinematicsOptions(), Candidate, OutError);
+		TestEqual(TEXT("prepare does not retain extra physical objects"),
+			Store->GetStats().PhysicalBlobCount, bOk ? AssetCount + 1 : 0);
+		return bOk;
+	};
+
+	FString Error;
+	if (!TestTrue(TEXT("40-asset XML install prepares"), Install(40, Error))) AddError(Error);
+	if (!TestTrue(TEXT("advertised maximum asset count prepares"),
+		Install(FURLabRenderSourceIngress::MaxAssets, Error))) AddError(Error);
+	TestTrue(TEXT("maximum fits the default session object budget"),
+		FURLabRenderSourceIngress::MaxAssets + 1 <= FURLabPayloadStoreLimits().MaxSessionPhysicalObjectCount);
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabRenderSourceIngressFailedReleaseTest,
+	"URLab.Workflows.RenderSourceIngress.FailedPrepareReleasesPayloads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FURLabRenderSourceIngressFailedReleaseTest::RunTest(const FString&)
+{
+	using namespace URLabRenderSourceIngressTest;
+	auto Store = MakeShared<FURLabPayloadStore, ESPMode::ThreadSafe>(TEXT("ingress-release"), Limits());
+	FURLabPayloadOwner Owner;
+	FURLabPayloadOwner Foreign;
+	if (!Open(*this, *Store, TEXT("ingress-release"), TEXT("owner"), Owner)
+		|| !Open(*this, *Store, TEXT("ingress-release"), TEXT("foreign"), Foreign)) return false;
+	FURLabRenderSourceRequest Request;
+	Request.Kind = EMjModelSourceKind::XmlWithAssets;
+	if (!Put(*this, *Store, Owner, Bytes(AssetXml), {}, Request.Primary)) return false;
+	FURLabRenderSourceAssetRef Asset;
+	Asset.Name = TEXT("wrong_name.obj");
+	if (!Put(*this, *Store, Owner, Bytes(TetraObj), {}, Asset.Payload)) return false;
+	Request.Assets.Add(Asset);
+
+	FMjRenderKinematicsCandidate Candidate;
+	FString Error;
+	TestFalse(TEXT("foreign session cannot prepare"), FURLabRenderSourceIngress::Prepare(
+		Store, Foreign, Request, TEXT("foreign"), {}, Candidate, Error));
+	FURLabPayloadPin Pin;
+	TestTrue(TEXT("foreign failure does not release the owner's payloads"),
+		Store->Pin(Owner, Request.Primary.BlobId, Pin).IsOk());
+	Pin.Reset();
+
+	TestFalse(TEXT("source with an unresolvable asset fails"), FURLabRenderSourceIngress::Prepare(
+		Store, Owner, Request, TEXT("invalid"), {}, Candidate, Error));
+	TestTrue(TEXT("failure names the missing asset"), Error.Contains(TEXT("tetra.obj")));
+	TestFalse(TEXT("failed install releases the primary payload"),
+		Store->Pin(Owner, Request.Primary.BlobId, Pin).IsOk());
+	TestFalse(TEXT("failed install releases the asset payloads"),
+		Store->Pin(Owner, Asset.Payload.BlobId, Pin).IsOk());
+	TestEqual(TEXT("failed install leaves no physical objects behind"), Store->GetStats().PhysicalBlobCount, 0);
 	TestFalse(TEXT("failed prepare leaves candidate invalid"), Candidate.IsValid());
 	return !HasAnyErrors();
 }

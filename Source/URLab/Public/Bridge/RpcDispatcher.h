@@ -146,17 +146,8 @@ public:
 	bool DispatchBytes(TConstArrayView<uint8> RequestBytes, const FString& Adapter,
 		TArray<uint8>& OutReplyBytes, const FString* OuterOp = nullptr);
 
-	// --- Session introspection (used by transports and tests) ---
+	// --- Session test seams ---
 
-	/** True when ClientSessionId names a live session. Read-only: prefer
-	 *  ValidateAndTouchSession on the dispatch path so the session's
-	 *  least-recently-used ranking stays honest. */
-	bool ValidateSession(const FString& ClientSessionId) const;
-	/** Validate ClientSessionId and stamp it as most-recently-used. */
-	bool ValidateAndTouchSession(const FString& ClientSessionId);
-	/** The most recently active session id, for the transports that synthesise a
-	 *  request on a connected client's behalf. Empty when nothing is connected. */
-	FString GetActiveSessionId() const;
 	/** Make Id the one and only live session. Test seam. */
 	void SetActiveSessionIdForTest(const FString& Id);
 	void SetSessionClockForTest(double NowSeconds)
@@ -331,6 +322,19 @@ private:
 		const FURLabRequestLedger::FSessionRef& Session,
 		const FURLabDataSessionPtr& DataSession, TArray<uint8>& OutReplyBytes);
 	bool DispatchTypedEditor(const FURLabRequestEnvelope& Request,
+		const FURLabRequestDigest& Digest,
+		const FURLabRequestLedger::FSessionRef& Session,
+		TArray<uint8>& OutReplyBytes);
+
+	/** Longest a transport thread waits for queued work before replying PENDING.
+	 *  Long enough to cover a multi-camera Cinematic capture (~0.4 s), so a
+	 *  submit settles in one round trip instead of PENDING plus client retries;
+	 *  genuinely long work (scene installs) still returns PENDING. */
+	static constexpr double kSettleWaitSeconds = 1.0;
+
+	/** Encodes the terminal reply of an admitted request, waiting up to
+	 *  kSettleWaitSeconds off the game thread, or PENDING if it is still running. */
+	bool EncodeSettledReply(const FURLabRequestEnvelope& Request,
 		const FURLabRequestDigest& Digest,
 		const FURLabRequestLedger::FSessionRef& Session,
 		TArray<uint8>& OutReplyBytes);

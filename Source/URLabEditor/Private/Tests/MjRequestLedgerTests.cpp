@@ -153,7 +153,9 @@ bool FMjRequestLedgerWindow::RunTest(const FString& Parameters)
 		FURLabRequestLedger::EAdmission::ExistingTerminal);
 
 	auto BytePressure = Ledger.OpenSession(TEXT("byte-pressure"));
-	for (int32 Id = 1; Id <= 32; ++Id)
+	const int32 MaxByteSlotsPerSession = static_cast<int32>(
+		FURLabRequestLedger::MaxRetainedBytesPerSession / FURLabRequestLedger::MaxInlineReplyBytes);
+	for (int32 Id = 1; Id <= MaxByteSlotsPerSession; ++Id)
 	{
 		TestEqual(TEXT("full reply admitted"), Ledger.Admit(BytePressure, Id, A).Status,
 			FURLabRequestLedger::EAdmission::Accepted);
@@ -161,7 +163,7 @@ bool FMjRequestLedgerWindow::RunTest(const FString& Parameters)
 			Bytes(FURLabRequestLedger::MaxInlineReplyBytes)));
 	}
 	TestEqual(TEXT("byte pressure retires earliest terminal for new reservation"),
-		Ledger.Admit(BytePressure, 33, A).Status,
+		Ledger.Admit(BytePressure, MaxByteSlotsPerSession + 1, A).Status,
 		FURLabRequestLedger::EAdmission::Accepted);
 	TestEqual(TEXT("byte-pressure retirement advances watermark"),
 		Ledger.GetRetiredWatermark(BytePressure), static_cast<uint64>(1));
@@ -203,25 +205,30 @@ bool FMjRequestLedgerBounds::RunTest(const FString& Parameters)
 	FURLabRequestLedger Ledger;
 	const auto A = Digest(8);
 	auto Session = Ledger.OpenSession(TEXT("session-bound"));
-	for (int32 Id = 1; Id <= FURLabRequestLedger::MaxPendingPerSession; ++Id)
+	const int32 MaxByteSlotsPerSession = static_cast<int32>(
+		FURLabRequestLedger::MaxRetainedBytesPerSession / FURLabRequestLedger::MaxInlineReplyBytes);
+	const int32 MaxByteSessionsGlobal = static_cast<int32>(
+		FURLabRequestLedger::MaxRetainedBytesGlobal / FURLabRequestLedger::MaxRetainedBytesPerSession);
+	for (int32 Id = 1; Id <= MaxByteSlotsPerSession; ++Id)
 	{
 		TestEqual(TEXT("pending slot admitted"), Ledger.Admit(Session, Id, A).Status,
 			FURLabRequestLedger::EAdmission::Accepted);
 	}
 	const uint64 SessionHighAtCapacity = Ledger.GetHighWatermark(Session);
 	TestEqual(TEXT("session pending/reply reservation bound enforced"),
-		Ledger.Admit(Session, 33, A).Status, FURLabRequestLedger::EAdmission::SessionCapacity);
+		Ledger.Admit(Session, MaxByteSlotsPerSession + 1, A).Status,
+		FURLabRequestLedger::EAdmission::PendingBlocksRetirement);
 	TestEqual(TEXT("session count rejection leaves watermark unchanged"),
 		Ledger.GetHighWatermark(Session), SessionHighAtCapacity);
-	TestEqual(TEXT("session reserves exactly 8 MiB"), Ledger.GetSessionStats(Session).RetainedBytes,
+	TestEqual(TEXT("session reserves full per-session byte budget"), Ledger.GetSessionStats(Session).RetainedBytes,
 		FURLabRequestLedger::MaxRetainedBytesPerSession);
 
 	TArray<FURLabRequestLedger::FSessionRef> Sessions;
-	for (int32 SessionIndex = 0; SessionIndex < 7; ++SessionIndex)
+	for (int32 SessionIndex = 0; SessionIndex < MaxByteSessionsGlobal - 1; ++SessionIndex)
 	{
 		auto More = Ledger.OpenSession(FString::Printf(TEXT("global-%d"), SessionIndex));
 		Sessions.Add(More);
-		for (int32 Id = 1; Id <= 32; ++Id)
+		for (int32 Id = 1; Id <= MaxByteSlotsPerSession; ++Id)
 			Ledger.Admit(More, Id, A);
 	}
 	auto Full = Ledger.OpenSession(TEXT("global-full"));
@@ -229,7 +236,7 @@ bool FMjRequestLedgerBounds::RunTest(const FString& Parameters)
 		Ledger.Admit(Full, 1, A).Status, FURLabRequestLedger::EAdmission::GlobalCapacity);
 	TestEqual(TEXT("global count rejection does not admit an ID"),
 		Ledger.GetHighWatermark(Full), static_cast<uint64>(0));
-	TestEqual(TEXT("global reserves exactly 64 MiB"), Ledger.GetStats().RetainedBytes,
+	TestEqual(TEXT("global reserves full global byte budget"), Ledger.GetStats().RetainedBytes,
 		FURLabRequestLedger::MaxRetainedBytesGlobal);
 
 	TestTrue(TEXT("completion releases unused reservation"),

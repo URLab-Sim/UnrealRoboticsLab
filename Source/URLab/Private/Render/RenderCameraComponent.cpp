@@ -188,8 +188,15 @@ static TAutoConsoleVariable<int32> CVarCamSegShowFlags(
 	ECVF_Default);
 
 // Disable autoexposure (eye adaptation) for camera scene captures. 1=disabled, 0=enabled (default).
+static TAutoConsoleVariable<int32> CVarCamLumenQuality(
+	TEXT("urlab.Cam.LumenQuality"), 0,
+	TEXT("Colour-camera Lumen ray budget: 1 = stable (final gather 4, reflections 4, scene lighting 2),\n")
+	TEXT("0 = fast (all 1.0; cheaper GPU but noisier GI/reflections that flicker on moving parts).\n")
+	TEXT("Applies when a camera's render target is (re)created."),
+	ECVF_Default);
+
 static TAutoConsoleVariable<int32> CVarCamDisableAutoExposure(
-	TEXT("urlab.Cam.DisableAutoExposure"), 0,
+	TEXT("urlab.Cam.DisableAutoExposure"), 1,
 	TEXT("Disable eye adaptation / autoexposure for camera scene captures. 1=disabled, 0=enabled (default)."),
 	ECVF_Default);
 
@@ -380,7 +387,7 @@ URenderCameraComponent::URenderCameraComponent()
 		// volumes, so give its own settings full weight here and copy the volume's
 		// at BeginPlay to match the viewport look.
 		CaptureComponent->PostProcessBlendWeight = 1.0f;
-		CaptureComponent->bUseRayTracingIfEnabled = false;
+		CaptureComponent->bUseRayTracingIfEnabled = true;
 
 		CaptureComponent->bHiddenInGame = true;
 	}
@@ -586,7 +593,14 @@ bool URenderCameraComponent::ResolveCaptureConfiguration(
 		if (Value.Mode.IsSet()) Out.Mode = Value.Mode.GetValue();
 		if (Value.CompleteOptics.IsSet())
 		{
+			const bool bDepthTracksClip = Out.DepthNearCm == Out.Optics.NearClipCm
+				&& Out.DepthFarCm == Out.Optics.FarClipCm;
 			Out.Optics = Value.CompleteOptics.GetValue();
+			if (bDepthTracksClip)
+			{
+				Out.DepthNearCm = Out.Optics.NearClipCm;
+				Out.DepthFarCm = Out.Optics.FarClipCm;
+			}
 			if ((Out.Optics.Projection == ERenderCameraProjection::Perspective
 					&& (Out.Optics.OrthographicWidthCm != 0.0f
 						|| (!Out.Optics.bHasIntrinsics
@@ -663,7 +677,8 @@ bool URenderCameraComponent::ResolveCaptureConfiguration(
 }
 
 bool URenderCameraComponent::ApplyRuntimeCaptureConfiguration(
-	const FRenderCameraEffectiveConfiguration& Configuration, FString& OutError)
+	const FRenderCameraEffectiveConfiguration& Configuration, FString& OutError,
+	bool bRebuildRenderTarget)
 {
 	FRenderCameraDesc Runtime = Descriptor;
 	Runtime.Optics = Configuration.Optics;
@@ -671,7 +686,15 @@ bool URenderCameraComponent::ApplyRuntimeCaptureConfiguration(
 	Runtime.Capture.DepthNearCm = Configuration.DepthNearCm;
 	Runtime.Capture.DepthFarCm = Configuration.DepthFarCm;
 	const bool bWasStreaming = bStreamingEnabled;
-	if (bWasStreaming) SetStreamingEnabled(false);
+	const bool bModeChanged = (CaptureMode != Runtime.Capture.Mode);
+	const bool bNeedsRenderTargetRebuild = bRebuildRenderTarget && (!RenderTarget
+		|| RenderTargetMode != Runtime.Capture.Mode
+		|| RenderTarget->SizeX != Runtime.Optics.Resolution.X
+		|| RenderTarget->SizeY != Runtime.Optics.Resolution.Y);
+	if (bWasStreaming && bNeedsRenderTargetRebuild)
+	{
+		SetStreamingEnabled(false);
+	}
 	RuntimeDescriptor = Runtime;
 	CaptureMode = Runtime.Capture.Mode;
 	DepthNearCm = Runtime.Capture.DepthNearCm;
@@ -679,7 +702,14 @@ bool URenderCameraComponent::ApplyRuntimeCaptureConfiguration(
 	CustomNearClipCm = Runtime.Optics.NearClipCm;
 	CustomFarClipCm = Runtime.Optics.FarClipCm;
 	RefreshCaptureFov();
-	if (bWasStreaming) SetStreamingEnabled(true);
+	if (bModeChanged || bNeedsRenderTargetRebuild)
+	{
+		ApplyModeVisibilityComponents();
+	}
+	if (bWasStreaming && bNeedsRenderTargetRebuild)
+	{
+		SetStreamingEnabled(true);
+	}
 	OutError.Reset();
 	return true;
 }
@@ -703,7 +733,7 @@ bool URenderCameraComponent::BeginCaptureOverride(
 	FActiveCaptureOverride State;
 	State.Serial = NextOverrideSerial++;
 	State.SavedRuntimeDescriptor = RuntimeDescriptor;
-	if (!ApplyRuntimeCaptureConfiguration(Configuration, OutError)) return false;
+	if (!ApplyRuntimeCaptureConfiguration(Configuration, OutError, /*bRebuildRenderTarget=*/true)) return false;
 	ActiveCaptureOverride = MoveTemp(State);
 	OutToken.Camera = this;
 	OutToken.Serial = ActiveCaptureOverride->Serial;
@@ -721,8 +751,9 @@ bool URenderCameraComponent::RestoreCaptureOverride(
 		return false;
 	}
 	FRenderCameraEffectiveConfiguration Baseline;
+	const bool bRebuildForContinuousStream = bContinuousCapture || bRenderInMainRenderer;
 	if (!ResolveCaptureConfiguration({}, Baseline, OutError)
-		|| !ApplyRuntimeCaptureConfiguration(Baseline, OutError))
+		|| !ApplyRuntimeCaptureConfiguration(Baseline, OutError, bRebuildForContinuousStream))
 	{
 		bCaptureOverridePoisoned = true;
 		return false;
@@ -743,7 +774,7 @@ void URenderCameraComponent::SetVisibilityComponents(const TArray<UPrimitiveComp
 		if (Component) ExplicitShowOnlyComponents.Add(Component);
 	for (UPrimitiveComponent* Component : Hidden)
 		if (Component) ExplicitHiddenComponents.Add(Component);
-	if (!NeutralInstanceComponents.IsEmpty() || !NeutralSemanticComponents.IsEmpty())
+	if (HasNeutralModeComponents())
 	{
 		ApplyModeVisibilityComponents();
 		return;
@@ -766,12 +797,46 @@ void URenderCameraComponent::SetNeutralSegmentationComponents(
 	ApplyModeVisibilityComponents();
 }
 
+void URenderCameraComponent::SetNeutralDepthComponents(
+	const TArray<UPrimitiveComponent*>& StandIns, const TArray<UPrimitiveComponent*>& Translucent)
+{
+	ensure(StandIns.Num() == Translucent.Num());
+	const int32 Count = FMath::Min(StandIns.Num(), Translucent.Num());
+	NeutralDepthStandInComponents.Reset(Count);
+	NeutralDepthTranslucentComponents.Reset(Count);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		if (!StandIns[Index] || !Translucent[Index]) continue;
+		NeutralDepthStandInComponents.Add(StandIns[Index]);
+		NeutralDepthTranslucentComponents.Add(Translucent[Index]);
+	}
+	ApplyModeVisibilityComponents();
+}
+
+bool URenderCameraComponent::HasNeutralModeComponents() const
+{
+	return !NeutralInstanceComponents.IsEmpty() || !NeutralSemanticComponents.IsEmpty()
+		|| !NeutralDepthStandInComponents.IsEmpty();
+}
+
 void URenderCameraComponent::ApplyModeVisibilityComponents()
 {
-	if (!CaptureComponent || (NeutralInstanceComponents.IsEmpty()
-		&& NeutralSemanticComponents.IsEmpty())) return;
+	if (!CaptureComponent || !HasNeutralModeComponents()) return;
 	CaptureComponent->ShowOnlyComponents.Reset();
 	CaptureComponent->HiddenComponents.Reset();
+	// Capture lists match single primitives, but a neutral subject can be
+	// several: a capsule is a shaft with two attached caps. Each neutral subject
+	// is shown or hidden together with the primitives attached beneath it.
+	auto AddWithAttached = [](UPrimitiveComponent* Component,
+		TArray<TWeakObjectPtr<UPrimitiveComponent>>& Out)
+	{
+		if (!Component) return;
+		Out.Add(Component);
+		TArray<USceneComponent*> Attached;
+		Component->GetChildrenComponents(true, Attached);
+		for (USceneComponent* Child : Attached)
+			if (UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Child)) Out.Add(Primitive);
+	};
 	const TArray<TObjectPtr<UPrimitiveComponent>>* Selected = nullptr;
 	if (CaptureMode == ERenderCameraMode::InstanceSegmentation)
 	{
@@ -786,19 +851,42 @@ void URenderCameraComponent::ApplyModeVisibilityComponents()
 	if (Selected)
 	{
 		for (UPrimitiveComponent* Component : *Selected)
-			if (Component) CaptureComponent->ShowOnlyComponents.Add(Component);
+			AddWithAttached(Component, CaptureComponent->ShowOnlyComponents);
 	}
 	else
 	{
 		SegmentationObjectType = -1;
+		// Translucency never writes scene depth, but MuJoCo's transparent pass
+		// keeps depth writes on, so a translucent geom must still occlude in a
+		// depth image. Depth therefore draws each translucent primitive's opaque
+		// stand-in in its place. An explicitly hidden primitive stays hidden.
+		TSet<const UPrimitiveComponent*> DepthShown;
+		if (CaptureMode == ERenderCameraMode::Depth)
+		{
+			for (int32 Index = 0; Index < NeutralDepthStandInComponents.Num(); ++Index)
+			{
+				UPrimitiveComponent* StandIn = NeutralDepthStandInComponents[Index];
+				UPrimitiveComponent* Translucent = NeutralDepthTranslucentComponents[Index];
+				if (!StandIn || !Translucent) continue;
+				AddWithAttached(Translucent, CaptureComponent->HiddenComponents);
+				if (!ExplicitHiddenComponents.Contains(Translucent)) DepthShown.Add(StandIn);
+			}
+		}
+		auto HideUnlessDepthShown = [this, &DepthShown, &AddWithAttached](UPrimitiveComponent* Component)
+		{
+			if (Component && !DepthShown.Contains(Component))
+				AddWithAttached(Component, CaptureComponent->HiddenComponents);
+		};
 		for (UPrimitiveComponent* Component : ExplicitShowOnlyComponents)
 			if (Component) CaptureComponent->ShowOnlyComponents.Add(Component);
 		for (UPrimitiveComponent* Component : ExplicitHiddenComponents)
 			if (Component) CaptureComponent->HiddenComponents.Add(Component);
 		for (UPrimitiveComponent* Component : NeutralInstanceComponents)
-			if (Component) CaptureComponent->HiddenComponents.Add(Component);
+			HideUnlessDepthShown(Component);
 		for (UPrimitiveComponent* Component : NeutralSemanticComponents)
-			if (Component) CaptureComponent->HiddenComponents.Add(Component);
+			HideUnlessDepthShown(Component);
+		for (UPrimitiveComponent* Component : NeutralDepthStandInComponents)
+			HideUnlessDepthShown(Component);
 	}
 }
 
@@ -952,8 +1040,8 @@ void URenderCameraComponent::SetupProjectionMatrix()
 	Projection.M[0][2] = 0.0f; Projection.M[0][3] = 0.0f;
 	Projection.M[1][0] = 0.0f; Projection.M[1][1] = 2.0f * Fy / H;
 	Projection.M[1][2] = 0.0f; Projection.M[1][3] = 0.0f;
-	Projection.M[2][0] = (W - 2.0f * Cx) / W;
-	Projection.M[2][1] = (2.0f * Cy - H) / H;
+	Projection.M[2][0] = (2.0f * Cx - W) / W;
+	Projection.M[2][1] = (H - 2.0f * Cy) / H;
 	Projection.M[2][2] = 0.0f; Projection.M[2][3] = 1.0f;
 	Projection.M[3][0] = 0.0f; Projection.M[3][1] = 0.0f;
 	Projection.M[3][2] = FMath::Max(0.01f, Optics.NearClipCm); Projection.M[3][3] = 0.0f;
@@ -1005,9 +1093,9 @@ void URenderCameraComponent::UpdateCapturePipeline(bool bAllowCaptureIssue)
 
 	HarvestCompletedReadbacks();
 
-	// Manual-capture-only cameras (render-server forced-render mode) still harvest
-	// above, but never auto-capture -- only the on-demand IssueSyncCapture drives
-	// them, so the async stream cannot contend with a forced request.
+	// Manual-capture-only cameras (render server) still harvest above, but never
+	// auto-capture -- only an on-demand TryIssueExactCapture drives them, so the
+	// async stream cannot contend with a request.
 	if (bStreamingEnabled && bActive && !bManualCaptureOnly)
 	{
 		if (bAllowCaptureIssue) MaybeCapture();
@@ -1022,6 +1110,30 @@ void URenderCameraComponent::HarvestCompletedReadbacks()
 	// drain whatever the render thread finished into the history ring.
 	DispatchReadyReadbacks();
 	DrainCompletedFrames();
+}
+
+void URenderCameraComponent::FlushInFlightReadbacksToMap()
+{
+	check(IsInGameThread());
+	while (InFlightReadbacks.Num() > 0)
+	{
+		FInFlightReadback& Head = InFlightReadbacks[0];
+		if (!Head.Gpu.IsValid())
+		{
+			if (Head.ExactState.IsValid()
+				&& Head.ExactState->Outcome == ERenderCameraCaptureOutcome::Pending)
+			{
+				Head.ExactState->Outcome = ERenderCameraCaptureOutcome::MapFailed;
+				Head.ExactState->Message = TEXT("camera GPU readback was unavailable");
+			}
+			RetireExactCaptureWriter(Head.ExactState);
+			InFlightReadbacks.RemoveAt(0);
+			continue;
+		}
+		FInFlightReadback Front = MoveTemp(InFlightReadbacks[0]);
+		InFlightReadbacks.RemoveAt(0);
+		DispatchReadbackMap(MoveTemp(Front));
+	}
 }
 
 void URenderCameraComponent::DispatchReadyReadbacks()
@@ -1101,11 +1213,11 @@ void URenderCameraComponent::DispatchReadbackMap(FInFlightReadback&& Readback)
 		bool bCopied = false;
 		int32 RowPitchPixels = 0;
 		void* Data = Gpu->Lock(RowPitchPixels);
-		if (!bDiscard && Data && W > 0 && H > 0)
+		if (!bDiscard && Data && W > 0 && H > 0 && RowPitchPixels >= W)
 		{
 			RenderCopyReadbackIntoFrame(Data, RowPitchPixels, CapturedMode,
 				CapturedSegmentationObjectType, *Frame);
-			bCopied = true;
+			bCopied = (Frame->Color.Num() > 0 || Frame->Depth.Num() > 0 || Frame->Seg.Num() > 0);
 		}
 		Gpu->Unlock();
 		Frame->TMappedSeconds = FPlatformTime::Seconds();
@@ -1217,7 +1329,11 @@ void URenderCameraComponent::DrainCompletedFrames()
 				TEXT("[MjCamera] '%s' dropped a readback whose staging map failed"), *CameraLogName(*this));
 		}
 
-		if (Completed.Gpu.IsValid())
+		if (Completed.Gpu.IsValid() && bIdentityCurrent && RenderTarget
+			&& Completed.Frame.IsValid()
+			&& Completed.Frame->Width == RenderTarget->SizeX
+			&& Completed.Frame->Height == RenderTarget->SizeY
+			&& Completed.Frame->Mode == RenderTargetMode)
 		{
 			FreeReadbacks.Add(Completed.Gpu); // the staging texture is reused in place
 		}
@@ -1268,39 +1384,11 @@ void URenderCameraComponent::AccumulateStageTiming(const FRenderCameraFrame& Fra
 	}
 }
 
-void URenderCameraComponent::WaitAndHarvestReadbacks(double TimeoutSeconds)
-{
-	// Poll the pipeline instead of flushing it: the render thread runs its map and
-	// copy commands independently while we yield, and pushes finished frames onto
-	// the results queue for us to drain. Bounded by the deadline.
-	const double Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
-	for (;;)
-	{
-		HarvestCompletedReadbacks();
-		if (InFlightReadbacks.Num() == 0 && PendingMapCommands == 0)
-		{
-			break;
-		}
-		if (FPlatformTime::Seconds() >= Deadline)
-		{
-			break;
-		}
-		FPlatformProcess::SleepNoStats(0.0005f);
-	}
-}
-
-void URenderCameraComponent::IssueSyncCapture()
-{
-	TouchRequested();
-	if (!CanCaptureIdentity(AppliedIdentity)) return;
-	if (CaptureComponent && CaptureComponent->TextureTarget) CaptureComponent->CaptureScene();
-	EnqueueReadback(AppliedIdentity, /*bForceSubmit=*/true);
-}
-
-FRenderCameraCaptureIssueResult URenderCameraComponent::TryIssueExactCapture(
-	FRenderCameraCaptureLifetimeLeasePtr LifetimeLease)
+FRenderCameraCaptureIssueResult URenderCameraComponent::PrepareExactCapture(
+	bool& OutNeedsCameraCutWarmup)
 {
 	check(IsInGameThread());
+	OutNeedsCameraCutWarmup = false;
 	FRenderCameraCaptureIssueResult Result;
 	if (bEndingPlay)
 	{
@@ -1309,8 +1397,15 @@ FRenderCameraCaptureIssueResult URenderCameraComponent::TryIssueExactCapture(
 		return Result;
 	}
 	TouchRequested();
+	const FIntPoint EffectiveRes = CaptureResolution();
 	if (!bStreamingEnabled)
 	{
+		SetStreamingEnabled(true);
+	}
+	else if (!RenderTarget || RenderTargetMode != CaptureMode
+		|| RenderTarget->SizeX != EffectiveRes.X || RenderTarget->SizeY != EffectiveRes.Y)
+	{
+		SetStreamingEnabled(false);
 		SetStreamingEnabled(true);
 	}
 	if (AppliedIdentity.SceneRevision.IsEmpty()
@@ -1321,11 +1416,55 @@ FRenderCameraCaptureIssueResult URenderCameraComponent::TryIssueExactCapture(
 		Result.Message = TEXT("camera has no complete capturable applied-frame identity");
 		return Result;
 	}
+	const int32 DetachedWriters = DetachedWriterCount.IsValid()
+		? DetachedWriterCount->load(std::memory_order_relaxed) : 0;
+	if (InFlightReadbacks.Num() + PendingMapCommands + DetachedWriters
+		>= MaxInFlightReadbacks)
+	{
+		Result.Code = ERenderCameraCaptureIssue::RetryableBusy;
+		Result.Message = TEXT("camera readback capacity is currently full");
+		return Result;
+	}
+	FTextureRenderTargetResource* ReadyResource = RenderTarget
+		? RenderTarget->GameThread_GetRenderTargetResource() : nullptr;
+	if (ReadyResource && !ReadyResource->GetRenderTargetTexture().IsValid())
+	{
+		FRenderCommandFence InitFence;
+		InitFence.BeginFence();
+		InitFence.Wait();
+	}
+	if (!ReadyResource || !ReadyResource->GetRenderTargetTexture().IsValid())
+	{
+		Result.Code = ERenderCameraCaptureIssue::RetryableNotReady;
+		Result.Message = TEXT("camera render target is not ready for exact capture");
+		return Result;
+	}
+	OutNeedsCameraCutWarmup = (CaptureComponent && CaptureComponent->TextureTarget
+		&& bNeedsCameraCut && CaptureMode == ERenderCameraMode::Real);
+	Result.Code = ERenderCameraCaptureIssue::Accepted;
+	return Result;
+}
+
+void URenderCameraComponent::QueueDeferredSceneCapturePass(bool bCameraCutPass)
+{
+	check(IsInGameThread());
 	if (CaptureComponent && CaptureComponent->TextureTarget)
 	{
-		CaptureComponent->CaptureScene();
+		CaptureComponent->bCameraCutThisFrame = bCameraCutPass;
+		CaptureComponent->CaptureSceneDeferred();
+		if (!bCameraCutPass)
+		{
+			bNeedsCameraCut = false;
+		}
 	}
-	if (!EnqueueReadback(AppliedIdentity, /*bForceSubmit=*/true, &Result.Receipt,
+}
+
+FRenderCameraCaptureIssueResult URenderCameraComponent::IssuePreparedExactCaptureReadback(
+	FRenderCameraCaptureLifetimeLeasePtr LifetimeLease, bool bForceSubmit)
+{
+	check(IsInGameThread());
+	FRenderCameraCaptureIssueResult Result;
+	if (!EnqueueReadback(AppliedIdentity, bForceSubmit, &Result.Receipt,
 		&Result.Code, MoveTemp(LifetimeLease)))
 	{
 		if (Result.Code == ERenderCameraCaptureIssue::RetryableNotReady)
@@ -1340,191 +1479,27 @@ FRenderCameraCaptureIssueResult URenderCameraComponent::TryIssueExactCapture(
 	return Result;
 }
 
-void RenderPumpForcedCapture(const TArray<URenderCameraComponent*>& Cams, uint64 TargetFrameId, int32 TimeoutMs)
+FRenderCameraCaptureIssueResult URenderCameraComponent::TryIssueExactCapture(
+	FRenderCameraCaptureLifetimeLeasePtr LifetimeLease)
 {
-	// Bound the pump under the request timeout: it must cover render + readback (and a
-	// cold RT's one-time warm-up) for every requested camera, and capping it means a
-	// genuinely stuck frame frees the caller rather than hanging on the deadline.
-	const double PumpStart = FPlatformTime::Seconds();
-	const double Deadline = PumpStart + FMath::Max(1, TimeoutMs) / 1000.0;
-	const bool bDiag = CVarCamDiag.GetValueOnAnyThread() != 0;
-	TArray<double> ReadyMs;
-	if (bDiag)
+	check(IsInGameThread());
+	bool bNeedsWarmup = false;
+	FRenderCameraCaptureIssueResult PrepResult = PrepareExactCapture(bNeedsWarmup);
+	if (PrepResult.Code != ERenderCameraCaptureIssue::Accepted)
 	{
-		ReadyMs.Init(-1.0, Cams.Num());
+		return PrepResult;
 	}
-	for (;;)
+	if (CaptureComponent && CaptureComponent->TextureTarget)
 	{
-		bool bAllReady = true;
-		for (int32 i = 0; i < Cams.Num(); ++i)
+		const int32 SubPasses = bNeedsWarmup ? 2 : 1;
+		for (int32 Pass = 0; Pass < SubPasses; ++Pass)
 		{
-			URenderCameraComponent* Cam = Cams[i];
-			if (!Cam)
-			{
-				continue;
-			}
-			Cam->HarvestCompletedReadbacks();
-			const uint64 Have = Cam->GetLatestFrameId();
-			const bool bReady = (TargetFrameId > 0) ? (Have >= TargetFrameId) : (Have > 0);
-			if (!bReady)
-			{
-				bAllReady = false;
-				// Re-issue only while nothing is outstanding, so a cold RT that could not
-				// render on the first attempt retries without piling captures behind an
-				// in-flight one.
-				if (!Cam->HasPendingReadbacks())
-				{
-					Cam->IssueSyncCapture();
-				}
-			}
-			else if (bDiag && ReadyMs.IsValidIndex(i) && ReadyMs[i] < 0.0)
-			{
-				ReadyMs[i] = (FPlatformTime::Seconds() - PumpStart) * 1000.0;
-			}
+			CaptureComponent->bCameraCutThisFrame = (bNeedsWarmup && Pass == 0);
+			CaptureComponent->CaptureScene();
 		}
-		if (bAllReady || FPlatformTime::Seconds() >= Deadline)
-		{
-			break;
-		}
-		FPlatformProcess::SleepNoStats(0.0002f);
+		bNeedsCameraCut = false;
 	}
-	if (bDiag)
-	{
-		FString Line;
-		for (double Ms : ReadyMs)
-		{
-			Line += FString::Printf(TEXT("%.1f "), Ms);
-		}
-		UE_LOG(LogURLab, Log, TEXT("[pump] %d cams, per-cam ready ms (order-issued): %s"),
-			Cams.Num(), *Line);
-	}
-}
-
-void RenderSpearForcedCapture(const TArray<URenderCameraComponent*>& Cams, const FRenderFrameIdentity& Identity)
-{
-	// One synchronous readback pass over every requested camera. The caller has
-	// already issued CaptureComponent->CaptureScene() for each, so those capture
-	// renders are queued ahead of this command on the render thread; enqueuing the
-	// copies here and submitting them with a single flush reads the freshly-rendered
-	// frame. Lock() blocks the render thread on each copy's GPU fence, so there is no
-	// IsReady() poll and no game-tick bounce -- the game thread waits exactly once, on
-	// the FlushRenderingCommands below.
-	struct FSpearItem
-	{
-		URenderCameraComponent* Cam = nullptr;
-		FTextureRHIRef Source;
-		TSharedPtr<FRHIGPUTextureReadback> Readback;
-		FMutableRenderCameraFramePtr Frame;
-		// The whole mode, not a bDepth bool: there are three copy-out shapes now
-		// and a bool can only ever choose between two.
-		ERenderCameraMode Mode = ERenderCameraMode::Real;
-		int32 SegmentationObjectType = -1;
-	};
-
-	TArray<FSpearItem> Items;
-	Items.Reserve(Cams.Num());
-	const bool bSpearDiag = CVarCamSegDiag.GetValueOnGameThread() != 0;
-	for (URenderCameraComponent* Cam : Cams)
-	{
-		if (!Cam || !Cam->RenderTarget || !Cam->CanCaptureIdentity(Identity))
-		{
-			continue;
-		}
-		Cam->TouchRequested();
-		FTextureRenderTargetResource* Resource = Cam->RenderTarget->GameThread_GetRenderTargetResource();
-		if (!Resource)
-		{
-			continue;
-		}
-		const FIntPoint Size = Resource->GetSizeXY();
-		FTextureRHIRef Source = Resource->GetRenderTargetTexture();
-		// A freshly enabled render target reports its size before its RHI texture
-		// exists; skip a cold camera and let the caller's next request land it.
-		if (Size.X <= 0 || Size.Y <= 0 || !Source.IsValid())
-		{
-			if (bSpearDiag)
-			{
-				UE_LOG(LogURLabNet, Log,
-					TEXT("[segdiag] '%s' skipped COLD: size=%dx%d rhi=%d"),
-					*CameraLogName(*Cam), Size.X, Size.Y, Source.IsValid() ? 1 : 0);
-			}
-			continue;
-		}
-		if (bSpearDiag)
-		{
-			UE_LOG(LogURLabNet, Log,
-				TEXT("[segdiag] '%s' capturing mode=%s rtfmt=%d showonly=%d hidden=%d ")
-				TEXT("src=%d prm=%d firstShowOnlyMat=%s"),
-				*CameraLogName(*Cam), TEXT("render"),
-				static_cast<int32>(Cam->RenderTarget->GetFormat()),
-				Cam->CaptureComponent ? Cam->CaptureComponent->ShowOnlyComponents.Num() : -1,
-				Cam->CaptureComponent ? Cam->CaptureComponent->HiddenComponents.Num() : -1,
-				Cam->CaptureComponent ? static_cast<int32>(Cam->CaptureComponent->CaptureSource) : -1,
-				Cam->CaptureComponent ? static_cast<int32>(Cam->CaptureComponent->PrimitiveRenderMode) : -1,
-				(Cam->CaptureComponent && Cam->CaptureComponent->ShowOnlyComponents.Num() > 0
-					&& Cam->CaptureComponent->ShowOnlyComponents[0].IsValid()
-					&& Cam->CaptureComponent->ShowOnlyComponents[0]->GetMaterial(0))
-					? *Cam->CaptureComponent->ShowOnlyComponents[0]->GetMaterial(0)->GetName()
-					: TEXT("<none>"));
-		}
-
-		FSpearItem& Item = Items.AddDefaulted_GetRef();
-		Item.Cam = Cam;
-		Item.Source = MoveTemp(Source);
-		Item.Readback = MakeShared<FRHIGPUTextureReadback>(TEXT("MjSpearForcedReadback"));
-		Item.Frame = MakeShared<FRenderCameraFrame, ESPMode::ThreadSafe>();
-		Item.Frame->Identity = Identity;
-		Item.Frame->Width = Size.X;
-		Item.Frame->Height = Size.Y;
-		Item.Frame->CaptureUnixTime = (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds();
-		Item.Mode = Cam->CaptureMode;
-		Item.SegmentationObjectType = Cam->GetSegmentationObjectType();
-	}
-
-	if (Items.Num() == 0)
-	{
-		return;
-	}
-
-	// The whole readback -- copy, submit, fence-wait, memcpy -- in one render command,
-	// so the render thread never yields to a game tick mid-pass.
-	ENQUEUE_RENDER_COMMAND(RenderSpearForcedCapture)
-	([Items](FRHICommandListImmediate& RHICmdList) {
-		for (const FSpearItem& It : Items)
-		{
-			It.Readback->EnqueueCopy(RHICmdList, It.Source.GetReference());
-		}
-		// Submit every copy to the GPU at once.
-		RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
-		for (const FSpearItem& It : Items)
-		{
-			// Lock blocks the render thread on this copy's GPU fence, so the staged
-			// pixels are complete here without a poll. RowPitch is in PIXELS and at
-			// least the width (rows are padded), so the copy is row-by-row into a
-			// tightly packed buffer.
-			int32 RowPitchPixels = 0;
-			void* Mapped = It.Readback->Lock(RowPitchPixels);
-			const int32 W = It.Frame->Width;
-			const int32 H = It.Frame->Height;
-			if (Mapped && W > 0 && H > 0)
-			{
-				RenderCopyReadbackIntoFrame(Mapped, RowPitchPixels, It.Mode, It.SegmentationObjectType, *It.Frame);
-			}
-			It.Readback->Unlock();
-		}
-	});
-
-	// Block the game thread until the pass finished; the frames now hold the
-	// freshly-rendered pixels. Retain each so the reply path (GetFrameForRequest)
-	// hands it straight back.
-	FlushRenderingCommands();
-	for (FSpearItem& It : Items)
-	{
-		if (It.Cam && It.Frame.IsValid())
-		{
-			It.Cam->PushFrameToHistory(MoveTemp(*It.Frame));
-		}
-	}
+	return IssuePreparedExactCaptureReadback(MoveTemp(LifetimeLease), /*bForceSubmit=*/true);
 }
 
 void URenderCameraComponent::SetAppliedFrameIdentity(const FRenderFrameIdentity& Identity)
@@ -1540,6 +1515,7 @@ void URenderCameraComponent::SetAppliedFrameIdentity(const FRenderFrameIdentity&
 		History.Clear();
 		Delay.LastPublishedSeq = 0;
 		LastCapturedFrameId = 0;
+		bNeedsCameraCut = true;
 	}
 	AppliedIdentity = Identity;
 }
@@ -1717,10 +1693,18 @@ void RenderCopyReadbackIntoFrame(const void* Mapped, int32 RowPitchPixels,
 	Frame.Color.Reserve(ElementCount);
 	Frame.Color.SetNumUninitialized(ElementCount);
 	const FColor* Src = static_cast<const FColor*>(Mapped);
-	for (int32 y = 0; y < H; ++y)
+	if (RowPitchPixels == W)
 	{
-		FMemory::Memcpy(Frame.Color.GetData() + static_cast<int64>(y) * W,
-			Src + static_cast<int64>(y) * RowPitchPixels, W * sizeof(FColor));
+		FMemory::Memcpy(Frame.Color.GetData(), Src,
+			static_cast<SIZE_T>(ElementCount) * sizeof(FColor));
+	}
+	else
+	{
+		for (int32 y = 0; y < H; ++y)
+		{
+			FMemory::Memcpy(Frame.Color.GetData() + static_cast<int64>(y) * W,
+				Src + static_cast<int64>(y) * RowPitchPixels, W * sizeof(FColor));
+		}
 	}
 }
 
@@ -1871,11 +1855,17 @@ void URenderCameraComponent::SetupRenderTarget()
 	switch (CaptureMode)
 	{
 		case ERenderCameraMode::Depth:
+			CaptureComponent->bUseRayTracingIfEnabled = false;
 			CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_SceneDepth;
+			// The colour image's primitive set, so depth sees exactly what colour
+			// sees. Set it explicitly: a segmentation mode on this camera leaves
+			// the show-only list selected, and depth then rendered nothing.
+			CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_LegacySceneCapture;
 			break;
 
 		case ERenderCameraMode::SemanticSegmentation:
 		case ERenderCameraMode::InstanceSegmentation:
+			CaptureComponent->bUseRayTracingIfEnabled = false;
 			// SCENE COLOUR HDR, and this is the load-bearing line of the whole
 			// segmentation path. The siblings are unlit, so their emissive -- the
 			// encoded id -- is written straight into scene colour in the base pass,
@@ -1913,13 +1903,75 @@ void URenderCameraComponent::SetupRenderTarget()
 			// the viewport shows, so the BGRA8 readback matches the editor image. The
 			// readback skips TargetGamma, which is why an HDR-then-encode source
 			// delivered a darker frame. It also saves a conversion and a copy.
+			CaptureComponent->bUseRayTracingIfEnabled = true;
 			CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
 			CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_LegacySceneCapture;
+			{
+				FEngineShowFlags& RealFlags = CaptureComponent->ShowFlags;
+				RealFlags.SetTemporalAA(true);
+				RealFlags.SetAntiAliasing(true);
+				RealFlags.SetAmbientOcclusion(true);
+				RealFlags.SetScreenSpaceAO(true);
+				RealFlags.SetScreenSpaceReflections(true);
+				RealFlags.SetLumenReflections(true);
+				RealFlags.SetLumenGlobalIllumination(true);
+				RealFlags.SetContactShadows(true);
+				RealFlags.SetGrain(false);
+				FPostProcessSettings& Post = CaptureComponent->PostProcessSettings;
+				Post.bOverride_DynamicGlobalIlluminationMethod = true;
+				Post.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
+				Post.bOverride_ReflectionMethod = true;
+				Post.ReflectionMethod = EReflectionMethod::Lumen;
+				// Lumen ray budget. Fewer rays per frame = cheaper but noisier per-frame
+				// GI/reflections; with one render per pose that noise shows as flicker.
+				// 1 = stable cinematic, 0 = fast/low.
+				const bool bStableLumen = CVarCamLumenQuality.GetValueOnGameThread() != 0;
+				// Surface-cache ray lighting in both modes: hit lighting needs a ray-tracing
+				// pipeline whose shaders the packaged build does not cook (it stalls the
+				// render thread compiling a fallback RTPSO and the watchdog kills it).
+				Post.bOverride_LumenRayLightingMode = true;
+				Post.LumenRayLightingMode = ELumenRayLightingModeOverride::SurfaceCache;
+				Post.bOverride_LumenSurfaceCacheResolution = true;
+				Post.LumenSurfaceCacheResolution = 1.0f;
+				Post.bOverride_LumenSceneLightingQuality = true;
+				Post.LumenSceneLightingQuality = bStableLumen ? 2.0f : 1.0f;
+				Post.bOverride_LumenSceneDetail = true;
+				Post.LumenSceneDetail = bStableLumen ? 2.0f : 1.0f;
+				Post.bOverride_LumenReflectionQuality = true;
+				Post.LumenReflectionQuality = bStableLumen ? 4.0f : 1.0f;
+				Post.bOverride_LumenFinalGatherQuality = true;
+				Post.LumenFinalGatherQuality = bStableLumen ? 4.0f : 1.0f;
+				Post.bOverride_LumenMaxRoughnessToTraceReflections = true;
+				Post.LumenMaxRoughnessToTraceReflections = bStableLumen ? 0.6f : 0.25f;
+				Post.bOverride_ScreenSpaceReflectionIntensity = true;
+				Post.ScreenSpaceReflectionIntensity = 100.0f;
+				Post.bOverride_ScreenSpaceReflectionQuality = true;
+				Post.ScreenSpaceReflectionQuality = 100.0f;
+				Post.bOverride_ScreenSpaceReflectionMaxRoughness = true;
+				Post.ScreenSpaceReflectionMaxRoughness = 0.6f;
+				Post.bOverride_AmbientOcclusionIntensity = true;
+				Post.AmbientOcclusionIntensity = 0.45f;
+				Post.bOverride_AmbientOcclusionRadius = true;
+				Post.AmbientOcclusionRadius = 24.0f;
+				Post.bOverride_AmbientOcclusionQuality = true;
+				Post.AmbientOcclusionQuality = 100.0f;
+				Post.bOverride_AmbientOcclusionPower = true;
+				Post.AmbientOcclusionPower = 1.6f;
+				Post.bOverride_BloomIntensity = true;
+				Post.BloomIntensity = 0.16f;
+				Post.bOverride_FilmSlope = true;
+				Post.FilmSlope = 0.90f;
+				Post.bOverride_FilmToe = true;
+				Post.FilmToe = 0.55f;
+			}
 			break;
 	}
 	ApplyModeVisibilityComponents();
 
 	RenderTarget = RT;
+	RenderTargetMode = CaptureMode;
+	FreeReadbacks.Empty();
+	bNeedsCameraCut = true;
 	UE_LOG(LogURLabImport, Log, TEXT("[MjCamera] '%s' RT created mode=%s (%dx%d)"),
 		*CameraLogName(*this), *UEnum::GetValueAsString(CaptureMode), Res.X, Res.Y);
 }
@@ -1993,7 +2045,10 @@ void URenderCameraComponent::SetStreamingEnabled(bool bEnable)
 		CaptureComponent->bCaptureEveryFrame = bRenderInMainRenderer;
 		CaptureComponent->bCaptureOnMovement = false;
 		bStreamingEnabled = true;
-		CaptureComponent->CaptureScene();
+		if (!bManualCaptureOnly)
+		{
+			CaptureComponent->CaptureScene();
+		}
 		return;
 	}
 	bStreamingEnabled = false;
@@ -2145,10 +2200,11 @@ bool URenderCameraComponent::EnqueueReadback(const FRenderFrameIdentity& ShowIde
 		Readback->EnqueueCopy(RHICmdList, SourceTexture.GetReference());
 		if (bForceSubmit)
 		{
-			// Dispatch the copy to the RHI thread now, so the readback fence can
-			// signal mid-frame rather than quantizing to the next frame boundary.
-			// This is a render-thread submit, not a game-thread flush, so it neither
-			// stalls the game thread nor re-enters the harvest.
+			// Dispatch the copy to the RHI thread now and hint GPU submission, so the
+			// readback fence can signal mid-frame rather than quantizing to the next
+			// frame boundary. This is a render-thread submit, not a game-thread flush,
+			// so it neither stalls the game thread nor re-enters the harvest.
+			RHICmdList.SubmitCommandsHint();
 			RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
 		}
 	});

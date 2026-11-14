@@ -84,9 +84,11 @@ bool EncodeVisualization(const FURLabPoseStreamFrame& Frame,V& Out,FString& Erro
 	if(Frame.Deformables.Num()>4096||Frame.DebugMeshes.Num()>4096)return Fail(Error,TEXT("dynamic mesh count exceeds limit"));
 	TArray<V> Deformables;
 	int64 Total=0;
+	TSet<FString> DeformableNames;
 	for(const auto& D:Frame.Deformables)
 	{
-		if(!DynamicNameValid(D.Name)||D.Positions.Num()<3||(!D.Normals.IsEmpty()&&D.Normals.Num()!=D.Positions.Num()))return Fail(Error,TEXT("stream deformable shape is invalid"));
+		bool bDuplicate=false;DeformableNames.Add(D.Name,&bDuplicate);
+		if(bDuplicate||!DynamicNameValid(D.Name)||D.Positions.Num()<3||(!D.Normals.IsEmpty()&&D.Normals.Num()!=D.Positions.Num()))return Fail(Error,TEXT("stream deformable shape is invalid"));
 		const int64 Bytes=(static_cast<int64>(D.Positions.Num())+D.Normals.Num())*12;
 		if(Bytes>128ll*1024*1024-Total)return Fail(Error,TEXT("stream dynamic payload exceeds limit"));
 		Total+=Bytes;
@@ -99,9 +101,11 @@ bool EncodeVisualization(const FURLabPoseStreamFrame& Frame,V& Out,FString& Erro
 	}
 	if(!Deformables.IsEmpty()){Keys.Add(TEXT("deformables"));Values.Add(V::MakeArray(MoveTemp(Deformables)));}
 	TArray<V> Meshes;
+	TSet<FString> MeshNames;
 	for(const auto& M:Frame.DebugMeshes)
 	{
-		if(!DynamicNameValid(M.Name)||M.Positions.Num()<3||M.Triangles.Num()<3||M.Triangles.Num()%3)return Fail(Error,TEXT("stream debug mesh shape is invalid"));
+		bool bDuplicate=false;MeshNames.Add(M.Name,&bDuplicate);
+		if(bDuplicate||!DynamicNameValid(M.Name)||M.Positions.Num()<3||M.Triangles.Num()<3||M.Triangles.Num()%3)return Fail(Error,TEXT("stream debug mesh shape is invalid"));
 		const int64 Bytes=static_cast<int64>(M.Positions.Num())*12+static_cast<int64>(M.Triangles.Num())*4;
 		if(Bytes>128ll*1024*1024-Total)return Fail(Error,TEXT("stream dynamic payload exceeds limit"));
 		Total+=Bytes;
@@ -115,20 +119,147 @@ bool EncodeVisualization(const FURLabPoseStreamFrame& Frame,V& Out,FString& Erro
 	Out=V::MakeMap(MoveTemp(Keys),MoveTemp(Values));return true;
 }
 
-bool DecodeVisualization(const V& Wire,FURLabPoseStreamFrame& Frame,FString& Error)
+bool HasOnlyKeys(const V& Map, std::initializer_list<const TCHAR*> Allowed)
 {
-	if(Wire.GetType()!=EURLabWireValueType::Map||!Wire.HasValidMapStorage())return Fail(Error,TEXT("stream visualization must be a map"));
-	int64 Total=0;
-	const V* Ds=Wire.FindMapValue(TEXT("deformables"));if(Ds){if(Ds->GetType()!=EURLabWireValueType::Array||Ds->GetArray().Num()>4096)return Fail(Error,TEXT("stream deformables are invalid"));for(const V& Row:Ds->GetArray()){
-		const V* Name=Row.FindMapValue(TEXT("name"));const V* Pos=Row.FindMapValue(TEXT("vertex_positions_cm"));const V* Norm=Row.FindMapValue(TEXT("vertex_normals"));if(!Name||!DynamicNameValid(Name->GetString())||!Pos||Pos->GetType()!=EURLabWireValueType::Binary||Pos->GetBinary().Num()<36||Pos->GetBinary().Num()%12||(Norm&&(Norm->GetType()!=EURLabWireValueType::Binary||Norm->GetBinary().Num()!=Pos->GetBinary().Num())))return Fail(Error,TEXT("stream deformable payload is invalid"));
-		const int64 Bytes=static_cast<int64>(Pos->GetBinary().Num())+(Norm?Norm->GetBinary().Num():0);
-		if(Bytes>128ll*1024*1024-Total)return Fail(Error,TEXT("stream dynamic payload exceeds limit"));Total+=Bytes;
-		FRenderFrame::FDeformable D;D.Name=Name->GetString();const TArray<uint8>& PB=Pos->GetBinary();for(int32 O=0;O<PB.Num();O+=12){float X,Y,Z;if(!ReadF32(PB,O,X)||!ReadF32(PB,O+4,Y)||!ReadF32(PB,O+8,Z))return Fail(Error,TEXT("stream deformable position is non-finite"));D.Positions.Emplace(X,-Y,Z);}if(Norm){const TArray<uint8>& NB=Norm->GetBinary();for(int32 O=0;O<NB.Num();O+=12){float X,Y,Z;if(!ReadF32(NB,O,X)||!ReadF32(NB,O+4,Y)||!ReadF32(NB,O+8,Z))return Fail(Error,TEXT("stream deformable normal is non-finite"));D.Normals.Emplace(X,-Y,Z);}}Frame.Deformables.Add(MoveTemp(D));}}
-	const V* Ms=Wire.FindMapValue(TEXT("debug_meshes"));if(Ms){if(Ms->GetType()!=EURLabWireValueType::Array||Ms->GetArray().Num()>4096)return Fail(Error,TEXT("stream debug meshes are invalid"));for(const V& Row:Ms->GetArray()){
-		const V* Name=Row.FindMapValue(TEXT("name"));const V* C=Row.FindMapValue(TEXT("rgba"));const V* Pos=Row.FindMapValue(TEXT("positions_cm"));const V* Tri=Row.FindMapValue(TEXT("triangles"));if(!Name||!DynamicNameValid(Name->GetString())||!C||C->GetArray().Num()!=4||!Pos||Pos->GetType()!=EURLabWireValueType::Binary||Pos->GetBinary().Num()<36||Pos->GetBinary().Num()%12||!Tri||Tri->GetType()!=EURLabWireValueType::Binary||Tri->GetBinary().Num()<12||Tri->GetBinary().Num()%12)return Fail(Error,TEXT("stream debug mesh payload is invalid"));
-		const int64 Bytes=static_cast<int64>(Pos->GetBinary().Num())+Tri->GetBinary().Num();
-		if(Bytes>128ll*1024*1024-Total)return Fail(Error,TEXT("stream dynamic payload exceeds limit"));Total+=Bytes;
-		FRenderFrame::FDebugMesh M;M.Name=Name->GetString();float Color[4];for(int32 I=0;I<4;++I){Color[I]=C->GetArray()[I].GetFloat();if(!FMath::IsFinite(Color[I])||Color[I]<0||Color[I]>1)return Fail(Error,TEXT("stream debug mesh color is invalid"));}M.Color=FLinearColor(Color[0],Color[1],Color[2],Color[3]);const TArray<uint8>& PB=Pos->GetBinary();for(int32 O=0;O<PB.Num();O+=12){float X,Y,Z;if(!ReadF32(PB,O,X)||!ReadF32(PB,O+4,Y)||!ReadF32(PB,O+8,Z))return Fail(Error,TEXT("stream debug position is non-finite"));M.Positions.Emplace(X,-Y,Z);}const TArray<uint8>& IB=Tri->GetBinary();for(int32 O=0;O<IB.Num();O+=4){uint32 X;if(!ReadU32(IB,O,X)||X>=uint32(M.Positions.Num()))return Fail(Error,TEXT("stream debug index is invalid"));M.Triangles.Add(X);}Frame.DebugMeshes.Add(MoveTemp(M));}}
+	for (int32 Index = 0; Index < Map.GetMapSize(); ++Index)
+	{
+		bool bKnown = false;
+		for (const TCHAR* Key : Allowed) bKnown |= Map.GetMapKey(Index) == Key;
+		if (!bKnown) return false;
+	}
+	return true;
+}
+
+bool IsMap(const V* Value)
+{
+	return Value && Value->GetType() == EURLabWireValueType::Map && Value->HasValidMapStorage();
+}
+
+bool ReadDynamicName(const V& Row, TSet<FString>& Names, FString& OutName)
+{
+	const V* Name = Row.FindMapValue(TEXT("name"));
+	if (!Name || Name->GetType() != EURLabWireValueType::String
+		|| !DynamicNameValid(Name->GetString()) || Names.Contains(Name->GetString()))
+	{
+		return false;
+	}
+	OutName = Name->GetString();
+	Names.Add(OutName);
+	return true;
+}
+
+bool IsPackedBinary(const V* Value, int32 MinBytes)
+{
+	return Value && Value->GetType() == EURLabWireValueType::Binary
+		&& Value->GetBinary().Num() >= MinBytes && Value->GetBinary().Num() % 12 == 0;
+}
+
+bool ReadVectors(const TArray<uint8>& Bytes, TArray<FVector>& Out)
+{
+	Out.Reserve(Bytes.Num() / 12);
+	for (int32 Offset = 0; Offset < Bytes.Num(); Offset += 12)
+	{
+		float X, Y, Z;
+		if (!ReadF32(Bytes, Offset, X) || !ReadF32(Bytes, Offset + 4, Y)
+			|| !ReadF32(Bytes, Offset + 8, Z)) return false;
+		Out.Emplace(X, -Y, Z);
+	}
+	return true;
+}
+
+bool DecodeVisualization(const V& Wire, FURLabPoseStreamFrame& Frame, FString& Error)
+{
+	if (!IsMap(&Wire) || Wire.GetMapSize() == 0
+		|| !HasOnlyKeys(Wire, {TEXT("deformables"), TEXT("debug_meshes")}))
+	{
+		return Fail(Error, TEXT("stream visualization must contain deformables and/or debug_meshes"));
+	}
+	int64 Total = 0;
+	if (const V* Rows = Wire.FindMapValue(TEXT("deformables")))
+	{
+		if (Rows->GetType() != EURLabWireValueType::Array || Rows->GetArray().Num() > 4096)
+			return Fail(Error, TEXT("stream deformables are invalid"));
+		TSet<FString> Names;
+		for (const V& Row : Rows->GetArray())
+		{
+			FRenderFrame::FDeformable Deformable;
+			if (!IsMap(&Row)
+				|| !HasOnlyKeys(Row, {TEXT("name"), TEXT("vertex_positions_cm"), TEXT("vertex_normals")})
+				|| !ReadDynamicName(Row, Names, Deformable.Name))
+			{
+				return Fail(Error, TEXT("stream deformable fields or name are invalid"));
+			}
+			const V* Positions = Row.FindMapValue(TEXT("vertex_positions_cm"));
+			const V* Normals = Row.FindMapValue(TEXT("vertex_normals"));
+			if (!IsPackedBinary(Positions, 36) || (Normals && (!IsPackedBinary(Normals, 36)
+				|| Normals->GetBinary().Num() != Positions->GetBinary().Num())))
+			{
+				return Fail(Error, TEXT("stream deformable payload is invalid"));
+			}
+			const int64 Bytes = static_cast<int64>(Positions->GetBinary().Num())
+				+ (Normals ? Normals->GetBinary().Num() : 0);
+			if (Bytes > 128ll * 1024 * 1024 - Total)
+				return Fail(Error, TEXT("stream dynamic payload exceeds limit"));
+			Total += Bytes;
+			if (!ReadVectors(Positions->GetBinary(), Deformable.Positions))
+				return Fail(Error, TEXT("stream deformable position is non-finite"));
+			if (Normals && !ReadVectors(Normals->GetBinary(), Deformable.Normals))
+				return Fail(Error, TEXT("stream deformable normal is non-finite"));
+			Frame.Deformables.Add(MoveTemp(Deformable));
+		}
+	}
+	if (const V* Rows = Wire.FindMapValue(TEXT("debug_meshes")))
+	{
+		if (Rows->GetType() != EURLabWireValueType::Array || Rows->GetArray().Num() > 4096)
+			return Fail(Error, TEXT("stream debug meshes are invalid"));
+		TSet<FString> Names;
+		for (const V& Row : Rows->GetArray())
+		{
+			FRenderFrame::FDebugMesh Mesh;
+			if (!IsMap(&Row) || Row.GetMapSize() != 4
+				|| !HasOnlyKeys(Row, {TEXT("name"), TEXT("rgba"), TEXT("positions_cm"), TEXT("triangles")})
+				|| !ReadDynamicName(Row, Names, Mesh.Name))
+			{
+				return Fail(Error, TEXT("stream debug mesh fields or name are invalid"));
+			}
+			const V* Color = Row.FindMapValue(TEXT("rgba"));
+			const V* Positions = Row.FindMapValue(TEXT("positions_cm"));
+			const V* Triangles = Row.FindMapValue(TEXT("triangles"));
+			if (!Color || Color->GetType() != EURLabWireValueType::Array
+				|| Color->GetArray().Num() != 4 || !IsPackedBinary(Positions, 36)
+				|| !IsPackedBinary(Triangles, 12))
+			{
+				return Fail(Error, TEXT("stream debug mesh payload is invalid"));
+			}
+			const int64 Bytes = static_cast<int64>(Positions->GetBinary().Num())
+				+ Triangles->GetBinary().Num();
+			if (Bytes > 128ll * 1024 * 1024 - Total)
+				return Fail(Error, TEXT("stream dynamic payload exceeds limit"));
+			Total += Bytes;
+			float Channels[4];
+			for (int32 Index = 0; Index < 4; ++Index)
+			{
+				const V& Channel = Color->GetArray()[Index];
+				if (Channel.GetType() != EURLabWireValueType::Float64)
+					return Fail(Error, TEXT("stream debug mesh color is invalid"));
+				Channels[Index] = static_cast<float>(Channel.GetFloat());
+				if (!FMath::IsFinite(Channels[Index]) || Channels[Index] < 0 || Channels[Index] > 1)
+					return Fail(Error, TEXT("stream debug mesh color is invalid"));
+			}
+			Mesh.Color = FLinearColor(Channels[0], Channels[1], Channels[2], Channels[3]);
+			if (!ReadVectors(Positions->GetBinary(), Mesh.Positions))
+				return Fail(Error, TEXT("stream debug position is non-finite"));
+			const TArray<uint8>& Indices = Triangles->GetBinary();
+			for (int32 Offset = 0; Offset < Indices.Num(); Offset += 4)
+			{
+				uint32 Index;
+				if (!ReadU32(Indices, Offset, Index) || Index >= uint32(Mesh.Positions.Num()))
+					return Fail(Error, TEXT("stream debug index is invalid"));
+				Mesh.Triangles.Add(Index);
+			}
+			Frame.DebugMeshes.Add(MoveTemp(Mesh));
+		}
+	}
 	return true;
 }
 }
@@ -215,12 +346,19 @@ bool FURLabPoseStreamFrameCodec::Decode(TConstArrayView<uint8> Bytes,
 	if (bHasTime)
 	{
 		const V* Time = Value.FindMapValue(TEXT("source_time"));
-		if (!Time || Time->GetType() != EURLabWireValueType::Float64
-			|| !FMath::IsFinite(Time->GetFloat()))
+		if (Time && Time->GetType() == EURLabWireValueType::Int64)
 		{
-			return Fail(OutError, TEXT("pose-stream source_time must be finite float64"));
+			Local.SourceTime = static_cast<double>(Time->GetInt());
 		}
-		Local.SourceTime = Time->GetFloat();
+		else if (Time && Time->GetType() == EURLabWireValueType::Float64
+			&& FMath::IsFinite(Time->GetFloat()))
+		{
+			Local.SourceTime = Time->GetFloat();
+		}
+		else
+		{
+			return Fail(OutError, TEXT("pose-stream source_time must be a finite number"));
+		}
 	}
 	const V* Payload = Value.FindMapValue(TEXT("payload"));
 	if (!Payload || Payload->GetType() != EURLabWireValueType::Binary)

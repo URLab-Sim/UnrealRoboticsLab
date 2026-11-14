@@ -117,6 +117,8 @@ bool FURLabRenderServiceBinding::PollRecord(const FString& JobId,
 		return false;
 	}
 	if (!OutSnapshot.IsTerminal()) return true;
+	if (Record->MaterializationState != EURLabRenderMaterializationState::Pending)
+		return true;
 	if (OutSnapshot.State == EURLabRenderCaptureJobState::Succeeded)
 	{
 		Record->Materialization = Record->Admission->Materialize(
@@ -141,11 +143,16 @@ bool FURLabRenderServiceBinding::Pump(float)
 	if (!IsActive()) { PumpHandle.Reset(); return false; }
 	TArray<FString> JobIds;
 	Captures.GetKeys(JobIds);
+	bool bAnyPending = false;
 	for (const FString& JobId : JobIds)
 	{
 		const TSharedPtr<FCaptureRecord, ESPMode::ThreadSafe>* Found = Captures.Find(JobId);
 		if (!Found) continue;
 		const TSharedPtr<FCaptureRecord, ESPMode::ThreadSafe> Record = *Found;
+		if (Record->MaterializationState != EURLabRenderMaterializationState::Pending)
+		{
+			continue;
+		}
 		FURLabRenderCaptureJobSnapshot Snapshot; FString Error;
 		if (!PollRecord(JobId, Record, Snapshot, Error))
 		{
@@ -160,12 +167,19 @@ bool FURLabRenderServiceBinding::Pump(float)
 				Record->Scope, Record->Proof.GetGeneration(), Record->Proof.GetOpaqueToken());
 			if (Authorization.Error == EURLabRenderOwnerAuthorityError::Unavailable
 				|| Authorization.Error == EURLabRenderOwnerAuthorityError::InactiveScope)
+			{
+				bAnyPending = true;
 				continue;
+			}
 			if (!Authorization.IsOk())
 			{
 				const FURLabRenderOwnerLeaseResult Released = Owner->ReleaseOwnerCredentials(
 					Record->Scope, Record->Proof.GetGeneration(), Record->Proof.GetOpaqueToken());
-				if (Released.Error == EURLabRenderOwnerAuthorityError::Unavailable) continue;
+				if (Released.Error == EURLabRenderOwnerAuthorityError::Unavailable)
+				{
+					bAnyPending = true;
+					continue;
+				}
 			}
 			if (Captures.FindRef(JobId) == Record)
 			{
@@ -173,8 +187,12 @@ bool FURLabRenderServiceBinding::Pump(float)
 				Captures.Remove(JobId);
 			}
 		}
+		else if (Record->MaterializationState == EURLabRenderMaterializationState::Pending)
+		{
+			bAnyPending = true;
+		}
 	}
-	const bool bKeep = !Captures.IsEmpty();
+	const bool bKeep = bAnyPending && !Captures.IsEmpty();
 	if (!bKeep) PumpHandle.Reset();
 	return bKeep;
 }
@@ -220,8 +238,19 @@ bool FURLabRenderServiceBinding::AddCapture(
 		MakeShared<FCaptureRecord, ESPMode::ThreadSafe>();
 	Record->Scope = Scope; Record->Proof = Proof; Record->Handle = MoveTemp(Handle);
 	Record->Admission = MoveTemp(Admission);
-	Captures.Add(OutJobId, MoveTemp(Record));
-	EnsurePump(); OutError.Reset(); return true;
+	Captures.Add(OutJobId, Record);
+	if (!GIsEditor)
+	{
+		FURLabRenderCaptureJobSnapshot InitialSnapshot;
+		FString IgnoredError;
+		PollRecord(OutJobId, Record, InitialSnapshot, IgnoredError);
+	}
+	if (Record->MaterializationState == EURLabRenderMaterializationState::Pending)
+	{
+		EnsurePump();
+	}
+	OutError.Reset();
+	return true;
 }
 
 bool FURLabRenderServiceBinding::CanAcceptCapture(

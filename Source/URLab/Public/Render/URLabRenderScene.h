@@ -85,8 +85,10 @@ private:
 		TArray<TObjectPtr<UPrimitiveComponent>> SemanticSegComps;
 		TArray<TObjectPtr<ULightComponent>> Lights;
 		TObjectPtr<USkyLightComponent> SkyLight = nullptr;
-		TObjectPtr<UStaticMeshComponent> SkyDome = nullptr;
+		TObjectPtr<UPrimitiveComponent> SkyDome = nullptr;
 		TArray<TObjectPtr<UProceduralMeshComponent>> Deformables;
+		/** Index-aligned with Deformables; set only for translucent ones. */
+		TArray<TObjectPtr<UProceduralMeshComponent>> DeformableDepthStandIns;
 		TArray<TObjectPtr<UProceduralMeshComponent>> DebugMeshes;
 		TObjectPtr<URenderCameraRig> CameraRig = nullptr;
 	};
@@ -106,9 +108,11 @@ private:
 	bool BuildDynamicMeshes(const FRenderScene& CandidateScene, const FRenderFrame& InitialFrame,
 		URenderAssetBuilder& CandidateBuilder, FCandidateTree& OutTree, FString& OutError);
 	bool BuildEnvironment(const FRenderScene& CandidateScene,
-		const FRenderSceneResources& Resources, FCandidateTree& OutTree, FString& OutError);
+		URenderAssetBuilder& CandidateBuilder, const FRenderSceneResources& Resources,
+		FCandidateTree& OutTree, FString& OutError);
 	bool ApplyDynamicMeshes(const FRenderScene& CandidateScene, const FRenderFrame& Frame,
 		TArray<TObjectPtr<UProceduralMeshComponent>>& Deformables,
+		TArray<TObjectPtr<UProceduralMeshComponent>>& DeformableDepthStandIns,
 		TArray<TObjectPtr<UProceduralMeshComponent>>& DebugMeshes, FString& OutError);
 	static void DestroyTree(FCandidateTree& Tree);
 	static void SetTreeHidden(const FCandidateTree& Tree, bool bHidden);
@@ -135,9 +139,11 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<USkyLightComponent> SkyLightComponent = nullptr;
 	UPROPERTY(Transient)
-	TObjectPtr<UStaticMeshComponent> SkyDomeComponent = nullptr;
+	TObjectPtr<UPrimitiveComponent> SkyDomeComponent = nullptr;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UProceduralMeshComponent>> DeformableComponents;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UProceduralMeshComponent>> DeformableDepthStandInComponents;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UProceduralMeshComponent>> DebugMeshComponents;
 	UPROPERTY(Transient)

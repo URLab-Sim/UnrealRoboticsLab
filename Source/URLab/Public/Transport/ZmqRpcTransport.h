@@ -72,6 +72,7 @@ private:
 	void* ZmqRep = nullptr;
 	FURLabWorkerThread Worker;
 	std::atomic<bool> bStop{false};
+	double LastProcessSeconds = 0.0;
 	bool bIsInitialized = false;
 
 	/** StepEndpoint when set, else tcp://{BindAddress}:{StepPort} from the

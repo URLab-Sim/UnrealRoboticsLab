@@ -26,6 +26,53 @@ FMjBootScene ResolveScene()
 	}
 	return Scene;
 }
+
+/** The -URLabScene keys the render and viewer workflows apply. A key they would
+ *  ignore refuses the boot, so an operator is never told a setting took effect
+ *  when it did not. The render server applies cammax as the default camera
+ *  height cap of every install. */
+TArray<FString> HonouredSceneKeys(EMjBootAction Action)
+{
+	TArray<FString> Keys;
+	if (Action == EMjBootAction::Build)
+	{
+		Keys.Add(TEXT("cammax"));
+	}
+	return Keys;
+}
+
+const TCHAR* WorkflowNameFor(EMjBootAction Action)
+{
+	return Action == EMjBootAction::Viewer ? TEXT("viewer") : TEXT("render");
+}
+
+void RefuseUnhonouredSceneKeys(FMjRendererBootPlan& Plan)
+{
+	if (Plan.Action != EMjBootAction::Build && Plan.Action != EMjBootAction::Viewer)
+	{
+		return;
+	}
+	TArray<FString> Keys;
+	URLabLauncherFlags::SceneKeys(Keys);
+	const TArray<FString> Honoured = HonouredSceneKeys(Plan.Action);
+	TArray<FString> Ignored;
+	for (const FString& Key : Keys)
+	{
+		if (!Honoured.Contains(Key))
+		{
+			Ignored.Add(Key);
+		}
+	}
+	if (Ignored.IsEmpty())
+	{
+		return;
+	}
+	Plan.Error = FString::Printf(
+		TEXT("-URLabScene key(s) '%s' are not applied by -URLabWorkflow=%s (it applies: %s)"),
+		*FString::Join(Ignored, TEXT(",")), WorkflowNameFor(Plan.Action),
+		Honoured.IsEmpty() ? TEXT("none") : *FString::Join(Honoured, TEXT(",")));
+	Plan.Action = EMjBootAction::Fail;
+}
 } // namespace
 
 const TCHAR* MjDriveToken(EMjDrive Drive)
@@ -60,6 +107,11 @@ FMjBootNet FMjRendererBoot::ResolveNet()
 	if (URLabLauncherFlags::NetValue(TEXT("bind"), Val))
 	{
 		Net.BindAddress = Val;
+	}
+	if (URLabLauncherFlags::NetValue(TEXT("parent"), Val) && Val.IsNumeric())
+	{
+		const int64 Pid = FCString::Atoi64(*Val);
+		Net.ParentPid = Pid > 0 && Pid <= MAX_uint32 ? static_cast<uint32>(Pid) : 0;
 	}
 	return Net;
 }
@@ -147,10 +199,8 @@ FMjRendererBootPlan FMjRendererBoot::FromCommandLine()
 	}
 	else if (WorkflowKind == URLabLauncherFlags::EWorkflowKind::Render)
 	{
-		// A named drive with nothing to find is a render server standing by: build it on a
-		// placeholder so its bridge is live, and let the first client load bring the scene.
-		// This is the whole of what the deleted `await` drive did, minus the pretence that
-		// "no model yet" is a pose source.
+		// A render server boots model-free with its bridge live; the first client
+		// install brings the scene.
 		Plan.Action = EMjBootAction::Build;
 	}
 	else
@@ -158,6 +208,7 @@ FMjRendererBootPlan FMjRendererBoot::FromCommandLine()
 		// No launch flag at all: a normal map boot.
 		Plan.Action = EMjBootAction::None;
 	}
+	RefuseUnhonouredSceneKeys(Plan);
 	return Plan;
 }
 

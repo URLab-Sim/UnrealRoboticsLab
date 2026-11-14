@@ -12,6 +12,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "RenderingThread.h"
+#include "RenderExactCaptureTestSupport.h"
 #include "Render/RenderCameraComponent.h"
 #include "Render/RenderCameraRig.h"
 #include "Render/RenderWorldSubsystem.h"
@@ -131,10 +132,15 @@ bool Capture(URenderCameraComponent& Camera, uint64 Id, FRenderCameraFrame& Out)
 {
 	Camera.ClearHistory();
 	FlushRenderingCommands();
-	Camera.IssueSyncCapture();
-	FlushRenderingCommands();
-	Camera.WaitAndHarvestReadbacks(2.0);
-	return Camera.GetFrame(Id, Out) && Out.Color.Num() == ImageSize * ImageSize;
+	const FRenderCameraCaptureCompletion Completion =
+		URLabRenderTest::CaptureExact(Camera, 2.0);
+	if (!Completion.IsSuccessful() || !Completion.Frame.IsValid()
+		|| Completion.Frame->Identity.FrameId != Id)
+	{
+		return false;
+	}
+	Out = *Completion.Frame;
+	return Out.Color.Num() == ImageSize * ImageSize;
 }
 
 double CenterLuminance(const FRenderCameraFrame& Frame)

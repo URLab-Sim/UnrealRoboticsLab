@@ -1150,6 +1150,15 @@ FURLabWireValue FURLabWireValue::MakeBinary(TArray<uint8> Value)
 {
 	FURLabWireValue Result;
 	Result.Type = EURLabWireValueType::Binary;
+	Result.BinaryValue = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>(MoveTemp(Value));
+	return Result;
+}
+
+FURLabWireValue FURLabWireValue::MakeBinaryShared(
+	TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> Value)
+{
+	FURLabWireValue Result;
+	Result.Type = EURLabWireValueType::Binary;
 	Result.BinaryValue = MoveTemp(Value);
 	return Result;
 }
@@ -1198,7 +1207,8 @@ const FString& FURLabWireValue::GetString() const
 const TArray<uint8>& FURLabWireValue::GetBinary() const
 {
 	check(Type == EURLabWireValueType::Binary);
-	return BinaryValue;
+	static const TArray<uint8> Empty;
+	return BinaryValue.IsValid() ? *BinaryValue : Empty;
 }
 
 const TArray<FURLabWireValue>& FURLabWireValue::GetArray() const

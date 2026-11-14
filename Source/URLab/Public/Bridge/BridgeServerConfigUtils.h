@@ -19,9 +19,8 @@ URLAB_API void LoadFromIni(FURLabBridgeServerConfig& Out);
 
 /** Apply per-instance overrides on top of an already INI-loaded config.
  *  Precedence, highest first: command line, environment, INI.
- *  Command line: -URLabInstanceId=, -URLabInstanceIndex=, -URLabStepPort=,
- *  -URLabStatePort=, -URLabCamBasePort=, -URLabPortBase=, -URLabPortStride=,
- *  -URLabBindAddress=. Environment: the URLAB_* equivalents. When a farm
+ *  Command line: the -URLabNet= keys id, index, portbase, stride, step, state,
+ *  bus, cam, grpc and bind. Environment: the URLAB_* equivalents. When a farm
  *  index is set and a port was not explicitly overridden, the port derives
  *  from PortBase + Index*PortStride (see DerivePorts). Pure function of the
  *  passed struct plus this process's environment and command line. */
@@ -43,6 +42,12 @@ URLAB_API void DerivePorts(FURLabBridgeServerConfig& Cfg,
  *  Cameras allocate one port each, upward from CamBasePort, so N instances on
  *  distinct CamBasePort blocks never collide. CameraIndex is clamped to >= 0. */
 URLAB_API FString BuildCameraEndpoint(const FURLabBridgeServerConfig& Cfg, int32 CameraIndex);
+
+/** The host a client on another process should dial to reach sockets bound to
+ *  Cfg.BindAddress: the bind address itself when it names one interface, or this
+ *  machine's name when it is a wildcard. IPv6 literals come back bracketed so
+ *  the result can be placed directly in a scheme://host:port endpoint. */
+URLAB_API FString ResolveDialHost(const FURLabBridgeServerConfig& Cfg);
 
 /** Section name used in the INI. Exposed for tests. */
 URLAB_API extern const TCHAR* SectionName;

@@ -1,33 +1,44 @@
 # Interaction
 
-Manipulate bodies with the mouse during Play-in-Editor, and possess an articulation to drive it directly with the keyboard.
+Apply external forces to a running simulation from Python, and possess an articulation to drive it directly with the keyboard.
 
-## Mouse perturbation
+## External perturbations
 
-Drag bodies during PIE with gestures that match MuJoCo's `simulate` viewer. Under the hood URLab calls the same perturbation primitives, so the spring feel, force falloff, and paused-teleport behaviour are identical to upstream. Perturbation runs on `UMjPerturbation`, auto-created on the Manager.
+Perturbations are typed, granted wrenches. The simulation owner issues a short-lived grant (at most 30 s) bound to its control authority, its pose-stream source and one viewer; the grant holder submits wrenches through that viewer (`viewer_interaction_submit`) or straight to the producer (`interaction_submit`). Revoking the grant, letting it expire, or any change of source, control or clock epoch stops every wrench issued under it before the next step. Withdrawing the `accept_input` permission revokes all grants.
 
-![Dragging a body with the perturbation spring gizmo during PIE](../images/placeholder.svg)
+| Producer | Issue a grant | Owner-side application |
+|---|---|---|
+| UE simulation (`-URLabWorkflow=simulation`) | `SimulationClient.issue_interaction_grant(handle, source, viewer_boot_id, ttl_s)` | built in |
+| Python `PoseStreamPublisher` | `publisher.issue_interaction_grant(viewer_boot_id, ttl_s)` | `MujocoInteractionHandler(model, data)` plus `before_authoritative_step(data.time)` / `after_authoritative_step(...)` around `mj_step` (`abort_authoritative_step()` if the step fails) |
 
-### Gestures
+### Frames and units
 
-| Input | Action |
-|---|---|
-| Double-click LMB on a body | Select it. No force applied. The selection persists until you double-click elsewhere or on empty space. |
-| Ctrl + RMB drag | Translate the selected body along the cursor plane at the selection depth. |
-| Ctrl + LMB drag | Rotate the selected body about the camera-aligned axis. |
-| Release the button | Stop the drag. Selection persists; forces clear on the next physics step. |
+Wrenches are in MuJoCo coordinates: right-handed, Z up, metres, newtons, newton-metres. They are never in Unreal units; anything that starts from UE coordinates must convert centimetres to metres and flip Y. By default force and torque are world-frame and act at the body centre of mass. With `body_frame=True` they are expressed in the body frame and re-rotated every step. With `point_m` the force acts at that point (world coordinates, or body coordinates relative to the body origin when `body_frame=True`) and the owner adds the matching torque about the centre of mass.
 
-Camera look and move input is disabled while a drag is active so cursor motion drives the body, not the view.
+### Impulses, holds and drags
 
-### Running versus paused
+```python
+from urlab_client import InteractionDrag, InteractionWrench
 
-- **Running**: the drag applies a virtual spring force, so the body integrates under physics. It can collide, swing, and settle. Releasing clears the force on the next step.
-- **Paused** (press `P`): the drag teleports the body to the reference pose and propagates it through the kinematics. Hold Ctrl and drag to pose the body statically; releasing keeps the pose frozen.
+viewer.submit_interaction(owner, revision, grant, InteractionWrench(body, (0, 0, 50), (0, 0, 0)))  # one step
+viewer.submit_interaction(owner, revision, grant, InteractionWrench.hold(body, (5, 0, 0), duration_s=0.5))
 
-While dragging, gizmos overlay the body: a red sphere at the selection point, a green arrow during translate (selection point to target, length is the position error), and a yellow arrow during rotate (the linear motion the rotation spring is producing).
+drag = InteractionDrag(functools.partial(viewer.submit_interaction, owner, revision, grant), body, lease_s=0.2)
+drag.update((3, 0, 0), point_m=(0.1, 0, 0))   # call faster than lease_s
+drag.release()
+```
 
-!!! tip
-    Combine paused perturbation with snapshots in the [Simulate Dashboard](dashboard.md) to author keyframes by hand: pause, drag the body into position, capture a snapshot, then resume. The snapshot records the current qpos and ctrl, so the pose you dialled in replays exactly.
+- A plain wrench applies to exactly one authoritative step, an impulse of force times the timestep.
+- `duration_s` holds the wrench on every step until the simulation time passes the first step plus `duration_s`, so the impulse is force times duration regardless of how often the client submits.
+- A wrench on a `channel` replaces the previous hold on the same grant and channel. `InteractionDrag` uses this to stream a drag; if updates stop, the force lapses after `lease_s` of simulation time.
+
+The reply arrives after the first step that applied the wrench, with that step's `source_time`.
+
+### Retries
+
+Every `InteractionWrench` carries an `interaction_id`. Resubmitting the same value never applies it twice, so after `outcome_unknown` (the viewer could not confirm the producer's result in time) resubmit the same wrench object. Use `wrench.renewed()` for a deliberately new interaction.
+
+The packaged viewer has no mouse pick or drag of its own; drive perturbations from Python.
 
 ## Possession and keyboard control
 
@@ -66,4 +77,4 @@ Tune how much velocity a full keypress produces with the max forward speed, stra
 
 - [Simulate Dashboard](dashboard.md) for the Possess button, locomotion sliders, and snapshots.
 - [Debug Visualization](debug.md) for the hotkeys and overlays, including wireframes useful for diagnosing rest poses.
-- [Recording & Replay](recording.md) to capture an interaction session.
+- [Recording & Replay](recording.md): retired; kept as historical context.

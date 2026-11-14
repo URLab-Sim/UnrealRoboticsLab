@@ -61,7 +61,7 @@ bool FMjCapsParse::RunTest(const FString& Parameters)
 	// camera_frames + camera_rpc, which is exactly why they were two booleans apiece.
 	{
 		FScopedCommandLine Cmd(TEXT("-URLabCaps=rpc,discoverable,pose_stream,camera_frames,")
-			TEXT("camera_rpc,accept_input,accept_model_load,free_fly_pawn"));
+			TEXT("camera_rpc,accept_input,accept_model_load,accept_editor_commands,free_fly_pawn"));
 		const FMjCapabilitySet Caps = URLabLauncherFlags::ParseCaps();
 		for (int32 i = 0; i < URLabWire::Capability::Count; ++i)
 		{
@@ -405,5 +405,74 @@ bool FMjWorkflowPermissionPolicy::RunTest(const FString& Parameters)
 		Bridge->GrantsPermission(EMjCapability::CameraRpc));
 	TestFalse(TEXT("complete replacement clears model load"),
 		Bridge->GrantsPermission(EMjCapability::AcceptModelLoad));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The render and viewer workflows refuse -URLabScene keys they would ignore, so
+// a launch never reports a setting that silently did nothing. cammax is applied
+// by the render server to every install.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneKeysPerWorkflow,
+	"URLab.Flags.SceneKeysPerWorkflow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSceneKeysPerWorkflow::RunTest(const FString& Parameters)
+{
+	{
+		FScopedCommandLine Cmd(TEXT("-URLabScene=Level=3,overlay=0x10,base"));
+		TArray<FString> Keys;
+		URLabLauncherFlags::SceneKeys(Keys);
+		const TArray<FString> Expected = {TEXT("level"), TEXT("overlay"), TEXT("base")};
+		TestTrue(TEXT("scene keys are lower-cased in order"), Keys == Expected);
+	}
+	{
+		FScopedCommandLine Cmd(TEXT("-URLabWorkflow=render -URLabScene=cammax=240"));
+		const FMjRendererBootPlan Plan = FMjRendererBoot::FromCommandLine();
+		TestEqual(TEXT("render accepts cammax"), Plan.Action, EMjBootAction::Build);
+		TestEqual(TEXT("cammax parsed"), Plan.Scene.CamMaxHeight, 240);
+	}
+	{
+		FScopedCommandLine Cmd(TEXT("-URLabWorkflow=render -URLabScene=cammax=240,origin=1;2;3,noexposure"));
+		const FMjRendererBootPlan Plan = FMjRendererBoot::FromCommandLine();
+		TestEqual(TEXT("render refuses ignored keys"), Plan.Action, EMjBootAction::Fail);
+		TestTrue(TEXT("error names the ignored keys"), Plan.Error.Contains(TEXT("origin,noexposure")));
+		TestFalse(TEXT("error does not blame cammax"), Plan.Error.Contains(TEXT("'cammax")));
+	}
+	{
+		FScopedCommandLine Cmd(TEXT("-URLabWorkflow=viewer -URLabScene=cammax=240"));
+		const FMjRendererBootPlan Plan = FMjRendererBoot::FromCommandLine();
+		TestEqual(TEXT("viewer applies no scene keys"), Plan.Action, EMjBootAction::Fail);
+	}
+	{
+		FScopedCommandLine Cmd(TEXT("-URLabWorkflow=simulation -URLabScene=origin=1;2;3,cammax=240"));
+		const FMjRendererBootPlan Plan = FMjRendererBoot::FromCommandLine();
+		TestEqual(TEXT("simulation keeps its scene keys"), Plan.Action, EMjBootAction::Simulation);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// -URLabNet=parent=<pid> names the process whose exit ends this one.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjNetParentPid,
+	"URLab.Flags.NetParentPid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjNetParentPid::RunTest(const FString& Parameters)
+{
+	{
+		FScopedCommandLine Cmd(TEXT("-URLabNet=id=urlab-render-1,step=5600,parent=4242"));
+		const FMjBootNet Net = FMjRendererBoot::ResolveNet();
+		TestEqual(TEXT("parent pid parsed"), static_cast<int64>(Net.ParentPid), static_cast<int64>(4242));
+		TestEqual(TEXT("instance id parsed"), Net.InstanceId, FString(TEXT("urlab-render-1")));
+	}
+	for (const TCHAR* Bad : {TEXT("-URLabNet=parent=0"), TEXT("-URLabNet=parent=-5"),
+		TEXT("-URLabNet=parent=abc"), TEXT("-URLabNet=parent=99999999999"), TEXT("-URLabNet=step=1")})
+	{
+		FScopedCommandLine Cmd(Bad);
+		TestEqual(*FString::Printf(TEXT("no parent for %s"), Bad),
+			static_cast<int64>(FMjRendererBoot::ResolveNet().ParentPid), static_cast<int64>(0));
+	}
 	return true;
 }

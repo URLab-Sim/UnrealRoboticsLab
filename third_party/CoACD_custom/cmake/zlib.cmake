@@ -1,4 +1,9 @@
-find_package(ZLIB QUIET)
+# A sysroot build (build_all.sh --engine) must not pick up the host's zlib:
+# find_package() would find /usr/lib/.../libz.so while the compile runs against
+# UE's sysroot, which ships no zlib.h. Fetch zlib in that case.
+if(NOT "$ENV{CFLAGS} ${CMAKE_C_FLAGS} ${CMAKE_SYSROOT}" MATCHES "sysroot")
+  find_package(ZLIB QUIET)
+endif()
 
 if(ZLIB_FOUND)
   message(STATUS "ZLIB found, skipping fetch.")

@@ -15,6 +15,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ConfigCacheIni.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 
 #include "Bridge/BridgeServerConfig.h"
 #include "Bridge/BridgeServerConfigUtils.h"
@@ -94,6 +95,7 @@ bool FMjBridgeServerConfigDefaults::RunTest(const FString& Parameters)
 	TestTrue(TEXT("AutoStart default"), Cfg.bAutoStart);
 	TestEqual(TEXT("StepPort default"), Cfg.StepPort, 5559);
 	TestEqual(TEXT("StatePort default"), Cfg.StatePort, 5555);
+	TestEqual(TEXT("BindAddress defaults to loopback"), Cfg.BindAddress, FString(TEXT("127.0.0.1")));
 
 	// Round-trip vs missing path: leaves struct at defaults.
 	const FString Path = MakeScratchIniPath(TEXT("missing"));
@@ -308,9 +310,9 @@ bool FMjBridgeServerConfigCameraEndpoint::RunTest(const FString& Parameters)
 		FURLabBridgeServerConfig Cfg;
 		Cfg.InstanceIndex = 0;
 		DerivePorts(Cfg, false, false, false); // CamBasePort -> 5561
-		TestEqual(TEXT("inst0 cam0"), BuildCameraEndpoint(Cfg, 0), FString(TEXT("tcp://0.0.0.0:5561")));
-		TestEqual(TEXT("inst0 cam1"), BuildCameraEndpoint(Cfg, 1), FString(TEXT("tcp://0.0.0.0:5562")));
-		TestEqual(TEXT("inst0 cam2"), BuildCameraEndpoint(Cfg, 2), FString(TEXT("tcp://0.0.0.0:5563")));
+		TestEqual(TEXT("inst0 cam0"), BuildCameraEndpoint(Cfg, 0), FString(TEXT("tcp://127.0.0.1:5561")));
+		TestEqual(TEXT("inst0 cam1"), BuildCameraEndpoint(Cfg, 1), FString(TEXT("tcp://127.0.0.1:5562")));
+		TestEqual(TEXT("inst0 cam2"), BuildCameraEndpoint(Cfg, 2), FString(TEXT("tcp://127.0.0.1:5563")));
 	}
 
 	// Instance 1 (CamBasePort 5571): its camera block is strictly above
@@ -319,8 +321,8 @@ bool FMjBridgeServerConfigCameraEndpoint::RunTest(const FString& Parameters)
 		FURLabBridgeServerConfig Cfg;
 		Cfg.InstanceIndex = 1;
 		DerivePorts(Cfg, false, false, false); // CamBasePort -> 5571
-		TestEqual(TEXT("inst1 cam0"), BuildCameraEndpoint(Cfg, 0), FString(TEXT("tcp://0.0.0.0:5571")));
-		TestEqual(TEXT("inst1 cam1"), BuildCameraEndpoint(Cfg, 1), FString(TEXT("tcp://0.0.0.0:5572")));
+		TestEqual(TEXT("inst1 cam0"), BuildCameraEndpoint(Cfg, 0), FString(TEXT("tcp://127.0.0.1:5571")));
+		TestEqual(TEXT("inst1 cam1"), BuildCameraEndpoint(Cfg, 1), FString(TEXT("tcp://127.0.0.1:5572")));
 	}
 
 	// BindAddress is honoured (consistent with the step/state sockets), and a
@@ -328,12 +330,38 @@ bool FMjBridgeServerConfigCameraEndpoint::RunTest(const FString& Parameters)
 	{
 		FURLabBridgeServerConfig Cfg;
 		Cfg.CamBasePort = 6000;
-		Cfg.BindAddress = TEXT("127.0.0.1");
+		Cfg.BindAddress = TEXT("10.0.0.7");
 		TestEqual(TEXT("bind addr honoured"),
-			BuildCameraEndpoint(Cfg, 0), FString(TEXT("tcp://127.0.0.1:6000")));
+			BuildCameraEndpoint(Cfg, 0), FString(TEXT("tcp://10.0.0.7:6000")));
 		TestEqual(TEXT("negative index clamps to base"),
-			BuildCameraEndpoint(Cfg, -5), FString(TEXT("tcp://127.0.0.1:6000")));
+			BuildCameraEndpoint(Cfg, -5), FString(TEXT("tcp://10.0.0.7:6000")));
 	}
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 8. ResolveDialHost: advertised endpoints name the bound interface, and only a
+//    wildcard bind falls back to this machine's name.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjBridgeServerConfigDialHost,
+	"URLab.BridgeServerConfig.DialHost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjBridgeServerConfigDialHost::RunTest(const FString& Parameters)
+{
+	using namespace URLabBridgeServerConfigUtils;
+	FURLabBridgeServerConfig Cfg;
+	TestEqual(TEXT("default loopback"), ResolveDialHost(Cfg), FString(TEXT("127.0.0.1")));
+	Cfg.BindAddress = TEXT("10.1.2.3");
+	TestEqual(TEXT("concrete interface"), ResolveDialHost(Cfg), FString(TEXT("10.1.2.3")));
+	Cfg.BindAddress = TEXT("::1");
+	TestEqual(TEXT("ipv6 is bracketed"), ResolveDialHost(Cfg), FString(TEXT("[::1]")));
+	for (const TCHAR* Wildcard : {TEXT("0.0.0.0"), TEXT("::"), TEXT("*"), TEXT("")})
+	{
+		Cfg.BindAddress = Wildcard;
+		TestEqual(*FString::Printf(TEXT("wildcard '%s'"), Wildcard), ResolveDialHost(Cfg),
+			FString(FPlatformProcess::ComputerName()));
+	}
 	return true;
 }

@@ -53,10 +53,6 @@ public:
 	 *  be unique across transports that can be bound at the same time. */
 	virtual FString GetTransportName() const PURE_VIRTUAL(UURLabTransportBase::GetTransportName, return FString(););
 
-	/** Append transport-specific fields to the hello handshake reply. Default
-	 *  no-op; the SHM transports advertise their session paths through it. */
-	virtual void AppendHandshakeBlock(TSharedPtr<class FJsonObject>& Reply) const {}
-
 	// --- Per-step physics hooks (physics thread) --------------------------
 	// Default-empty so a transport that publishes on demand rather than on the
 	// step does not have to opt in. The manager calls these on the engine's

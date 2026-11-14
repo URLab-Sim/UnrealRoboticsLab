@@ -7,13 +7,38 @@ namespace URLabInteractionWire
 {
 using V = FURLabWireValue;
 
+inline bool ParseString(const V& Value, const TCHAR* Name, FString& Out)
+{
+	const V* Field = Value.FindMapValue(Name);
+	if (!Field) return false;
+	Out = Field->GetString();
+	return true;
+}
+
+inline bool ParseUInt(const V& Value, const TCHAR* Name, uint64& Out)
+{
+	const V* Field = Value.FindMapValue(Name);
+	if (!Field || Field->GetInt() < 0) return false;
+	Out = static_cast<uint64>(Field->GetInt());
+	return true;
+}
+
+inline bool ParseVector(const V* Field, FVector3d& Out)
+{
+	if (!Field) return false;
+	const TArray<V>& Items = Field->GetArray();
+	if (Items.Num() != 3) return false;
+	Out = FVector3d(Items[0].GetFloat(), Items[1].GetFloat(), Items[2].GetFloat());
+	return true;
+}
+
 inline bool ParseSource(const V& Value, FURLabInteractionSourceIdentity& Out)
 {
-	Out.ProducerBootId = Value.FindMapValue(TEXT("producer_boot_id"))->GetString();
-	Out.StreamId = Value.FindMapValue(TEXT("stream_id"))->GetString();
-	Out.StreamGeneration = Value.FindMapValue(TEXT("stream_generation"))->GetInt();
-	Out.SourceRevision = Value.FindMapValue(TEXT("source_revision"))->GetString();
-	return Out.IsValid();
+	return ParseString(Value, TEXT("producer_boot_id"), Out.ProducerBootId)
+		&& ParseString(Value, TEXT("stream_id"), Out.StreamId)
+		&& ParseUInt(Value, TEXT("stream_generation"), Out.StreamGeneration)
+		&& ParseString(Value, TEXT("source_revision"), Out.SourceRevision)
+		&& Out.IsValid();
 }
 
 inline V Source(const FURLabInteractionSourceIdentity& Value)
@@ -28,22 +53,63 @@ inline V Source(const FURLabInteractionSourceIdentity& Value)
 
 inline bool ParseGrant(const V& Value, FURLabInteractionWrenchRequest& Out)
 {
-	Out.GrantToken = Value.FindMapValue(TEXT("grant_token"))->GetString();
-	Out.ViewerBootId = Value.FindMapValue(TEXT("viewer_boot_id"))->GetString();
-	Out.ClockEpoch = Value.FindMapValue(TEXT("clock_epoch"))->GetInt();
-	return ParseSource(*Value.FindMapValue(TEXT("source")), Out.Source);
+	const V* SourceValue = Value.FindMapValue(TEXT("source"));
+	return SourceValue && ParseString(Value, TEXT("grant_token"), Out.GrantToken)
+		&& ParseString(Value, TEXT("viewer_boot_id"), Out.ViewerBootId)
+		&& ParseUInt(Value, TEXT("clock_epoch"), Out.ClockEpoch)
+		&& ParseSource(*SourceValue, Out.Source);
 }
 
+/** Parses the wrench body, including its optional frame, point, hold and identity. */
 inline bool ParseWrench(const V& Value, FURLabInteractionWrenchRequest& Out)
 {
-	Out.BodyIndex = Value.FindMapValue(TEXT("body_index"))->GetInt();
-	const TArray<V>& Force = Value.FindMapValue(TEXT("force_n"))->GetArray();
-	const TArray<V>& Torque = Value.FindMapValue(TEXT("torque_nm"))->GetArray();
-	if (Force.Num() != 3 || Torque.Num() != 3) return false;
-	Out.ForceNewton = FVector3d(Force[0].GetFloat(), Force[1].GetFloat(), Force[2].GetFloat());
-	Out.TorqueNewtonMetre = FVector3d(
-		Torque[0].GetFloat(), Torque[1].GetFloat(), Torque[2].GetFloat());
+	const V* Body = Value.FindMapValue(TEXT("body_index"));
+	if (!Body || Body->GetInt() < 0 || Body->GetInt() > MAX_int32) return false;
+	Out.BodyIndex = static_cast<int32>(Body->GetInt());
+	if (!ParseVector(Value.FindMapValue(TEXT("force_n")), Out.ForceNewton)
+		|| !ParseVector(Value.FindMapValue(TEXT("torque_nm")), Out.TorqueNewtonMetre))
+	{
+		return false;
+	}
+	if (const V* Frame = Value.FindMapValue(TEXT("body_frame"))) Out.bBodyFrame = Frame->GetBool();
+	if (const V* Point = Value.FindMapValue(TEXT("point_m")))
+	{
+		if (!ParseVector(Point, Out.PointMetre)) return false;
+		Out.bHasPoint = true;
+	}
+	if (const V* Duration = Value.FindMapValue(TEXT("duration_s")))
+		Out.DurationSeconds = Duration->GetFloat();
+	if (const V* Channel = Value.FindMapValue(TEXT("channel"))) Out.Channel = Channel->GetString();
+	if (const V* Id = Value.FindMapValue(TEXT("interaction_id"))) Out.InteractionId = Id->GetString();
 	return true;
+}
+
+/** Wire error code for an admission refusal; empty for Accepted/Existing*. */
+inline const TCHAR* AdmissionCode(EURLabInteractionAdmission Admission)
+{
+	switch (Admission)
+	{
+	case EURLabInteractionAdmission::Unsupported: return TEXT("unsupported");
+	case EURLabInteractionAdmission::Invalid: return TEXT("bad_request");
+	case EURLabInteractionAdmission::StaleGrant: return TEXT("grant_invalid");
+	case EURLabInteractionAdmission::ExpiredGrant: return TEXT("grant_expired");
+	case EURLabInteractionAdmission::StaleSource: return TEXT("source_revision_conflict");
+	case EURLabInteractionAdmission::Conflict: return TEXT("interaction_conflict");
+	case EURLabInteractionAdmission::Capacity: return TEXT("service_unavailable");
+	default: return TEXT("");
+	}
+}
+
+inline const TCHAR* TerminalCode(EURLabInteractionTerminal Terminal)
+{
+	switch (Terminal)
+	{
+	case EURLabInteractionTerminal::RejectedTarget: return TEXT("target_invalid");
+	case EURLabInteractionTerminal::RejectedStale: return TEXT("grant_invalid");
+	case EURLabInteractionTerminal::RejectedExpired: return TEXT("grant_expired");
+	case EURLabInteractionTerminal::RejectedSource: return TEXT("source_revision_conflict");
+	default: return TEXT("apply_failed");
+	}
 }
 
 inline V Grant(const FURLabInteractionGrant& Value, double ExpiresInSeconds)
@@ -80,10 +146,7 @@ public:
 							V::MakeFloat(Result.AppliedFrame.SourceTime)})));
 			return;
 		}
-		const TCHAR* Code = Result.Terminal == EURLabInteractionTerminal::RejectedTarget
-			? TEXT("target_invalid") : Result.Terminal == EURLabInteractionTerminal::RejectedStale
-			? TEXT("grant_invalid") : TEXT("interaction_failed");
-		Completion->Error(Code, Result.Error);
+		Completion->Error(TerminalCode(Result.Terminal), Result.Error);
 	}
 
 private:

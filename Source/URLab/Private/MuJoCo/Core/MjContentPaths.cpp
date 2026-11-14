@@ -14,6 +14,10 @@ namespace URLabContent
 {
 const TCHAR* const MasterMaterial =
 	TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo_Master.M_MuJoCo_Master");
+const TCHAR* const TranslucentMasterMaterial =
+	TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo_Master_Translucent.M_MuJoCo_Master_Translucent");
+const TCHAR* const NeutralLinearWhiteTexture =
+	TEXT("/UnrealRoboticsLab/Materials/T_URLabNeutralLinearWhite.T_URLabNeutralLinearWhite");
 const TCHAR* const OverlayMaterial =
 	TEXT("/UnrealRoboticsLab/Materials/M_MjOverlay.M_MjOverlay");
 const TCHAR* const SkyDomeMaterial =
@@ -34,10 +38,12 @@ struct FRequiredAsset
 
 // Ordered by how confusing the failure is when it happens silently.
 const FRequiredAsset kRequired[] = {
-	{MasterMaterial,      TEXT("imported geoms fall back to default lighting")},
-	{OverlayMaterial,     TEXT("debug overlays draw opaque instead of translucent")},
-	{SkyDomeMaterial,     TEXT("no sky dome is drawn")},
-	{SegIdMaterial,       TEXT("segmentation is not served at all -- see HasSegIdMaterial")},
+	{MasterMaterial,            TEXT("imported geoms fall back to default lighting")},
+	{TranslucentMasterMaterial, TEXT("translucent geoms fall back to opaque master")},
+	{NeutralLinearWhiteTexture, TEXT("unbound material texture slots fall back to sRGB white")},
+	{OverlayMaterial,           TEXT("debug overlays draw opaque instead of translucent")},
+	{SkyDomeMaterial,           TEXT("no sky dome is drawn")},
+	{SegIdMaterial,             TEXT("segmentation is not served at all -- see HasSegIdMaterial")},
 };
 } // namespace
 

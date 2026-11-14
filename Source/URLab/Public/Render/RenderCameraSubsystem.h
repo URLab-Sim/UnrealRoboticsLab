@@ -160,6 +160,7 @@ public:
 		FString& OutError) const;
 	void RetireExactCaptureHistory(const FGuid& RetentionContext);
 	bool CancelExactCapture(const FURLabRenderCaptureJob& Job, FString& OutError);
+	void HarvestActiveCapture();
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
 	virtual bool IsTickableInEditor() const override { return true; }
@@ -217,6 +218,8 @@ private:
 	bool RetainExactCaptureHistory(const FURLabRenderExactCapturePlan& Plan,
 		const FRenderFrameIdentity& Identity,
 		const TArray<FRenderCameraFramePtr>& Frames);
+	int32 SelectHistoryGroup(const FURLabRenderHistoryQuery& Query,
+		TArray<int32>& OutCameraIndices) const;
 
 	TArray<TWeakObjectPtr<URenderCameraComponent>> Cameras;
 	TArray<FQueuedJobPtr> QueuedJobs;

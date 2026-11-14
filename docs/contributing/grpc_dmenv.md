@@ -67,6 +67,11 @@ Each of those is load-bearing:
 `build.sh` also exports `CMAKE_POLICY_VERSION_MINIMUM=3.5` for itself, since CMake
 4 rejects the pre-3.5 minimums in gRPC 1.62's bundled dependencies.
 
+After staging, `prefix_boringssl.sh` renames BoringSSL's global symbols so a
+monolithic target can link them beside the engine's OpenSSL. It needs
+`llvm-nm` and `llvm-objcopy` on `PATH` (or `NM=` / `OBJCOPY=` pointing at them);
+Unreal's bundled toolchain ships `llvm-objcopy` but not `llvm-nm`.
+
 The build takes somewhere between fifteen and forty minutes. Note that
 `third_party/build_all.sh` does **not** build gRPC and
 `URLab.Build.cs`'s `ThirdPartyPackages` list does not include it, so the staleness

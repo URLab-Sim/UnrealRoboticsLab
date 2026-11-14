@@ -609,6 +609,17 @@ void UMjGeom::ApplySpecMaterial()
 	const FVector2D GeomSize(Extent(0), Extent(1));
 
 	const FLinearColor Color = GetEffectiveColor();
+	const bool bTranslucent = Color.A < 1.0f - KINDA_SMALL_NUMBER
+		|| Values.Rgba.A < 1.0f - KINDA_SMALL_NUMBER
+		|| !Values.TextureFor(EMjMaterialRole::Opacity).IsEmpty()
+		|| !Values.TextureFor(EMjMaterialRole::Rgba).IsEmpty();
+	if (bTranslucent)
+	{
+		if (UMaterialInterface* TranslucentBase = MjLoadTranslucentMasterMaterial())
+		{
+			Base = TranslucentBase;
+		}
+	}
 
 	// A fully transparent colour is how MJCF says "do not draw this": menagerie
 	// models routinely give a collision or inertial proxy `rgba="0 0 0 0"` and

@@ -73,5 +73,8 @@ cp -r "$SRC/third_party/boringssl-with-bazel/src/include/openssl" "$INSTALL_DIR/
 # Copy all static libraries
 find "$BUILD" -name "*.a" -exec cp -f {} "$INSTALL_DIR/lib/" \;
 
+# Keep BoringSSL from clashing with the engine OpenSSL in monolithic targets
+bash "$SCRIPT_DIR/prefix_boringssl.sh" "$INSTALL_DIR/lib"
+
 echo "gRPC and Protobuf successfully installed to $INSTALL_DIR:"
 ls -la "$INSTALL_DIR/lib"

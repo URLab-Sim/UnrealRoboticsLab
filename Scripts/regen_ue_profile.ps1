@@ -23,7 +23,7 @@ if (-not (Test-Path (Join-Path $ProtospecRoot "protospec_gen"))) {
     throw "No ProtoSpec generator at $ProtospecRoot. Pass -ProtospecRoot."
 }
 
-$Args = @("run", "python", "-m", "protospec_gen.emit_ue", "--out", $UrlabRoot)
+$Args = @("run", "--frozen", "python", "-m", "protospec_gen.emit_ue", "--out", $UrlabRoot)
 if ($Check) { $Args += "--check" }
 
 Push-Location $ProtospecRoot

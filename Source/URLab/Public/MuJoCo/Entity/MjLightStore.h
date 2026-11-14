@@ -24,9 +24,9 @@ class UWorld;
  * re-applied after a rebuild.
  *
  * Lights arrive one of two ways and both are addressable by name. Lights the
- * model brought in carry a UMjLightHandle stamped by MjSkyImporter with their
- * MJCF name; anything else in the level -- a hand-placed sun, a practical in an
- * art scene -- is addressed by its actor name. That second route is what makes
+ * model brought in carry a UMjLightHandle stamped with their MJCF name;
+ * anything else in the level -- a hand-placed sun, a practical in an art scene
+ * -- is addressed by its actor name. That second route is what makes
  * the ops useful on a render server whose level was not built from an MJCF.
  *
  * Overrides survive a model rebuild the way appearance overrides do: the

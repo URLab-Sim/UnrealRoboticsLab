@@ -12,6 +12,9 @@
 
 #include "ProceduralMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "StaticMeshResources.h"
+#include "MeshCardBuild.h"
+#include "MeshCardRepresentation.h"
 #include "MeshDescription.h"
 #include "StaticMeshAttributes.h"
 #include "Materials/MaterialInterface.h"
@@ -182,6 +185,7 @@ bool URenderAssetBuilder::InitResources(FRenderSceneResources&& InResources,
 		return false;
 	}
 	UMaterialInterface* CandidateMaster = LoadRenderMasterMaterial();
+	UMaterialInterface* CandidateTranslucentMaster = LoadRenderTranslucentMasterMaterial();
 	const FString CandidateHash = InResources.ContentHash();
 
 	// Nothing live is changed until the complete candidate has passed validation.
@@ -189,6 +193,7 @@ bool URenderAssetBuilder::InitResources(FRenderSceneResources&& InResources,
 	StaticMeshCache.Reset();
 	ResolvedObjects.Reset();
 	Master = CandidateMaster;
+	TranslucentMaster = CandidateTranslucentMaster ? CandidateTranslucentMaster : CandidateMaster;
 	ContentHash = CandidateHash;
 	bForceRebuildAssets = bInForceRebuild;
 	bBakeToProject = false;
@@ -202,18 +207,19 @@ void URenderAssetBuilder::Reset()
 	StaticMeshCache.Reset();
 	ResolvedObjects.Reset();
 	Master = nullptr;
+	TranslucentMaster = nullptr;
 	ContentHash.Empty();
 	bBakeToProject = false;
 	Resources = FRenderSceneResources();
 }
 
-#if WITH_EDITOR
 UStaticMesh* URenderAssetBuilder::GetOrBuildStaticMesh(int32 MeshId)
 {
 	if (const TObjectPtr<UStaticMesh>* Found = StaticMeshCache.Find(MeshId))
 	{
 		return *Found;
 	}
+#if WITH_EDITOR
 	// Persistent, content-hashed cache: reuse the on-disk asset if present, so an
 	// identical resource content doesn't rebuild and a saved level keeps its geometry.
 	// Only the explicit bake-to-project action takes this route. Runtime scene installation
@@ -235,6 +241,7 @@ UStaticMesh* URenderAssetBuilder::GetOrBuildStaticMesh(int32 MeshId)
 			}
 		}
 	}
+#endif
 
 	if (!Resources.Meshes.IsValidIndex(MeshId)) return nullptr;
 	const FRenderMeshResource& Resource = Resources.Meshes[MeshId];
@@ -299,6 +306,7 @@ UStaticMesh* URenderAssetBuilder::GetOrBuildStaticMesh(int32 MeshId)
 	// /Game/URLabRender/<hash>/ so a saved level reloads its geometry);
 	// transient during play, in both builds.
 	UStaticMesh* Mesh = nullptr;
+#if WITH_EDITOR
 	UPackage* Package = nullptr;
 	if (!PackageName.IsEmpty())
 	{
@@ -308,13 +316,19 @@ UStaticMesh* URenderAssetBuilder::GetOrBuildStaticMesh(int32 MeshId)
 			RF_Public | RF_Standalone);
 	}
 	else
+#endif
 	{
 		Mesh = NewObject<UStaticMesh>(this, NAME_None, RF_Transient);
 	}
-	Mesh->GetStaticMaterials().Add(FStaticMaterial());
-	// No mesh distance field: these are puppet-render meshes (no Lumen GI/DFAO), and
-	// the distance-field scene update ensure-spams on their transforms, stalling
-	// ~2.5s per ensure (FDistanceFieldSceneData::UpdateDistanceFieldObjectBuffers).
+	FStaticMaterial StaticMat;
+	StaticMat.MaterialInterface = Master;
+	StaticMat.UVChannelData.bInitialized = true;
+	for (int32 UvIdx = 0; UvIdx < MAX_TEXCOORDS; ++UvIdx)
+	{
+		StaticMat.UVChannelData.LocalUVDensities[UvIdx] = 1.0f;
+	}
+	Mesh->GetStaticMaterials().Add(StaticMat);
+	Mesh->bSupportRayTracing = true;
 	Mesh->bGenerateMeshDistanceField = false;
 	// These are visual puppet meshes. BuildFromMeshDescriptions always creates a
 	// BodySetup, so seed its explicit no-cook policy before the fast build reuses it.
@@ -324,9 +338,28 @@ UStaticMesh* URenderAssetBuilder::GetOrBuildStaticMesh(int32 MeshId)
 	UStaticMesh::FBuildMeshDescriptionsParams Params;
 	Params.bBuildSimpleCollision = false;
 	Params.bFastBuild = true;
+#if WITH_EDITOR
+	Params.bCommitMeshDescription = bBakeToProject;
+	Params.bMarkPackageDirty = bBakeToProject;
+#else
+	Params.bCommitMeshDescription = false;
+	Params.bMarkPackageDirty = false;
+#endif
 	Mesh->NeverStream = true;
 	Mesh->BuildFromMeshDescriptions({&MeshDesc}, Params);
+	if (FStaticMeshRenderData* RenderData = Mesh->GetRenderData())
+	{
+		if (RenderData->LODResources.Num() > 0 && !RenderData->LODResources[0].CardRepresentationData)
+		{
+			FCardRepresentationData* CardData = new FCardRepresentationData();
+			CardData->MeshCardsBuildData.Bounds = Mesh->GetBoundingBox();
+			CardData->MeshCardsBuildData.bMostlyTwoSided = true;
+			MeshCardRepresentation::SetCardsFromBounds(CardData->MeshCardsBuildData);
+			RenderData->LODResources[0].CardRepresentationData = CardData;
+		}
+	}
 
+#if WITH_EDITOR
 	if (Package)
 	{
 		FAssetRegistryModule::AssetCreated(Mesh);
@@ -338,10 +371,12 @@ UStaticMesh* URenderAssetBuilder::GetOrBuildStaticMesh(int32 MeshId)
 		SaveArgs.SaveFlags = SAVE_NoError;
 		UPackage::SavePackage(Package, Mesh, *FileName, SaveArgs);
 	}
+#endif
 	StaticMeshCache.Add(MeshId, Mesh);
 	return Mesh;
 }
 
+#if WITH_EDITOR
 int32 URenderAssetBuilder::BakeLoadedModelToProject()
 {
 	if (Resources.SceneRevision.IsEmpty() || ContentHash.IsEmpty())
@@ -475,7 +510,7 @@ UTexture2D* URenderAssetBuilder::GetOrBuildTexture(int32 TexId, bool bSRGB, bool
 		uint8 R, Gc, B, A;
 		R = Src[i * 4 + 0]; Gc = Src[i * 4 + 1]; B = Src[i * 4 + 2]; A = Src[i * 4 + 3];
 		Bgra[i * 4 + 0] = B;
-		Bgra[i * 4 + 1] = Gc;
+		Bgra[i * 4 + 1] = bNormal ? static_cast<uint8>(255 - Gc) : Gc;
 		Bgra[i * 4 + 2] = R;
 		Bgra[i * 4 + 3] = A;
 	}
@@ -496,6 +531,7 @@ UTexture2D* URenderAssetBuilder::GetOrBuildTexture(int32 TexId, bool bSRGB, bool
 		Tex->CompressionSettings = bNormal
 			? TextureCompressionSettings::TC_Normalmap
 			: TextureCompressionSettings::TC_Default;
+		Tex->Filter = TextureFilter::TF_Trilinear;
 		Tex->MipGenSettings = TextureMipGenSettings::TMGS_FromTextureGroup;
 		Tex->UpdateResource();
 		FAssetRegistryModule::AssetCreated(Tex);
@@ -564,6 +600,7 @@ UTexture2D* URenderAssetBuilder::GetOrBuildTexture(int32 TexId, bool bSRGB, bool
 		Tex->CompressionSettings = bNormal
 			? TextureCompressionSettings::TC_Normalmap
 			: TextureCompressionSettings::TC_Default;
+		Tex->Filter = TextureFilter::TF_Trilinear;
 		// Every mip lives in memory here; there is no bulk data on disk for the
 		// streamer to page in, so the whole chain must stay resident.
 		Tex->NeverStream = true;
@@ -580,17 +617,27 @@ void URenderAssetBuilder::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 	{
 		return;
 	}
-	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(Master, Comp);
+	const FRenderSurfaceBinding& Surface = Resources.Geoms[G];
+	const FRenderMaterialResource DefaultMaterial;
+	const FRenderMaterialResource& Material = Resources.Materials.IsValidIndex(Surface.MaterialIndex)
+		? Resources.Materials[Surface.MaterialIndex] : DefaultMaterial;
+	const bool bTranslucent =
+		TranslucentMaster && UsesTranslucentRenderMaterial(Material, Surface.Rgba);
+	UMaterialInterface* ParentMaterial = bTranslucent
+		? TranslucentMaster.Get()
+		: Master.Get();
+	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(ParentMaterial, Comp);
 	if (!Mid)
 	{
 		return;
 	}
 	Comp->SetMaterial(0, Mid);
+	if (bTranslucent)
+	{
+		Comp->SetCastShadow(true);
+		Comp->bCastDynamicShadow = true;
+	}
 
-	const FRenderSurfaceBinding& Surface = Resources.Geoms[G];
-	const FRenderMaterialResource DefaultMaterial;
-	const FRenderMaterialResource& Material = Resources.Materials.IsValidIndex(Surface.MaterialIndex)
-		? Resources.Materials[Surface.MaterialIndex] : DefaultMaterial;
 	ApplyRenderMaterialParameters(*Mid, Material, Surface.Rgba, Surface.TexUniformScale);
 	BindMaterialRoleTextures(*Mid, Surface.MaterialIndex);
 }
@@ -606,7 +653,16 @@ void URenderAssetBuilder::ApplyResolvedMaterialOverride(UPrimitiveComponent* Com
 	{
 		RetainResolvedObject(Texture);
 	}
-	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(Master, Comp);
+	const int32 OpacityIdx = static_cast<int32>(ERenderMaterialRole::Opacity);
+	const int32 RgbaIdx = static_cast<int32>(ERenderMaterialRole::Rgba);
+	const bool bHasOpacityRoleTex =
+		(Override.RoleTextures.IsValidIndex(OpacityIdx) && Override.RoleTextures[OpacityIdx] != nullptr)
+		|| (Override.RoleTextures.IsValidIndex(RgbaIdx) && Override.RoleTextures[RgbaIdx] != nullptr);
+	UMaterialInterface* ParentMaterial =
+		(TranslucentMaster && (bHasOpacityRoleTex || UsesTranslucentRenderMaterial(Override.Material, Override.BaseColor)))
+			? TranslucentMaster.Get()
+			: Master.Get();
+	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(ParentMaterial, Comp);
 	if (!Mid)
 	{
 		return;
@@ -664,17 +720,21 @@ void URenderAssetBuilder::ApplyDeformableMaterial(UPrimitiveComponent* Comp, int
 	{
 		return;
 	}
-	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(Master, Comp);
+	const FRenderSurfaceBinding& Surface = Resources.Deformables[SurfaceIndex];
+	const FRenderMaterialResource DefaultMaterial;
+	const FRenderMaterialResource& Material = Resources.Materials.IsValidIndex(Surface.MaterialIndex)
+		? Resources.Materials[Surface.MaterialIndex] : DefaultMaterial;
+	UMaterialInterface* ParentMaterial =
+		(TranslucentMaster && UsesTranslucentRenderMaterial(Material, Surface.Rgba))
+			? TranslucentMaster.Get()
+			: Master.Get();
+	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(ParentMaterial, Comp);
 	if (!Mid)
 	{
 		return;
 	}
 	Comp->SetMaterial(0, Mid);
 
-	const FRenderSurfaceBinding& Surface = Resources.Deformables[SurfaceIndex];
-	const FRenderMaterialResource DefaultMaterial;
-	const FRenderMaterialResource& Material = Resources.Materials.IsValidIndex(Surface.MaterialIndex)
-		? Resources.Materials[Surface.MaterialIndex] : DefaultMaterial;
 	ApplyRenderMaterialParameters(*Mid, Material, Surface.Rgba, Surface.TexUniformScale);
 	BindMaterialRoleTextures(*Mid, Surface.MaterialIndex);
 }

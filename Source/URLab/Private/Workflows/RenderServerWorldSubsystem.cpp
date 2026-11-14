@@ -5,6 +5,8 @@
 #include "Bridge/RenderServiceBinding.h"
 #include "Bridge/RpcDispatcher.h"
 
+#include "Engine/GameViewportClient.h"
+#include "HAL/IConsoleManager.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "MuJoCo/Render/MjRenderKinematics.h"
@@ -35,6 +37,12 @@ bool FURLabRenderServerCaptureHandle::IsValid() const
 	return Workflow.IsValid() && WorkflowLifetime.IsValid() && JobSerial != 0
 		&& !SubmittedFrame.SceneRevision.IsEmpty();
 }
+
+static TAutoConsoleVariable<int32> CVarRenderServerBackgroundCapture(
+	TEXT("urlab.Cam.BackgroundCapture"), 0,
+	TEXT("1 = render-server cameras also capture on every engine tick between requests\n")
+	TEXT("(more temporal history, much more GPU). Applies to scenes installed afterwards."),
+	ECVF_Default);
 
 namespace
 {
@@ -105,6 +113,13 @@ bool UURLabRenderServerWorldSubsystem::Activate(FString& OutError)
 	Coordinator = Candidate;
 	Producer = Registration;
 	bActive = true;
+	if (!GIsEditor)
+	{
+		if (UGameViewportClient* Viewport = World->GetGameViewport())
+		{
+			Viewport->bDisableWorldRendering = true;
+		}
+	}
 	return true;
 }
 
@@ -230,6 +245,13 @@ bool UURLabRenderServerWorldSubsystem::IsBoundOwner(const FURLabRenderOwnerProof
 		&& Source->Owner.GetOpaqueToken() == Proof.GetOpaqueToken();
 }
 
+FString UURLabRenderServerWorldSubsystem::InstallBaseRevision(
+	const FURLabRenderOwnerProof& Proof, const FString& ExpectedRevision) const
+{
+	if (!ExpectedRevision.IsEmpty() || IsBoundOwner(Proof)) return ExpectedRevision;
+	return Coordinator->ResolveActiveSceneRevision(Producer);
+}
+
 void UURLabRenderServerWorldSubsystem::RevokeSource() { Source.Reset(); }
 
 FURLabRenderOwnerLeaseResult UURLabRenderServerWorldSubsystem::CompleteRetirement(
@@ -352,7 +374,8 @@ FURLabRenderServerInstallResult UURLabRenderServerWorldSubsystem::InstallNeutral
 		return InstallRejected(TEXT("a render-server mutation is already in progress"));
 	bMutationInProgress = true;
 	ON_SCOPE_EXIT { FinishMutation(); };
-	return InstallPrepared(Proof, ExpectedRevision, MoveTemp(OwnedPayload), Options, FKinematicsPtr());
+	return InstallPrepared(Proof, InstallBaseRevision(Proof, ExpectedRevision),
+		MoveTemp(OwnedPayload), Options, FKinematicsPtr());
 }
 
 FURLabRenderServerInstallResult UURLabRenderServerWorldSubsystem::InstallKinematicsCandidate(
@@ -364,8 +387,9 @@ FURLabRenderServerInstallResult UURLabRenderServerWorldSubsystem::InstallKinemat
 		return InstallRejected(TEXT("a render-server mutation is already in progress"));
 	bMutationInProgress = true;
 	ON_SCOPE_EXIT { FinishMutation(); };
+	const FString BaseRevision = InstallBaseRevision(Proof, ExpectedRevision);
 	FString Error;
-	if (!ValidateMutation(Proof, ExpectedRevision, Error)) return InstallRejected(MoveTemp(Error));
+	if (!ValidateMutation(Proof, BaseRevision, Error)) return InstallRejected(MoveTemp(Error));
 	FRenderScene Scene;
 	FRenderSceneResources Resources;
 	FRenderFrame InitialFrame;
@@ -376,7 +400,7 @@ FURLabRenderServerInstallResult UURLabRenderServerWorldSubsystem::InstallKinemat
 		return InstallRejected(MoveTemp(Error));
 	FRenderSceneInstallPayload Payload(MoveTemp(Scene), MoveTemp(Resources),
 		MoveTemp(InitialFrame));
-	return InstallPrepared(Proof, ExpectedRevision, MoveTemp(Payload), Options, MoveTemp(Prepared));
+	return InstallPrepared(Proof, BaseRevision, MoveTemp(Payload), Options, MoveTemp(Prepared));
 }
 
 FURLabRenderServerInstallResult UURLabRenderServerWorldSubsystem::InstallPrepared(
@@ -386,6 +410,18 @@ FURLabRenderServerInstallResult UURLabRenderServerWorldSubsystem::InstallPrepare
 {
 	FString Error;
 	if (!ValidateMutation(Proof, ExpectedRevision, Error)) return InstallRejected(MoveTemp(Error));
+	// Manual-only cameras render only when a capture is requested. With
+	// urlab.Cam.BackgroundCapture=1 they also keep rendering on every engine tick
+	// (the pre-optimisation behaviour), which feeds temporal effects extra frames.
+	const bool bManualOnly = CVarRenderServerBackgroundCapture.GetValueOnGameThread() == 0;
+	for (FRenderCameraDesc& Camera : Payload.Scene.Cameras)
+	{
+		Camera.Capture.bManualCaptureOnly = bManualOnly;
+	}
+	if (Payload.Scene.UserCamera.IsSet())
+	{
+		Payload.Scene.UserCamera->Capture.bManualCaptureOnly = bManualOnly;
+	}
 	FURLabRenderSceneCandidate Staged;
 	const FString NewRevision = Payload.InitialFrame.Identity.SceneRevision;
 	if (!Coordinator->StageScene(Producer, ExpectedRevision, MoveTemp(Payload),
@@ -543,6 +579,8 @@ bool UURLabRenderServerWorldSubsystem::DescribeSource(
 	Description.bSupportsQpos = Source->Kinematics.IsValid();
 	Description.QposWidth = Description.bSupportsQpos
 		? Source->Kinematics->GetQposWidth() : 0;
+	Description.MocapCount = Description.bSupportsQpos
+		? Source->Kinematics->GetMocapCount() : 0;
 	OutDescription = MoveTemp(Description);
 	return true;
 }
@@ -594,7 +632,7 @@ FURLabRenderFramePublicationResult UURLabRenderServerWorldSubsystem::PublishCart
 FURLabRenderFramePublicationResult UURLabRenderServerWorldSubsystem::PublishQpos(
 	const FURLabRenderOwnerProof& Proof, const FString& ExpectedRevision,
 	TConstArrayView<double> Qpos, uint64 FrameId, double SourceTime,
-	bool bHasSourceTime, uint64 ClockEpoch)
+	bool bHasSourceTime, uint64 ClockEpoch, const FMjRenderQposExtras* Extras)
 {
 	check(IsInGameThread());
 	FString Error;
@@ -606,7 +644,8 @@ FURLabRenderFramePublicationResult UURLabRenderServerWorldSubsystem::PublishQpos
 		return PublishRejected(Error.IsEmpty() ? TEXT("owner has no installed qpos source") : MoveTemp(Error));
 	FRenderFrame Frame;
 	if (!Source->Kinematics->FrameFromQpos(ExpectedRevision, Qpos, FrameId,
-		SourceTime, bHasSourceTime, ClockEpoch, Frame, Error))
+		SourceTime, bHasSourceTime, ClockEpoch, Frame, Error,
+		Extras ? *Extras : FMjRenderQposExtras()))
 		return PublishRejected(MoveTemp(Error));
 	if (!ValidateMutation(Proof, ExpectedRevision, Error) || !IsBoundOwner(Proof))
 		return PublishRejected(Error.IsEmpty() ? TEXT("source authority changed during conversion") : MoveTemp(Error));
@@ -718,7 +757,8 @@ FURLabRenderServerCaptureAdmission UURLabRenderServerWorldSubsystem::SubmitQposC
 	TConstArrayView<double> Qpos, uint64 FrameId, double SourceTime,
 	bool bHasSourceTime, uint64 ClockEpoch, FURLabRenderExactCapturePlan Plan,
 	FRenderCameraCaptureLifetimeLeasePtr PixelLease,
-	FRenderCameraCaptureLifetimeLeasePtr ResultLease, double TimeoutSeconds)
+	FRenderCameraCaptureLifetimeLeasePtr ResultLease, double TimeoutSeconds,
+	const FMjRenderQposExtras* Extras)
 {
 	check(IsInGameThread());
 	FURLabRenderServerCaptureAdmission Rejected;
@@ -739,7 +779,8 @@ FURLabRenderServerCaptureAdmission UURLabRenderServerWorldSubsystem::SubmitQposC
 	}
 	FRenderFrame Frame;
 	if (!Source->Kinematics->FrameFromQpos(ExpectedRevision, Qpos, FrameId,
-		SourceTime, bHasSourceTime, ClockEpoch, Frame, Error))
+		SourceTime, bHasSourceTime, ClockEpoch, Frame, Error,
+		Extras ? *Extras : FMjRenderQposExtras()))
 	{
 		Rejected.Error = MoveTemp(Error);
 		return Rejected;
@@ -930,6 +971,14 @@ bool UURLabRenderServerWorldSubsystem::PollCapture(
 	ON_SCOPE_EXIT { FinishMutation(); };
 	FCaptureJobRecord* Record = nullptr;
 	if (!ValidateJobOwner(Proof, Handle, Record, OutError)) return false;
+	if (!Record->SchedulerJob.PollStatus().IsTerminal())
+	{
+		if (URenderCameraSubsystem* Scheduler = GetWorld()
+			? GetWorld()->GetSubsystem<URenderCameraSubsystem>() : nullptr)
+		{
+			Scheduler->HarvestActiveCapture();
+		}
+	}
 	OutSnapshot = Record->SchedulerJob.Poll();
 	return true;
 }
@@ -985,6 +1034,17 @@ void UURLabRenderServerWorldSubsystem::Tick(float DeltaTime)
 		ShutdownNow();
 		return;
 	}
+	if (bActive && !bShutdownInProgress && !GIsEditor)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UGameViewportClient* Viewport = World->GetGameViewport())
+			{
+				Viewport->bDisableWorldRendering = true;
+			}
+			World->SendAllEndOfFrameUpdates();
+		}
+	}
 	if (!bActive || bMutationInProgress || bShutdownInProgress || !OwnerScope) return;
 	const FURLabRenderOwnerStatusResult Status = OwnerStatus();
 	if (!IsActive()) return;
@@ -1039,6 +1099,16 @@ void UURLabRenderServerWorldSubsystem::ShutdownNow()
 	Coordinator.Reset();
 	bActive = false;
 	bShutdownPermanent = true;
+	if (!GIsEditor)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UGameViewportClient* Viewport = World->GetGameViewport())
+			{
+				Viewport->bDisableWorldRendering = false;
+			}
+		}
+	}
 }
 
 void UURLabRenderServerWorldSubsystem::Deinitialize()

@@ -83,5 +83,5 @@ packaged server did not cook the plugin's materials. See
 ## Next steps
 
 - [Geometry & Collision](geometry.md) for contact filtering and what the collision overlay shows.
-- [Interaction](interaction.md) for mouse perturbation, which uses these overlays for its drag gizmos.
+- [Interaction](interaction.md) for external perturbations.
 - [Simulate Dashboard](dashboard.md) for the in-editor control panel.

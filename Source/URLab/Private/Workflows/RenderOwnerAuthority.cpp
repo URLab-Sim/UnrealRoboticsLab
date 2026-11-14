@@ -140,6 +140,11 @@ bool FURLabRenderOwnerAuthority::IsExpiredAt(double NowSeconds) const
 	return Phase == ESlotPhase::Active && NowSeconds >= LeaseDeadlineSeconds;
 }
 
+void FURLabRenderOwnerAuthority::ExtendLease(double NowSeconds)
+{
+	LeaseDeadlineSeconds = FMath::Max(LeaseDeadlineSeconds, NowSeconds + LeaseTtlSeconds);
+}
+
 FURLabRenderOwnerProof FURLabRenderOwnerAuthority::MakeProof() const
 {
 	FURLabRenderOwnerProof Proof;
@@ -289,6 +294,7 @@ FURLabRenderOwnerAttachResult FURLabRenderOwnerAuthority::Attach(
 	ActiveScope = Scope;
 	ActiveOpaqueToken = NewToken;
 	LeaseDeadlineSeconds = NewDeadline;
+	LeaseTtlSeconds = TtlSeconds;
 	ActiveRetirement = {};
 	Phase = ESlotPhase::Active;
 
@@ -343,6 +349,7 @@ FURLabRenderOwnerAuthorizationResult FURLabRenderOwnerAuthority::Authorize(
 			EURLabRenderOwnerAuthorityError::Expired, BuildStatusAt(Now),
 			TEXT("render-owner lease has expired"));
 	}
+	ExtendLease(Now);
 	FURLabRenderOwnerAuthorizationResult Result;
 	Result.Proof = MakeProof();
 	Result.Status = BuildStatusAt(Now);
@@ -416,6 +423,7 @@ FURLabRenderOwnerAdmissionResult FURLabRenderOwnerAuthority::Validate(
 			EURLabRenderOwnerAuthorityError::Expired, BuildStatusAt(Now),
 			TEXT("render-owner lease has expired"));
 	}
+	ExtendLease(Now);
 	FURLabRenderOwnerAdmissionResult Result;
 	Result.bAuthorized = true;
 	Result.Status = BuildStatusAt(Now);
@@ -481,6 +489,7 @@ FURLabRenderOwnerLeaseResult FURLabRenderOwnerAuthority::Renew(
 	FURLabRenderOwnerLeaseResult Result;
 	Result.bChanged = NewDeadline != LeaseDeadlineSeconds;
 	LeaseDeadlineSeconds = NewDeadline;
+	LeaseTtlSeconds = TtlSeconds;
 	Result.Status = BuildStatusAt(Now);
 	return Result;
 }
@@ -605,6 +614,7 @@ FURLabRenderOwnerLeaseResult FURLabRenderOwnerAuthority::FinishRetirement(
 	ActiveScope.Reset();
 	ActiveOpaqueToken.Reset();
 	LeaseDeadlineSeconds = 0.0;
+	LeaseTtlSeconds = DefaultLeaseSeconds;
 	ActiveRetirement = {};
 	FURLabRenderOwnerLeaseResult Result;
 	Result.bChanged = true;

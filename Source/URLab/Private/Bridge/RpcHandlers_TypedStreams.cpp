@@ -81,7 +81,7 @@ V CameraResultValue(const FURLabCameraStreamDescriptor& Stream,
 	const FURLabCameraStreamDelivery& Delivery, bool bSelectShm)
 {
 	V Selected;
-	if (bSelectShm && Delivery.ShmObject.IsSet())
+	if (bSelectShm)
 	{
 		const auto& Shm = Delivery.ShmObject.GetValue();
 		Selected = Map({{TEXT("kind"), V::MakeString(TEXT("shm_latest"))},
@@ -128,38 +128,39 @@ bool FURLabRpcDispatcher::DispatchTypedStreams(const FURLabRequestEnvelope& Requ
 	{
 		const TSharedPtr<FMjSimulationInteractionOwner, ESPMode::ThreadSafe> Owner =
 			Binding ? Binding->ResolveInteractionOwner() : nullptr;
-		if (!Owner)
+		const FURLabWireValue* Grant = Request.Body.FindMapValue(TEXT("grant"));
+		const FURLabWireValue* Wrench = Request.Body.FindMapValue(TEXT("wrench"));
+		FURLabInteractionWrenchRequest Work;
+		Work.Ticket = Request.SessionId + TEXT(":")
+			+ FString::Printf(TEXT("%llu"), Request.RequestId);
+		if (!GrantsPermission(EMjCapability::AcceptInput))
+		{
+			Completion->Error(TEXT("capability_disabled"),
+				TEXT("This instance does not currently grant accept_input"));
+		}
+		else if (!Owner)
 		{
 			Completion->Error(TEXT("unsupported"),
 				TEXT("Pose producer has no interaction handler"));
 		}
+		else if (!Grant || !Wrench || !URLabInteractionWire::ParseGrant(*Grant, Work)
+			|| !URLabInteractionWire::ParseWrench(*Wrench, Work))
+		{
+			Completion->Error(TEXT("bad_request"),
+				TEXT("Interaction grant or wrench is invalid"));
+		}
 		else
 		{
-			FURLabInteractionWrenchRequest Work;
-			const FURLabWireValue& Grant = *Request.Body.FindMapValue(TEXT("grant"));
-			const FURLabWireValue& Wrench = *Request.Body.FindMapValue(TEXT("wrench"));
-			Work.Ticket = Request.SessionId + TEXT(":")
-				+ FString::Printf(TEXT("%llu"), Request.RequestId);
-			if (!URLabInteractionWire::ParseGrant(Grant, Work)
-				|| !URLabInteractionWire::ParseWrench(Wrench, Work))
+			auto Sink = MakeShared<URLabInteractionWire::FCompletionSink,
+				ESPMode::ThreadSafe>(Completion);
+			const FURLabInteractionAdmissionResult Result = Owner->Enqueue(Work, Sink);
+			if (Result.Admission == EURLabInteractionAdmission::ExistingTerminal)
+				Sink->CompleteInteraction(Work.Ticket, Result.ExistingResult);
+			else if (Result.Admission != EURLabInteractionAdmission::Accepted
+				&& Result.Admission != EURLabInteractionAdmission::ExistingPending)
 			{
-				Completion->Error(TEXT("bad_request"),
-					TEXT("Interaction grant or wrench is invalid"));
-			}
-			else
-			{
-				auto Sink = MakeShared<URLabInteractionWire::FCompletionSink,
-					ESPMode::ThreadSafe>(Completion);
-				const FURLabInteractionAdmissionResult Result = Owner->Enqueue(
-					Work, MoveTemp(Sink));
-				if (Result.Admission != EURLabInteractionAdmission::Accepted)
-				{
-					const TCHAR* Code = Result.Admission == EURLabInteractionAdmission::Capacity
-						? TEXT("service_unavailable")
-						: Result.Admission == EURLabInteractionAdmission::Invalid
-						? TEXT("bad_request") : TEXT("grant_invalid");
-					Completion->Error(Code, Result.Error);
-				}
+				Completion->Error(URLabInteractionWire::AdmissionCode(Result.Admission),
+					Result.Error);
 			}
 		}
 	}
@@ -176,24 +177,40 @@ bool FURLabRpcDispatcher::DispatchTypedStreams(const FURLabRequestEnvelope& Requ
 		Work.Execute = [Completion, CameraBinding, CameraName, bShm]()
 		{
 			FURLabCameraStreamDescriptor Stream; FURLabCameraStreamDelivery Delivery; FString Error;
-			if (!CameraBinding || !CameraBinding->Describe(CameraName, bShm, Stream, Delivery, Error))
+			if (!CameraBinding)
+			{
+				Completion->Error(TEXT("capability_disabled"),
+					TEXT("Camera stream output is disabled")); return;
+			}
+			if (!CameraBinding->Describe(CameraName, bShm, Stream, Delivery, Error))
 			{
 				Completion->Error(TEXT("stream_unavailable"), Error.IsEmpty()
 					? TEXT("Camera stream is unavailable") : Error); return;
 			}
+			if (bShm ? !Delivery.ShmObject.IsSet() : Delivery.ZmqEndpoint.IsEmpty())
+			{
+				Completion->Error(TEXT("stream_unavailable"), bShm
+					? TEXT("Camera stream has no SHM delivery for this data session")
+					: TEXT("Camera stream has no network delivery for this data session")); return;
+			}
 			Completion->Publish(FURLabReplyEnvelope::MakeResult(Completion->Request,
 				CameraResultValue(Stream, Delivery, bShm)));
 		};
-		Work.Cancel = [Completion]() { Completion->Error(TEXT("service_unavailable"),
+		Work.Cancel = [Completion]() { Completion->Error(TEXT("stream_unavailable"),
 			TEXT("Camera stream describe was cancelled")); };
 		const bool bStart = RenderCommandQueue->Enqueue(MoveTemp(Work));
 		if (IsInGameThread()) RenderCommandQueue->Drain();
 		else if (bStart) { auto Queue = RenderCommandQueue;
 			AsyncTask(ENamedThreads::GameThread, [Queue]() { Queue->Drain(); }); }
 	}
-	else if (!Producer || !DataSession || !DataSession->IsActive())
+	else if (!Producer)
 	{
-		Completion->Error(TEXT("service_unavailable"), TEXT("Pose stream service is unavailable"));
+		Completion->Error(TEXT("capability_disabled"), TEXT("Pose stream output is disabled"));
+	}
+	else if (!DataSession || !DataSession->IsActive())
+	{
+		Completion->Error(TEXT("stream_unavailable"),
+			TEXT("Pose stream needs an active data session"));
 	}
 	else
 	{
@@ -204,7 +221,7 @@ bool FURLabRpcDispatcher::DispatchTypedStreams(const FURLabRequestEnvelope& Requ
 		FString Error;
 		if (!Producer->DescribeForSession(bShmEligible, Description, Error))
 		{
-			Completion->Error(TEXT("service_unavailable"), Error);
+			Completion->Error(TEXT("stream_unavailable"), Error);
 		}
 		else
 		{

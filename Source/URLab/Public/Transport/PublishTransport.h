@@ -16,10 +16,6 @@
  * The small / frequent / single-socket publish shape shared by the state
  * snapshot stream, the render bus and the ROS publisher.
  *
- * Per-camera image streaming is deliberately a separate role
- * (`UURLabCameraPublishTransport`): frames are ~MB, each camera has its own
- * lifetime, and delivery runs off a GPU-readback worker rather than the step.
- *
  * Threading: each concrete transport owns its own concurrency (per-socket lock
  * for ZMQ, lock-free double buffer for SHM). `Publish` is called from producer
  * threads, so a backend serialises internally.

@@ -24,9 +24,12 @@ public class URLabDmEnvRpc : ModuleRules
 
 		bEnableExceptions = true;
 		bUseUnity = false;
-		UndefinedIdentifierWarningLevel = WarningLevel.Off;
-		ShadowVariableWarningLevel = WarningLevel.Off;
-		UnsafeTypeCastWarningLevel = WarningLevel.Off;
+		// Private/GenProto holds protoc-generated protobuf/gRPC sources that compile
+		// in this module and trip these diagnostics; they are regenerated, never
+		// edited. UBT sets warning levels per module, so they are relaxed here.
+		CppCompileWarningSettings.UndefinedIdentifierWarningLevel = WarningLevel.Off;
+		CppCompileWarningSettings.ShadowVariableWarningLevel = WarningLevel.Off;
+		CppCompileWarningSettings.UnsafeTypeCastWarningLevel = WarningLevel.Off;
 
 		PublicDefinitions.Add("PROTOBUF_ENABLE_DEBUG_LOGGING_MAY_LEAK_PII=0");
 

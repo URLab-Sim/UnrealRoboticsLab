@@ -94,13 +94,13 @@ bool FlexcompRotation(const UMjFlexcomp& Flexcomp, const mjSpec& Spec, mjtNum Ou
 		}
 		mjtNum X[3] = {Axes[0], Axes[1], Axes[2]};
 		mjtNum Y[3] = {Axes[3], Axes[4], Axes[5]};
-		if (mju_normalize3(X) < mjEPS)
+		if (mju_normalize3(X) < mjMINVAL)
 		{
 			OutError = TEXT("flexcomp xyaxes contains a zero x axis"); return false;
 		}
 		const mjtNum Projection = mju_dot3(X, Y);
 		for (int32 Axis = 0; Axis < 3; ++Axis) Y[Axis] -= X[Axis] * Projection;
-		if (mju_normalize3(Y) < mjEPS)
+		if (mju_normalize3(Y) < mjMINVAL)
 		{
 			OutError = TEXT("flexcomp xyaxes contains parallel axes"); return false;
 		}
@@ -113,13 +113,13 @@ bool FlexcompRotation(const UMjFlexcomp& Flexcomp, const mjSpec& Spec, mjtNum Ou
 	{
 		const FMjDirection3 Value = Flexcomp.Zaxis.GetValue();
 		mjtNum Z[3] = {Value.X, Value.Y, Value.Z};
-		if (mju_normalize3(Z) < mjEPS)
+		if (mju_normalize3(Z) < mjMINVAL)
 		{
 			OutError = TEXT("flexcomp zaxis is zero"); return false;
 		}
 		mjtNum Axis[3] = {-Z[1], Z[0], 0.0};
 		mjtNum Angle = std::acos(FMath::Clamp(Z[2], -1.0, 1.0));
-		if (mju_normalize3(Axis) < mjEPS) { Axis[0] = 1.0; Axis[1] = 0.0; Axis[2] = 0.0; }
+		if (mju_normalize3(Axis) < mjMINVAL) { Axis[0] = 1.0; Axis[1] = 0.0; Axis[2] = 0.0; }
 		mju_axisAngle2Quat(OutQuat, Axis, Angle);
 		return true;
 	}

@@ -39,6 +39,9 @@ public:
 		return FModuleManager::LoadModuleChecked<FURLabModule>("URLab");
 	}
 
+	/** True when the linked MuJoCo runtime registered its MJZ archive decoder. Thread-safe. */
+	static URLAB_API bool HasMjzDecoder();
+
 #if WITH_EDITOR
 	uint32 GetMujocoAssetCategory() const { return MuJoCoAssetCategoryBit; }
 #endif

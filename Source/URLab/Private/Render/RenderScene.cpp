@@ -152,6 +152,7 @@ bool FRenderScene::IsValid(const FRenderSceneResources& Resources, int32 Visible
 		|| !ValidColor(Environment.SkyBottom) || !ValidColor(Environment.HeadlightColor)
 		|| !FMath::IsFinite(Environment.AmbientIntensity) || Environment.AmbientIntensity < 0.0f
 		|| !FMath::IsFinite(Environment.HeadlightIntensity) || Environment.HeadlightIntensity < 0.0f
+		|| !FMath::IsFinite(Environment.SkyLightIntensity) || !ValidColor(Environment.SkyLightColor)
 		|| (!Environment.SkyboxFaceTextureIndices.IsEmpty()
 			&& Environment.SkyboxFaceTextureIndices.Num() != 6))
 	{

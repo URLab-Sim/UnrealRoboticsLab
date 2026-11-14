@@ -11,6 +11,8 @@ static_assert(FURLabInteractionInbox::MaxRetainedTickets ==
 
 namespace
 {
+constexpr double HoldTimeTolerance = 1e-9;
+
 bool FiniteVector(const FVector3d& Value)
 {
 	return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y)
@@ -23,7 +25,10 @@ bool SameRequest(const FURLabInteractionWrenchRequest& A,
 	return A.GrantToken == B.GrantToken && A.Source == B.Source
 		&& A.ViewerBootId == B.ViewerBootId && A.ClockEpoch == B.ClockEpoch
 		&& A.BodyIndex == B.BodyIndex && A.ForceNewton == B.ForceNewton
-		&& A.TorqueNewtonMetre == B.TorqueNewtonMetre;
+		&& A.TorqueNewtonMetre == B.TorqueNewtonMetre && A.bBodyFrame == B.bBodyFrame
+		&& A.bHasPoint == B.bHasPoint && (!A.bHasPoint || A.PointMetre == B.PointMetre)
+		&& A.DurationSeconds == B.DurationSeconds && A.Channel == B.Channel
+		&& A.InteractionId == B.InteractionId;
 }
 }
 
@@ -64,12 +69,24 @@ bool FURLabInteractionWrenchRequest::IsValid(FString& OutError) const
 	OutError.Reset();
 	if (Ticket.IsEmpty() || GrantToken.IsEmpty() || !Source.IsValid()
 		|| ViewerBootId.IsEmpty() || BodyIndex < 0 || !FiniteVector(ForceNewton)
-		|| !FiniteVector(TorqueNewtonMetre))
+		|| !FiniteVector(TorqueNewtonMetre) || (bHasPoint && !FiniteVector(PointMetre)))
 	{
 		OutError = TEXT("interaction ticket, identity, target, or wrench is invalid");
 		return false;
 	}
+	if (!FMath::IsFinite(DurationSeconds) || DurationSeconds < 0.0
+		|| DurationSeconds > MaxDurationSeconds)
+	{
+		OutError = TEXT("interaction duration_s must be finite and in [0, 30] seconds");
+		return false;
+	}
 	return true;
+}
+
+FString FURLabInteractionWrenchRequest::IdentityKey() const
+{
+	return InteractionId.IsEmpty() ? TEXT("t:") + Ticket
+		: TEXT("i:") + GrantToken + TEXT(":") + InteractionId;
 }
 
 struct FURLabInteractionInbox::FState
@@ -79,11 +96,17 @@ struct FURLabInteractionInbox::FState
 	{
 	}
 
+	using FSinkPtr = TSharedPtr<IURLabInteractionCompletionSink, ESPMode::ThreadSafe>;
+
+	struct FWaiter
+	{
+		FString Ticket;
+		FSinkPtr Sink;
+	};
 	struct FRecord
 	{
 		FURLabInteractionWrenchRequest Request;
-		TSharedPtr<IURLabInteractionCompletionSink, ESPMode::ThreadSafe> CompletionSink;
-		uint64 ApplicationId = 0;
+		TArray<FWaiter> Waiters;
 		FURLabInteractionResult Result;
 		bool bTerminal = false;
 	};
@@ -92,6 +115,13 @@ struct FURLabInteractionInbox::FState
 		FURLabInteractionGrant Grant;
 		FURLabInteractionControlIdentity Control;
 	};
+	struct FHold
+	{
+		uint64 HoldId = 0;
+		FURLabInteractionWrenchRequest Request;
+		uint64 ApplicationId = 0;
+		double EndTime = 0.0;
+	};
 
 	mutable FCriticalSection Mutex;
 	TSharedRef<FURLabRenderOwnerClock, ESPMode::ThreadSafe> Clock;
@@ -99,7 +129,89 @@ struct FURLabInteractionInbox::FState
 	TSharedPtr<IURLabInteractionOwnerHandler, ESPMode::ThreadSafe> Handler;
 	TArray<FString> Pending;
 	TMap<FString, FRecord> Records;
+	TArray<FString> TerminalOrder;
+	TMap<uint64, FString> Applications;
+	TArray<FHold> Holds;
 	uint64 NextApplicationId = 1;
+	uint64 NextHoldId = 1;
+
+	/** Rejection for a request under the current grant table, or None when current. */
+	EURLabInteractionTerminal CheckLocked(const FURLabInteractionWrenchRequest& Request,
+		const FURLabInteractionOwnerContext* Current, double Now, FString& OutError) const
+	{
+		const FGrantRecord* GrantRecord = Grants.Find(Request.GrantToken);
+		if (!GrantRecord || !Handler || Request.ViewerBootId != GrantRecord->Grant.ViewerBootId)
+		{
+			OutError = TEXT("interaction grant has been revoked");
+			return EURLabInteractionTerminal::RejectedStale;
+		}
+		if (!FMath::IsFinite(Now) || Now >= GrantRecord->Grant.ExpiresAtSeconds)
+		{
+			OutError = TEXT("interaction grant has expired");
+			return EURLabInteractionTerminal::RejectedExpired;
+		}
+		if (!(Request.Source == GrantRecord->Grant.Source)
+			|| Request.ClockEpoch != GrantRecord->Grant.ClockEpoch
+			|| (Current && (!(Current->Source == GrantRecord->Grant.Source)
+				|| Current->ClockEpoch != GrantRecord->Grant.ClockEpoch)))
+		{
+			OutError = TEXT("interaction source or clock epoch is stale");
+			return EURLabInteractionTerminal::RejectedSource;
+		}
+		if (Current && !(Current->Control == GrantRecord->Control))
+		{
+			OutError = TEXT("interaction control is stale");
+			return EURLabInteractionTerminal::RejectedStale;
+		}
+		OutError.Reset();
+		return EURLabInteractionTerminal::None;
+	}
+
+	void PruneExpiredGrantsLocked(double Now)
+	{
+		for (auto It = Grants.CreateIterator(); It; ++It)
+		{
+			if (!FMath::IsFinite(Now) || Now >= It.Value().Grant.ExpiresAtSeconds)
+			{
+				const FString Token = It.Key();
+				Holds.RemoveAll([&](const FHold& Hold) { return Hold.Request.GrantToken == Token; });
+				It.RemoveCurrent();
+			}
+		}
+	}
+
+	/** Marks a record terminal and returns its waiters; evicts the oldest terminals. */
+	TArray<FWaiter> FinishLocked(const FString& Key, const FURLabInteractionResult& Result)
+	{
+		TArray<FWaiter> Waiters;
+		FRecord* Record = Records.Find(Key);
+		if (!Record || Record->bTerminal) return Waiters;
+		Record->Result = Result;
+		Record->bTerminal = true;
+		Waiters = MoveTemp(Record->Waiters);
+		Record->Waiters.Reset();
+		TerminalOrder.Add(Key);
+		while (TerminalOrder.Num() > MaxRetainedTickets)
+		{
+			Records.Remove(TerminalOrder[0]);
+			TerminalOrder.RemoveAt(0, 1, EAllowShrinking::No);
+		}
+		return Waiters;
+	}
+
+	void DropTerminalLocked()
+	{
+		for (const FString& Key : TerminalOrder) Records.Remove(Key);
+		TerminalOrder.Reset();
+	}
+
+	static void Notify(const TArray<FWaiter>& Waiters, const FURLabInteractionResult& Result)
+	{
+		for (const FWaiter& Waiter : Waiters)
+		{
+			if (Waiter.Sink) Waiter.Sink->CompleteInteraction(Waiter.Ticket, Result);
+		}
+	}
 };
 
 FURLabInteractionInbox::FURLabInteractionInbox(
@@ -141,7 +253,8 @@ bool FURLabInteractionInbox::IssueGrant(const FURLabInteractionOwnerContext& Con
 	Grant.ClockEpoch = Context.ClockEpoch;
 	Grant.ExpiresAtSeconds = Now + TtlSeconds;
 	FScopeLock Lock(&State->Mutex);
-	if (State->Grants.Num() >= MaxPending)
+	State->PruneExpiredGrantsLocked(Now);
+	if (State->Grants.Num() >= MaxGrants)
 	{
 		OutError = TEXT("interaction grant capacity is exhausted");
 		return false;
@@ -159,12 +272,19 @@ void FURLabInteractionInbox::RevokeGrant()
 {
 	FScopeLock Lock(&State->Mutex);
 	State->Grants.Reset();
+	State->Holds.Reset();
+	State->DropTerminalLocked();
 }
 
 bool FURLabInteractionInbox::RevokeGrant(const FString& ExactToken)
 {
 	FScopeLock Lock(&State->Mutex);
-	return !ExactToken.IsEmpty() && State->Grants.Remove(ExactToken) == 1;
+	if (ExactToken.IsEmpty() || State->Grants.Remove(ExactToken) != 1) return false;
+	State->Holds.RemoveAll([&](const FState::FHold& Hold)
+	{
+		return Hold.Request.GrantToken == ExactToken;
+	});
+	return true;
 }
 
 FURLabInteractionAdmissionResult FURLabInteractionInbox::Enqueue(
@@ -185,51 +305,65 @@ FURLabInteractionAdmissionResult FURLabInteractionInbox::Enqueue(
 		Result.Error = TEXT("interaction completion sink is unavailable");
 		return Result;
 	}
-	const FState::FGrantRecord* GrantRecord = State->Grants.Find(Request.GrantToken);
-	if (!GrantRecord)
-	{
-		Result.Admission = EURLabInteractionAdmission::StaleGrant;
-		Result.Error = TEXT("interaction grant has been revoked");
-		return Result;
-	}
-	const FURLabInteractionGrant& Grant = GrantRecord->Grant;
-	const double Now = State->Clock->NowSeconds();
-	if (!FMath::IsFinite(Now) || Now >= Grant.ExpiresAtSeconds
-		|| Request.GrantToken != Grant.Token || !(Request.Source == Grant.Source)
-		|| Request.ViewerBootId != Grant.ViewerBootId
-		|| Request.ClockEpoch != Grant.ClockEpoch)
-	{
-		Result.Admission = EURLabInteractionAdmission::StaleGrant;
-		Result.Error = TEXT("interaction grant or source identity is stale");
-		return Result;
-	}
-	if (const FState::FRecord* Existing = State->Records.Find(Request.Ticket))
+	const FString Key = Request.IdentityKey();
+	if (FState::FRecord* Existing = State->Records.Find(Key))
 	{
 		if (!SameRequest(Existing->Request, Request))
 		{
 			Result.Admission = EURLabInteractionAdmission::Conflict;
-			Result.Error = TEXT("interaction ticket was reused with different content");
+			Result.Error = TEXT("interaction identity was reused with different content");
+		}
+		else if (Existing->bTerminal)
+		{
+			Result.Admission = EURLabInteractionAdmission::ExistingTerminal;
+			Result.ExistingResult = Existing->Result;
 		}
 		else
 		{
-			Result.Admission = Existing->bTerminal
-				? EURLabInteractionAdmission::ExistingTerminal
-				: EURLabInteractionAdmission::ExistingPending;
-			Result.ExistingResult = Existing->Result;
+			Result.Admission = EURLabInteractionAdmission::ExistingPending;
+			const bool bKnown = Existing->Waiters.ContainsByPredicate(
+				[&](const FState::FWaiter& Waiter) { return Waiter.Ticket == Request.Ticket; });
+			if (!bKnown) Existing->Waiters.Add({Request.Ticket, MoveTemp(CompletionSink)});
 		}
 		return Result;
 	}
-	if (State->Pending.Num() >= MaxPending || State->Records.Num() >= MaxRetainedTickets)
+	const double Now = State->Clock->NowSeconds();
+	const EURLabInteractionTerminal Rejection = State->CheckLocked(Request, nullptr, Now,
+		Result.Error);
+	if (Rejection != EURLabInteractionTerminal::None)
+	{
+		Result.Admission = Rejection == EURLabInteractionTerminal::RejectedExpired
+			? EURLabInteractionAdmission::ExpiredGrant
+			: Rejection == EURLabInteractionTerminal::RejectedSource
+			? EURLabInteractionAdmission::StaleSource : EURLabInteractionAdmission::StaleGrant;
+		return Result;
+	}
+	if (State->Pending.Num() >= MaxPending)
 	{
 		Result.Admission = EURLabInteractionAdmission::Capacity;
 		Result.Error = TEXT("interaction inbox capacity is exhausted");
 		return Result;
 	}
+	if (Request.DurationSeconds > 0.0 && Request.Channel.IsEmpty())
+	{
+		int32 Holding = State->Holds.Num();
+		for (const FString& PendingKey : State->Pending)
+		{
+			const FState::FRecord* Queued = State->Records.Find(PendingKey);
+			if (Queued && Queued->Request.DurationSeconds > 0.0) ++Holding;
+		}
+		if (Holding >= MaxHolds)
+		{
+			Result.Admission = EURLabInteractionAdmission::Capacity;
+			Result.Error = TEXT("interaction hold capacity is exhausted");
+			return Result;
+		}
+	}
 	FState::FRecord Record;
 	Record.Request = Request;
-	Record.CompletionSink = MoveTemp(CompletionSink);
-	State->Records.Add(Request.Ticket, MoveTemp(Record));
-	State->Pending.Add(Request.Ticket);
+	Record.Waiters.Add({Request.Ticket, MoveTemp(CompletionSink)});
+	State->Records.Add(Key, MoveTemp(Record));
+	State->Pending.Add(Key);
 	Result.Admission = EURLabInteractionAdmission::Accepted;
 	return Result;
 }
@@ -237,80 +371,140 @@ FURLabInteractionAdmissionResult FURLabInteractionInbox::Enqueue(
 int32 FURLabInteractionInbox::Drain(const FURLabInteractionOwnerContext& CurrentContext,
 	int32 MaxToDrain)
 {
-	int32 Drained = 0;
-	while (Drained < FMath::Clamp(MaxToDrain, 0, MaxPending))
+	struct FWork
 	{
-		FString Ticket;
+		FString Key;
 		FURLabInteractionWrenchRequest Request;
-		TSharedPtr<IURLabInteractionOwnerHandler, ESPMode::ThreadSafe> Handler;
-		TSharedPtr<IURLabInteractionCompletionSink, ESPMode::ThreadSafe> Sink;
 		uint64 ApplicationId = 0;
-		bool bStale = false;
-		{
-			FScopeLock Lock(&State->Mutex);
-			if (State->Pending.IsEmpty()) break;
-			Ticket = State->Pending[0];
-			State->Pending.RemoveAt(0, 1, EAllowShrinking::No);
-			FState::FRecord* Record = State->Records.Find(Ticket);
-			if (!Record || Record->bTerminal) continue;
-			Request = Record->Request;
-			Handler = State->Handler;
-			Sink = Record->CompletionSink;
-			const double Now = State->Clock->NowSeconds();
-			const FState::FGrantRecord* GrantRecord = State->Grants.Find(Request.GrantToken);
-			bStale = !GrantRecord || !Handler || !Sink || !FMath::IsFinite(Now)
-				|| Now >= GrantRecord->Grant.ExpiresAtSeconds
-				|| !(Request.Source == GrantRecord->Grant.Source)
-				|| Request.ViewerBootId != GrantRecord->Grant.ViewerBootId
-				|| Request.ClockEpoch != GrantRecord->Grant.ClockEpoch
-				|| !(CurrentContext.Source == GrantRecord->Grant.Source)
-				|| !(CurrentContext.Control == GrantRecord->Control)
-				|| CurrentContext.ClockEpoch != GrantRecord->Grant.ClockEpoch;
-			if (!bStale)
-			{
-				if (State->NextApplicationId == 0) bStale = true;
-				else ApplicationId = State->NextApplicationId++;
-			}
-		}
-
 		FURLabInteractionResult Terminal;
-		FString Error;
-		if (bStale)
+	};
+	TArray<FWork> Work;
+	TArray<FState::FHold> ActiveHolds;
+	TSharedPtr<IURLabInteractionOwnerHandler, ESPMode::ThreadSafe> Handler;
+	{
+		FScopeLock Lock(&State->Mutex);
+		Handler = State->Handler;
+		const double Now = State->Clock->NowSeconds();
+		const int32 Limit = FMath::Clamp(MaxToDrain, 0, MaxPending);
+		while (Work.Num() < Limit && !State->Pending.IsEmpty())
 		{
-			Terminal.Terminal = EURLabInteractionTerminal::RejectedStale;
-			Terminal.Error = TEXT("interaction grant, source, control, or clock epoch is stale");
-		}
-		else if (!Handler->ValidateTarget(Request.BodyIndex, Error))
-		{
-			Terminal.Terminal = EURLabInteractionTerminal::RejectedTarget;
-			Terminal.Error = MoveTemp(Error);
-		}
-		else if (!Handler->ApplyNextStepContribution(Request, ApplicationId, Error))
-		{
-			Terminal.Terminal = EURLabInteractionTerminal::ApplyFailed;
-			Terminal.Error = MoveTemp(Error);
-		}
-
-		if (Terminal.Terminal != EURLabInteractionTerminal::None)
-		{
+			const FString Key = State->Pending[0];
+			State->Pending.RemoveAt(0, 1, EAllowShrinking::No);
+			const FState::FRecord* Record = State->Records.Find(Key);
+			if (!Record || Record->bTerminal) continue;
+			FWork& Item = Work.AddDefaulted_GetRef();
+			Item.Key = Key;
+			Item.Request = Record->Request;
+			Item.Terminal.Terminal = State->CheckLocked(Item.Request, &CurrentContext, Now,
+				Item.Terminal.Error);
+			if (Item.Terminal.Terminal == EURLabInteractionTerminal::None)
 			{
-				FScopeLock Lock(&State->Mutex);
-				if (FState::FRecord* Record = State->Records.Find(Ticket))
+				if (State->NextApplicationId == 0)
 				{
-					Record->Result = Terminal;
-					Record->bTerminal = true;
+					Item.Terminal.Terminal = EURLabInteractionTerminal::ApplyFailed;
+					Item.Terminal.Error = TEXT("interaction application ids are exhausted");
 				}
+				else Item.ApplicationId = State->NextApplicationId++;
 			}
-			if (Sink) Sink->CompleteInteraction(Ticket, Terminal);
 		}
-		else
+		FString Ignored;
+		State->Holds.RemoveAll([&](const FState::FHold& Hold)
 		{
-			FScopeLock Lock(&State->Mutex);
-			if (FState::FRecord* Record = State->Records.Find(Ticket))
-				Record->ApplicationId = ApplicationId;
-		}
-		++Drained;
+			return CurrentContext.SourceTime + HoldTimeTolerance >= Hold.EndTime
+				|| State->CheckLocked(Hold.Request, &CurrentContext, Now, Ignored)
+					!= EURLabInteractionTerminal::None;
+		});
+		ActiveHolds = State->Holds;
 	}
+
+	for (FWork& Item : Work)
+	{
+		FString Error;
+		if (Item.Terminal.Terminal == EURLabInteractionTerminal::None
+			&& (!Handler || !Handler->ValidateTarget(Item.Request.BodyIndex, Error)))
+		{
+			Item.Terminal.Terminal = EURLabInteractionTerminal::RejectedTarget;
+			Item.Terminal.Error = Error.IsEmpty()
+				? FString(TEXT("interaction target is invalid")) : MoveTemp(Error);
+		}
+	}
+	TSet<uint64> RemovedHolds;
+	for (const FWork& Item : Work)
+	{
+		if (Item.Terminal.Terminal != EURLabInteractionTerminal::None
+			|| Item.Request.Channel.IsEmpty())
+		{
+			continue;
+		}
+		for (const FState::FHold& Hold : ActiveHolds)
+		{
+			if (Hold.Request.GrantToken == Item.Request.GrantToken
+				&& Hold.Request.Channel == Item.Request.Channel)
+			{
+				RemovedHolds.Add(Hold.HoldId);
+			}
+		}
+	}
+	for (const FState::FHold& Hold : ActiveHolds)
+	{
+		if (RemovedHolds.Contains(Hold.HoldId)) continue;
+		FString Error;
+		if (!Handler || !Handler->ApplyNextStepContribution(Hold.Request, Hold.ApplicationId, Error))
+			RemovedHolds.Add(Hold.HoldId);
+	}
+	TArray<FState::FHold> NewHolds;
+	int32 Drained = 0;
+	for (FWork& Item : Work)
+	{
+		++Drained;
+		if (Item.Terminal.Terminal != EURLabInteractionTerminal::None) continue;
+		FString Error;
+		if (!Handler->ApplyNextStepContribution(Item.Request, Item.ApplicationId, Error))
+		{
+			Item.Terminal.Terminal = EURLabInteractionTerminal::ApplyFailed;
+			Item.Terminal.Error = Error.IsEmpty()
+				? FString(TEXT("interaction contribution could not be applied")) : MoveTemp(Error);
+			continue;
+		}
+		if (Item.Request.DurationSeconds > 0.0)
+		{
+			FState::FHold& Hold = NewHolds.AddDefaulted_GetRef();
+			Hold.Request = Item.Request;
+			Hold.ApplicationId = Item.ApplicationId;
+			Hold.EndTime = CurrentContext.SourceTime + Item.Request.DurationSeconds;
+		}
+	}
+
+	TArray<TPair<TArray<FState::FWaiter>, FURLabInteractionResult>> Notifications;
+	{
+		FScopeLock Lock(&State->Mutex);
+		if (!RemovedHolds.IsEmpty())
+		{
+			State->Holds.RemoveAll([&](const FState::FHold& Hold)
+			{
+				return RemovedHolds.Contains(Hold.HoldId);
+			});
+		}
+		for (FState::FHold& Hold : NewHolds)
+		{
+			if (!State->Grants.Contains(Hold.Request.GrantToken)
+				|| State->Holds.Num() >= MaxHolds)
+			{
+				continue;
+			}
+			Hold.HoldId = State->NextHoldId++;
+			State->Holds.Add(MoveTemp(Hold));
+		}
+		for (const FWork& Item : Work)
+		{
+			if (Item.Terminal.Terminal == EURLabInteractionTerminal::None)
+				State->Applications.Add(Item.ApplicationId, Item.Key);
+			else
+				Notifications.Emplace(State->FinishLocked(Item.Key, Item.Terminal), Item.Terminal);
+		}
+	}
+	for (const auto& Notification : Notifications)
+		FState::Notify(Notification.Key, Notification.Value);
 	return Drained;
 }
 
@@ -325,45 +519,39 @@ bool FURLabInteractionInbox::CompleteApplied(uint64 ApplicationId,
 		OutError = TEXT("interaction applied frame is invalid");
 		return false;
 	}
-	FString Ticket;
-	TSharedPtr<IURLabInteractionCompletionSink, ESPMode::ThreadSafe> Sink;
+	TArray<FState::FWaiter> Waiters;
 	FURLabInteractionResult Result;
 	{
 		FScopeLock Lock(&State->Mutex);
-		FState::FRecord* Match = nullptr;
-		for (TPair<FString, FState::FRecord>& Entry : State->Records)
-		{
-			if (!Entry.Value.bTerminal && Entry.Value.ApplicationId == ApplicationId)
-			{
-				Ticket = Entry.Key;
-				Match = &Entry.Value;
-				break;
-			}
-		}
-		if (!Match)
+		FString Key;
+		if (!State->Applications.RemoveAndCopyValue(ApplicationId, Key))
 		{
 			OutError = TEXT("interaction application is unknown or already complete");
 			return false;
 		}
-		const double Now = State->Clock->NowSeconds();
-		const FState::FGrantRecord* GrantRecord = State->Grants.Find(
-			Match->Request.GrantToken);
-		const bool bCurrent = GrantRecord && State->Handler
-			&& FMath::IsFinite(Now) && Now < GrantRecord->Grant.ExpiresAtSeconds
-			&& CurrentContext.Source == GrantRecord->Grant.Source
-			&& CurrentContext.Control == GrantRecord->Control
-			&& CurrentContext.ClockEpoch == GrantRecord->Grant.ClockEpoch
-			&& AppliedFrame.ClockEpoch == CurrentContext.ClockEpoch;
-		Result.Terminal = bCurrent ? EURLabInteractionTerminal::Applied
-			: EURLabInteractionTerminal::RejectedStale;
+		// The contribution was integrated by the step that just ran, so the
+		// outcome is Applied even if authority changed during that step.
+		Result.Terminal = EURLabInteractionTerminal::Applied;
 		Result.AppliedFrame = AppliedFrame;
-		if (!bCurrent)
-			Result.Error = TEXT("interaction authority changed before applied completion");
-		Match->Result = Result;
-		Match->bTerminal = true;
-		Sink = Match->CompletionSink;
+		Waiters = State->FinishLocked(Key, Result);
 	}
-	if (Sink) Sink->CompleteInteraction(Ticket, Result);
+	FState::Notify(Waiters, Result);
+	return true;
+}
+
+bool FURLabInteractionInbox::AbortApplied(uint64 ApplicationId, const FString& Reason)
+{
+	TArray<FState::FWaiter> Waiters;
+	FURLabInteractionResult Result;
+	Result.Terminal = EURLabInteractionTerminal::ApplyFailed;
+	Result.Error = Reason;
+	{
+		FScopeLock Lock(&State->Mutex);
+		FString Key;
+		if (!State->Applications.RemoveAndCopyValue(ApplicationId, Key)) return false;
+		Waiters = State->FinishLocked(Key, Result);
+	}
+	FState::Notify(Waiters, Result);
 	return true;
 }
 
@@ -371,4 +559,22 @@ int32 FURLabInteractionInbox::NumPending() const
 {
 	FScopeLock Lock(&State->Mutex);
 	return State->Pending.Num();
+}
+
+int32 FURLabInteractionInbox::NumGrants() const
+{
+	FScopeLock Lock(&State->Mutex);
+	return State->Grants.Num();
+}
+
+int32 FURLabInteractionInbox::NumHolds() const
+{
+	FScopeLock Lock(&State->Mutex);
+	return State->Holds.Num();
+}
+
+int32 FURLabInteractionInbox::NumRetained() const
+{
+	FScopeLock Lock(&State->Mutex);
+	return State->Records.Num();
 }

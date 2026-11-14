@@ -15,6 +15,15 @@ struct FMjRenderKinematicsOptions
 	bool bIncludeUserCamera = false;
 };
 
+/** Optional per-frame state that qpos does not determine. */
+struct FMjRenderQposExtras
+{
+	/** Either empty (model defaults) or 7 values per mocap body: RHS metre position, then wxyz quaternion. */
+	TConstArrayView<double> Mocap;
+	/** UE-space pose of the installed user camera; requires a scene installed with one. */
+	TOptional<FTransform> UserCameraSceneTransform;
+};
+
 /** Move-only prepared render model and its neutral scene inputs. */
 class URLAB_API FMjRenderKinematicsCandidate
 {
@@ -58,10 +67,11 @@ private:
 /**
  * Thread-safe render-only MuJoCo FK adapter.
  *
- * Each qpos request starts from the installed model's initial mjData defaults,
- * replaces qpos, and runs mj_forward only. Controls, mocap, plugin state, and
- * other mutable data never carry over between requests; later explicit pose
- * contracts own those inputs.
+ * Each qpos request sets qpos and mocap (supplied, else model defaults) and runs
+ * position kinematics only: mj_kinematics, mj_comPos, mj_camlight and mj_flex.
+ * Visualization features that depend on dynamics (contacts, constraints,
+ * actuators, tendons, rangefinders) instead reset to model defaults and run
+ * mj_forward. Controls, velocities and plugin state never carry over.
  */
 class URLAB_API FMjRenderKinematics
 {
@@ -81,11 +91,13 @@ public:
 
 	bool FrameFromQpos(const FString& SceneRevision, TConstArrayView<double> Qpos,
 		uint64 FrameId, double SourceTime, bool bHasSourceTime, uint64 ClockEpoch,
-		FRenderFrame& OutFrame, FString& OutError);
+		FRenderFrame& OutFrame, FString& OutError,
+		const FMjRenderQposExtras& Extras = FMjRenderQposExtras());
 
 	bool HasModel() const;
 	FString GetSceneRevision() const;
 	int32 GetQposWidth() const;
+	int32 GetMocapCount() const;
 	bool GetSourceInfo(FMjModelSourceInfo& OutSource) const;
 
 private:

@@ -104,8 +104,14 @@ struct URLAB_API FRenderEnvironmentDesc
 	bool bHeadlightEnabled = false;
 	FLinearColor HeadlightColor = FLinearColor::White;
 	float HeadlightIntensity = 0.0f;
+	float ShadowClipCm = 0.0f;
+	int32 ShadowSize = 4096;
 	/** Six source texture indices in +X,-X,+Y,-Y,+Z,-Z order; empty means gradient only. */
 	TArray<int32> SkyboxFaceTextureIndices;
+	/** Image-based (environment) light intensity in renderer units; negative keeps
+	 *  the compatibility default. Set when the source declares an image light. */
+	float SkyLightIntensity = -1.0f;
+	FLinearColor SkyLightColor = FLinearColor::White;
 };
 
 /** One sparse, capture-scoped body-local geometry pose in UE centimetres/LHS. */

@@ -277,6 +277,22 @@ bool FURLabRenderServerNeutralLifecycleTest::RunTest(const FString&)
 			FRenderSceneInstallOptions());
 	TestTrue(TEXT("successor explicitly replaces the stale scene"),
 		SuccessorInstalled.bCommitted);
+
+	Successor->Deactivate();
+	Workflow->Tick(0.0f);
+	auto Unbound = MakeScope(TEXT("neutral-unbound"));
+	const FURLabRenderOwnerAttachResult UnboundAttach = Workflow->AttachOwner(Unbound);
+	if (!TestTrue(TEXT("unbound owner attaches after retirement"), UnboundAttach.IsOk())) return false;
+	FRenderScene UnboundScene;
+	FRenderSceneResources UnboundResources;
+	FRenderFrame UnboundInitial;
+	MakeNeutralScene(TEXT("neutral-unbound"), 14.0, UnboundScene, UnboundResources, UnboundInitial);
+	const FURLabRenderServerInstallResult UnboundInstalled =
+		Workflow->InstallNeutralScene(UnboundAttach.Proof, FString(),
+			FRenderSceneInstallPayload(MoveTemp(UnboundScene), MoveTemp(UnboundResources), FRenderFrame(UnboundInitial)),
+			FRenderSceneInstallOptions());
+	TestTrue(TEXT("an unbound owner replaces the stale scene without knowing its revision"),
+		UnboundInstalled.bCommitted);
 	return !HasAnyErrors();
 }
 

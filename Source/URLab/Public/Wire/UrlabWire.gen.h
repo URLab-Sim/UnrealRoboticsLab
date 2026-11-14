@@ -8,7 +8,7 @@
 
 namespace URLabWire
 {
-inline const TCHAR* SchemaSha256 = TEXT("4ddd5f10ad54cd3222ffdb3a885631e8be6fe73a7b00be01a79fb9f801ab35b7");
+inline const TCHAR* SchemaSha256 = TEXT("6409fd7608dccaeb5bc941a2623a652611a096d52267763ab2ba50f320218685");
 
 // --- ops -----------------------------------------------------------------
 namespace Op
@@ -185,34 +185,55 @@ inline constexpr int32 Count = 4;
 }
 
 // --- op permissions -------------------------------------------------------
-// The permission each op requires before the dispatcher will run it. An op
-// absent from this table requires none, which is the DECLARED default rather
-// than an omission: a hand-written check inside a handler is what this
-// replaces, and a check that lives in a handler is one no caller can read.
+// The permission each active op declares. Its service handler checks the
+// grant when the op executes. An op absent from this table requires none.
 namespace OpPermission
 {
 struct FEntry { const TCHAR* Op; const TCHAR* Permission; };
 inline const FEntry All[] = {
+	{TEXT("editor_add_quick_convert"), TEXT("accept_editor_commands")},
+	{TEXT("editor_begin_pie"), TEXT("accept_editor_commands")},
+	{TEXT("editor_create_level"), TEXT("accept_editor_commands")},
+	{TEXT("editor_destroy_asset"), TEXT("accept_editor_commands")},
+	{TEXT("editor_duplicate_actor"), TEXT("accept_editor_commands")},
+	{TEXT("editor_ensure_manager"), TEXT("accept_editor_commands")},
+	{TEXT("editor_import_xml"), TEXT("accept_editor_commands")},
+	{TEXT("editor_load_level"), TEXT("accept_editor_commands")},
+	{TEXT("editor_remove_actor"), TEXT("accept_editor_commands")},
+	{TEXT("editor_remove_quick_convert"), TEXT("accept_editor_commands")},
+	{TEXT("editor_save_level"), TEXT("accept_editor_commands")},
+	{TEXT("editor_select_actor"), TEXT("accept_editor_commands")},
+	{TEXT("editor_set_actor_transform"), TEXT("accept_editor_commands")},
+	{TEXT("editor_spawn_actor"), TEXT("accept_editor_commands")},
+	{TEXT("editor_spawn_grid"), TEXT("accept_editor_commands")},
+	{TEXT("editor_spawn_light"), TEXT("accept_editor_commands")},
+	{TEXT("editor_stop_pie"), TEXT("accept_editor_commands")},
 	{TEXT("interaction_submit"), TEXT("accept_input")},
 	{TEXT("render_capture_cancel"), TEXT("camera_rpc")},
 	{TEXT("render_capture_history_query"), TEXT("camera_rpc")},
 	{TEXT("render_capture_poll"), TEXT("camera_rpc")},
 	{TEXT("render_capture_release"), TEXT("camera_rpc")},
 	{TEXT("render_capture_submit"), TEXT("camera_rpc")},
-	{TEXT("render_frame"), TEXT("camera_rpc")},
-	{TEXT("render_load"), TEXT("accept_model_load")},
 	{TEXT("render_owner_attach"), TEXT("camera_rpc")},
 	{TEXT("render_owner_release"), TEXT("camera_rpc")},
 	{TEXT("render_owner_renew"), TEXT("camera_rpc")},
-	{TEXT("render_perturb"), TEXT("accept_input")},
 	{TEXT("render_scene_describe"), TEXT("camera_rpc")},
 	{TEXT("render_scene_patch"), TEXT("accept_model_load")},
 	{TEXT("render_source_install"), TEXT("accept_model_load")},
-	{TEXT("set_camera_delay"), TEXT("camera_rpc")},
-	{TEXT("set_camera_streaming"), TEXT("camera_rpc")},
+	{TEXT("simulation_apply_state"), TEXT("accept_input")},
+	{TEXT("simulation_camera_stream_configure"), TEXT("accept_input")},
+	{TEXT("simulation_claim_control"), TEXT("accept_input")},
+	{TEXT("simulation_forward"), TEXT("accept_input")},
 	{TEXT("simulation_interaction_grant_issue"), TEXT("accept_input")},
 	{TEXT("simulation_interaction_grant_revoke"), TEXT("accept_input")},
-	{TEXT("upload_model_commit"), TEXT("accept_model_load")},
+	{TEXT("simulation_release_control"), TEXT("accept_input")},
+	{TEXT("simulation_renew_control"), TEXT("accept_input")},
+	{TEXT("simulation_reset"), TEXT("accept_input")},
+	{TEXT("simulation_set_actuators"), TEXT("accept_input")},
+	{TEXT("simulation_set_clock"), TEXT("accept_input")},
+	{TEXT("simulation_set_control"), TEXT("accept_input")},
+	{TEXT("simulation_step"), TEXT("accept_input")},
+	{TEXT("viewer_camera_stream_configure"), TEXT("accept_input")},
 	{TEXT("viewer_interaction_submit"), TEXT("accept_input")},
 	{TEXT("viewer_owner_attach"), TEXT("accept_input")},
 	{TEXT("viewer_owner_renew"), TEXT("accept_input")},
@@ -220,7 +241,7 @@ inline const FEntry All[] = {
 	{TEXT("viewer_source_install"), TEXT("accept_model_load")},
 	{TEXT("viewer_stream_bind"), TEXT("accept_input")},
 };
-inline constexpr int32 Count = 26;
+inline constexpr int32 Count = 49;
 }
 
 namespace OpAdapter
@@ -486,6 +507,9 @@ inline const FField RenderCaptureFrameIdentityFields[] = {
 inline const FField RenderCapturePoseQposFields[] = {
 	{TEXT("kind"), TEXT("literal"), nullptr, TEXT("qpos"), true},
 	{TEXT("payload"), TEXT("render_source_blob"), nullptr, nullptr, false},
+	{TEXT("values"), TEXT("binary"), nullptr, nullptr, false},
+	{TEXT("mocap"), TEXT("bool"), nullptr, nullptr, false},
+	{TEXT("user_camera"), TEXT("bool"), nullptr, nullptr, false},
 };
 inline const FField RenderCapturePoseCartesianFields[] = {
 	{TEXT("kind"), TEXT("literal"), nullptr, TEXT("cartesian"), true},
@@ -621,6 +645,11 @@ inline const FField InteractionWrenchFields[] = {
 	{TEXT("body_index"), TEXT("nonnegative_int64"), nullptr, nullptr, true},
 	{TEXT("force_n"), TEXT("finite_vec3"), nullptr, nullptr, true},
 	{TEXT("torque_nm"), TEXT("finite_vec3"), nullptr, nullptr, true},
+	{TEXT("body_frame"), TEXT("bool"), nullptr, nullptr, false},
+	{TEXT("point_m"), TEXT("finite_vec3"), nullptr, nullptr, false},
+	{TEXT("duration_s"), TEXT("finite_float"), nullptr, nullptr, false},
+	{TEXT("channel"), TEXT("string"), nullptr, nullptr, false},
+	{TEXT("interaction_id"), TEXT("nonempty_string"), nullptr, nullptr, false},
 };
 inline const FField SimulationInteractionGrantIssueFields[] = {
 	{TEXT("model_generation"), TEXT("positive_int64"), nullptr, nullptr, true},
@@ -886,6 +915,7 @@ inline const FField RenderSourceXmlFields[] = {
 };
 inline const FField RenderSourceOptionsFields[] = {
 	{TEXT("visible_group_mask"), TEXT("nonnegative_int64"), nullptr, nullptr, true},
+	{TEXT("include_user_camera"), TEXT("bool"), nullptr, nullptr, false},
 };
 inline const FField RenderSourceInstallFields[] = {
 	{TEXT("generation"), TEXT("positive_int64"), nullptr, nullptr, true},
@@ -1003,6 +1033,7 @@ inline const FField PayloadReadFields[] = {
 	{TEXT("blob_id"), TEXT("nonempty_string"), nullptr, nullptr, true},
 	{TEXT("offset"), TEXT("nonnegative_int64"), nullptr, nullptr, true},
 	{TEXT("byte_length"), TEXT("positive_int64"), nullptr, nullptr, true},
+	{TEXT("encoding"), TEXT("nonempty_string"), nullptr, nullptr, false},
 };
 inline const FField PayloadAckFields[] = {
 	{TEXT("blob_id"), TEXT("nonempty_string"), nullptr, nullptr, true},
@@ -1047,7 +1078,7 @@ inline const FShape All[] = {
 	{TEXT("render_scene_patch"), RenderScenePatchFields, 7},
 	{TEXT("render_scene_patch_request"), RenderScenePatchRequestFields, 4},
 	{TEXT("render_capture_frame_identity"), RenderCaptureFrameIdentityFields, 4},
-	{TEXT("render_capture_pose_qpos"), RenderCapturePoseQposFields, 2},
+	{TEXT("render_capture_pose_qpos"), RenderCapturePoseQposFields, 5},
 	{TEXT("render_capture_pose_cartesian"), RenderCapturePoseCartesianFields, 3},
 	{TEXT("render_capture_pose"), nullptr, 0},
 	{TEXT("render_capture_resolution"), RenderCaptureResolutionFields, 2},
@@ -1074,7 +1105,7 @@ inline const FShape All[] = {
 	{TEXT("simulation_camera_stream_configure"), SimulationCameraStreamConfigureFields, 5},
 	{TEXT("interaction_source_identity"), InteractionSourceIdentityFields, 4},
 	{TEXT("interaction_grant"), InteractionGrantFields, 5},
-	{TEXT("interaction_wrench"), InteractionWrenchFields, 3},
+	{TEXT("interaction_wrench"), InteractionWrenchFields, 8},
 	{TEXT("simulation_interaction_grant_issue"), SimulationInteractionGrantIssueFields, 5},
 	{TEXT("simulation_interaction_grant_revoke"), SimulationInteractionGrantRevokeFields, 4},
 	{TEXT("interaction_submit"), InteractionSubmitFields, 2},
@@ -1118,7 +1149,7 @@ inline const FShape All[] = {
 	{TEXT("render_source_mjz"), RenderSourceMjzFields, 3},
 	{TEXT("render_source_xml"), RenderSourceXmlFields, 4},
 	{TEXT("render_source"), nullptr, 0},
-	{TEXT("render_source_options"), RenderSourceOptionsFields, 1},
+	{TEXT("render_source_options"), RenderSourceOptionsFields, 2},
 	{TEXT("render_source_install"), RenderSourceInstallFields, 5},
 	{TEXT("simulation_describe"), nullptr, 0},
 	{TEXT("simulation_observe"), nullptr, 0},
@@ -1148,7 +1179,7 @@ inline const FShape All[] = {
 	{TEXT("payload_begin"), nullptr, 0},
 	{TEXT("payload_write"), PayloadWriteFields, 3},
 	{TEXT("payload_commit"), PayloadCommitFields, 1},
-	{TEXT("payload_read"), PayloadReadFields, 3},
+	{TEXT("payload_read"), PayloadReadFields, 4},
 	{TEXT("payload_ack"), PayloadAckFields, 2},
 	{TEXT("payload_release"), PayloadReleaseFields, 1},
 };
@@ -1509,6 +1540,27 @@ inline bool IsActive(const FString& Op)
 	return Find(Op) != nullptr;
 }
 }
+// Codes any op may return from the shared dispatch path.
+namespace DispatcherError
+{
+inline const TCHAR* const All[] = {
+	TEXT("bad_request"),
+	TEXT("unknown_op"),
+	TEXT("wrong_transport"),
+	TEXT("data_negotiation_required"),
+	TEXT("capability_disabled"),
+	TEXT("session_expired"),
+	TEXT("boot_mismatch"),
+	TEXT("server_draining"),
+	TEXT("server_schema_error"),
+	TEXT("encoding_error"),
+	TEXT("result_unavailable"),
+	TEXT("request_capacity"),
+	TEXT("request_id_conflict"),
+	TEXT("request_retired"),
+};
+inline constexpr int32 Count = 14;
+}
 namespace TypedOpError
 {
 struct FDecl { const TCHAR* Op; const TCHAR* const* Codes; int32 NumCodes; };
@@ -1517,206 +1569,292 @@ inline const TCHAR* const CameraStreamDescribeCodes[] = {
 	TEXT("capability_disabled"),
 };
 inline const TCHAR* const DataSelectCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
 	TEXT("data_selection_conflict"),
 	TEXT("shm_challenge_invalid"),
 	TEXT("shm_challenge_expired"),
 	TEXT("payload_backing_failure"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const EditorActorHierarchyCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorAddQuickConvertCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorBeginPieCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorCreateLevelCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorCurrentLevelCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorDestroyAssetCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorDuplicateActorCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorEnsureManagerCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorFindActorsCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorGetActorBoundsCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorImportXmlCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorListActorsCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorListBlueprintsCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorLoadLevelCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorPieStatusCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorRemoveActorCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorRemoveQuickConvertCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorSaveLevelCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorSelectActorCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorSetActorTransformCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorSnapshotCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorSpawnActorCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorSpawnGridCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorSpawnLightCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const EditorStopPieCodes[] = {
-	TEXT("not_ready"),
-	TEXT("permission_denied"),
+	TEXT("editor_failed"),
+	TEXT("missing_field"),
+	TEXT("not_in_editor"),
+	TEXT("service_unavailable"),
+	TEXT("shutting_down"),
+	TEXT("timeout"),
+	TEXT("unknown_job"),
 };
 inline const TCHAR* const InteractionSubmitCodes[] = {
 	TEXT("unsupported"),
+	TEXT("capability_disabled"),
 	TEXT("grant_invalid"),
 	TEXT("grant_expired"),
 	TEXT("source_revision_conflict"),
 	TEXT("target_invalid"),
+	TEXT("interaction_conflict"),
+	TEXT("apply_failed"),
 	TEXT("service_unavailable"),
 };
 inline const TCHAR* const PayloadAckCodes[] = {
-	TEXT("bad_request"),
 	TEXT("payload_not_found"),
 	TEXT("payload_expired"),
 	TEXT("payload_identity_mismatch"),
 	TEXT("payload_clock_invalid"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const PayloadBeginCodes[] = {
-	TEXT("bad_request"),
 	TEXT("payload_too_large"),
 	TEXT("payload_quota_exceeded"),
 	TEXT("payload_configuration_invalid"),
 	TEXT("payload_clock_invalid"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("data_transfer_mismatch"),
 	TEXT("payload_backing_failure"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const PayloadCommitCodes[] = {
-	TEXT("bad_request"),
 	TEXT("payload_not_found"),
 	TEXT("payload_expired"),
 	TEXT("payload_identity_mismatch"),
 	TEXT("payload_incomplete"),
 	TEXT("payload_integrity_mismatch"),
 	TEXT("payload_clock_invalid"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("payload_backing_failure"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const PayloadReadCodes[] = {
-	TEXT("bad_request"),
 	TEXT("payload_not_found"),
 	TEXT("payload_expired"),
 	TEXT("payload_identity_mismatch"),
 	TEXT("payload_chunk_too_large"),
 	TEXT("payload_out_of_bounds"),
 	TEXT("payload_clock_invalid"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("data_transfer_mismatch"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const PayloadReleaseCodes[] = {
-	TEXT("bad_request"),
 	TEXT("payload_not_found"),
 	TEXT("payload_expired"),
 	TEXT("payload_identity_mismatch"),
 	TEXT("payload_clock_invalid"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const PayloadWriteCodes[] = {
-	TEXT("bad_request"),
 	TEXT("payload_not_found"),
 	TEXT("payload_expired"),
 	TEXT("payload_identity_mismatch"),
@@ -1726,14 +1864,8 @@ inline const TCHAR* const PayloadWriteCodes[] = {
 	TEXT("payload_overlap"),
 	TEXT("payload_quota_exceeded"),
 	TEXT("payload_clock_invalid"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("data_transfer_mismatch"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const PoseStreamDescribeCodes[] = {
 	TEXT("stream_unavailable"),
@@ -1748,6 +1880,8 @@ inline const TCHAR* const RenderCaptureHistoryQueryCodes[] = {
 	TEXT("owner_invalid"),
 	TEXT("history_miss"),
 	TEXT("service_unavailable"),
+	TEXT("capture_invalid"),
+	TEXT("payload_quota_exceeded"),
 };
 inline const TCHAR* const RenderCapturePollCodes[] = {
 	TEXT("owner_invalid"),
@@ -1763,6 +1897,9 @@ inline const TCHAR* const RenderCaptureSubmitCodes[] = {
 	TEXT("owner_invalid"),
 	TEXT("capture_invalid"),
 	TEXT("service_unavailable"),
+	TEXT("payload_quota_exceeded"),
+	TEXT("revision_conflict"),
+	TEXT("source_invalid"),
 };
 inline const TCHAR* const RenderOwnerAttachCodes[] = {
 	TEXT("owner_unavailable"),
@@ -1778,8 +1915,9 @@ inline const TCHAR* const RenderOwnerStatusCodes[] = {
 };
 inline const TCHAR* const RenderSceneDescribeCodes[] = {
 	TEXT("owner_invalid"),
-	TEXT("capture_invalid"),
 	TEXT("service_unavailable"),
+	TEXT("revision_conflict"),
+	TEXT("source_invalid"),
 };
 inline const TCHAR* const RenderScenePatchCodes[] = {
 	TEXT("owner_invalid"),
@@ -1789,15 +1927,10 @@ inline const TCHAR* const RenderScenePatchCodes[] = {
 };
 inline const TCHAR* const RenderSourceInstallCodes[] = {
 	TEXT("owner_invalid"),
-	TEXT("payload_not_found"),
 	TEXT("source_invalid"),
 	TEXT("revision_conflict"),
 };
 inline const TCHAR* const SimulationApplyStateCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
@@ -1805,10 +1938,6 @@ inline const TCHAR* const SimulationApplyStateCodes[] = {
 	TEXT("invalid_state"),
 	TEXT("counter_exhausted"),
 	TEXT("mutation_committed_observation_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationCameraStreamConfigureCodes[] = {
 	TEXT("control_invalid"),
@@ -1816,75 +1945,32 @@ inline const TCHAR* const SimulationCameraStreamConfigureCodes[] = {
 	TEXT("capability_disabled"),
 };
 inline const TCHAR* const SimulationCaptureStateCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("model_not_ready"),
 	TEXT("invalid_state_mask"),
 	TEXT("invalid_state"),
 	TEXT("state_unavailable"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationClaimControlCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("bad_value"),
 	TEXT("control_claimed"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationClockStatusCodes[] = {
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
-};
-inline const TCHAR* const SimulationControlStatusCodes[] = {
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationDescribeCodes[] = {
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("model_not_ready"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationForwardCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
 	TEXT("control_expired"),
 	TEXT("counter_exhausted"),
 	TEXT("mutation_committed_observation_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationInteractionGrantIssueCodes[] = {
 	TEXT("unsupported"),
@@ -1897,67 +1983,34 @@ inline const TCHAR* const SimulationInteractionGrantRevokeCodes[] = {
 	TEXT("control_invalid"),
 	TEXT("grant_invalid"),
 	TEXT("service_unavailable"),
+	TEXT("source_revision_conflict"),
 };
 inline const TCHAR* const SimulationObserveCodes[] = {
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
 	TEXT("model_not_ready"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationReleaseControlCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
 	TEXT("control_expired"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationRenewControlCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("bad_value"),
 	TEXT("not_control_owner"),
 	TEXT("control_expired"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationResetCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
 	TEXT("control_expired"),
 	TEXT("counter_exhausted"),
 	TEXT("mutation_committed_observation_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationSetActuatorsCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
@@ -1966,31 +2019,15 @@ inline const TCHAR* const SimulationSetActuatorsCodes[] = {
 	TEXT("dim_mismatch"),
 	TEXT("unknown_actuator"),
 	TEXT("mutation_committed_observation_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationSetClockCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
 	TEXT("control_expired"),
 	TEXT("service_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationSetControlCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
@@ -1998,16 +2035,8 @@ inline const TCHAR* const SimulationSetControlCodes[] = {
 	TEXT("bad_value"),
 	TEXT("dim_mismatch"),
 	TEXT("mutation_committed_observation_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const SimulationStepCodes[] = {
-	TEXT("bad_request"),
-	TEXT("session_expired"),
-	TEXT("data_negotiation_required"),
-	TEXT("capability_disabled"),
 	TEXT("model_not_ready"),
 	TEXT("stale_model_generation"),
 	TEXT("not_control_owner"),
@@ -2016,21 +2045,25 @@ inline const TCHAR* const SimulationStepCodes[] = {
 	TEXT("bad_value"),
 	TEXT("counter_exhausted"),
 	TEXT("mutation_committed_observation_unavailable"),
-	TEXT("server_schema_error"),
-	TEXT("encoding_error"),
-	TEXT("result_unavailable"),
-	TEXT("reply_too_large"),
 };
 inline const TCHAR* const ViewerCameraStreamConfigureCodes[] = {
 	TEXT("owner_invalid"),
 	TEXT("camera_invalid"),
-	TEXT("capability_disabled"),
+	TEXT("revision_conflict"),
 };
 inline const TCHAR* const ViewerInteractionSubmitCodes[] = {
 	TEXT("unsupported"),
+	TEXT("capability_disabled"),
 	TEXT("owner_invalid"),
 	TEXT("revision_conflict"),
+	TEXT("grant_invalid"),
+	TEXT("grant_expired"),
+	TEXT("source_revision_conflict"),
+	TEXT("target_invalid"),
+	TEXT("interaction_conflict"),
+	TEXT("apply_failed"),
 	TEXT("forwarding_failed"),
+	TEXT("outcome_unknown"),
 	TEXT("service_unavailable"),
 };
 inline const TCHAR* const ViewerOwnerAttachCodes[] = {
@@ -2053,7 +2086,6 @@ inline const TCHAR* const ViewerScenePatchCodes[] = {
 };
 inline const TCHAR* const ViewerSourceInstallCodes[] = {
 	TEXT("owner_invalid"),
-	TEXT("payload_not_found"),
 	TEXT("source_invalid"),
 	TEXT("revision_conflict"),
 };
@@ -2064,78 +2096,78 @@ inline const TCHAR* const ViewerStreamBindCodes[] = {
 };
 inline const FDecl All[] = {
 	{TEXT("camera_stream_describe"), CameraStreamDescribeCodes, 2},
-	{TEXT("data_select"), DataSelectCodes, 11},
-	{TEXT("editor_actor_hierarchy"), EditorActorHierarchyCodes, 2},
-	{TEXT("editor_add_quick_convert"), EditorAddQuickConvertCodes, 2},
-	{TEXT("editor_begin_pie"), EditorBeginPieCodes, 2},
-	{TEXT("editor_create_level"), EditorCreateLevelCodes, 2},
-	{TEXT("editor_current_level"), EditorCurrentLevelCodes, 2},
-	{TEXT("editor_destroy_asset"), EditorDestroyAssetCodes, 2},
-	{TEXT("editor_duplicate_actor"), EditorDuplicateActorCodes, 2},
-	{TEXT("editor_ensure_manager"), EditorEnsureManagerCodes, 2},
-	{TEXT("editor_find_actors"), EditorFindActorsCodes, 2},
-	{TEXT("editor_get_actor_bounds"), EditorGetActorBoundsCodes, 2},
-	{TEXT("editor_import_xml"), EditorImportXmlCodes, 2},
-	{TEXT("editor_list_actors"), EditorListActorsCodes, 2},
-	{TEXT("editor_list_blueprints"), EditorListBlueprintsCodes, 2},
-	{TEXT("editor_load_level"), EditorLoadLevelCodes, 2},
-	{TEXT("editor_pie_status"), EditorPieStatusCodes, 2},
-	{TEXT("editor_remove_actor"), EditorRemoveActorCodes, 2},
-	{TEXT("editor_remove_quick_convert"), EditorRemoveQuickConvertCodes, 2},
-	{TEXT("editor_save_level"), EditorSaveLevelCodes, 2},
-	{TEXT("editor_select_actor"), EditorSelectActorCodes, 2},
-	{TEXT("editor_set_actor_transform"), EditorSetActorTransformCodes, 2},
-	{TEXT("editor_snapshot"), EditorSnapshotCodes, 2},
-	{TEXT("editor_spawn_actor"), EditorSpawnActorCodes, 2},
-	{TEXT("editor_spawn_grid"), EditorSpawnGridCodes, 2},
-	{TEXT("editor_spawn_light"), EditorSpawnLightCodes, 2},
-	{TEXT("editor_stop_pie"), EditorStopPieCodes, 2},
-	{TEXT("interaction_submit"), InteractionSubmitCodes, 6},
-	{TEXT("payload_ack"), PayloadAckCodes, 12},
-	{TEXT("payload_begin"), PayloadBeginCodes, 14},
-	{TEXT("payload_commit"), PayloadCommitCodes, 15},
-	{TEXT("payload_read"), PayloadReadCodes, 15},
-	{TEXT("payload_release"), PayloadReleaseCodes, 12},
-	{TEXT("payload_write"), PayloadWriteCodes, 18},
+	{TEXT("data_select"), DataSelectCodes, 5},
+	{TEXT("editor_actor_hierarchy"), EditorActorHierarchyCodes, 7},
+	{TEXT("editor_add_quick_convert"), EditorAddQuickConvertCodes, 7},
+	{TEXT("editor_begin_pie"), EditorBeginPieCodes, 7},
+	{TEXT("editor_create_level"), EditorCreateLevelCodes, 7},
+	{TEXT("editor_current_level"), EditorCurrentLevelCodes, 7},
+	{TEXT("editor_destroy_asset"), EditorDestroyAssetCodes, 7},
+	{TEXT("editor_duplicate_actor"), EditorDuplicateActorCodes, 7},
+	{TEXT("editor_ensure_manager"), EditorEnsureManagerCodes, 7},
+	{TEXT("editor_find_actors"), EditorFindActorsCodes, 7},
+	{TEXT("editor_get_actor_bounds"), EditorGetActorBoundsCodes, 7},
+	{TEXT("editor_import_xml"), EditorImportXmlCodes, 7},
+	{TEXT("editor_list_actors"), EditorListActorsCodes, 7},
+	{TEXT("editor_list_blueprints"), EditorListBlueprintsCodes, 7},
+	{TEXT("editor_load_level"), EditorLoadLevelCodes, 7},
+	{TEXT("editor_pie_status"), EditorPieStatusCodes, 7},
+	{TEXT("editor_remove_actor"), EditorRemoveActorCodes, 7},
+	{TEXT("editor_remove_quick_convert"), EditorRemoveQuickConvertCodes, 7},
+	{TEXT("editor_save_level"), EditorSaveLevelCodes, 7},
+	{TEXT("editor_select_actor"), EditorSelectActorCodes, 7},
+	{TEXT("editor_set_actor_transform"), EditorSetActorTransformCodes, 7},
+	{TEXT("editor_snapshot"), EditorSnapshotCodes, 7},
+	{TEXT("editor_spawn_actor"), EditorSpawnActorCodes, 7},
+	{TEXT("editor_spawn_grid"), EditorSpawnGridCodes, 7},
+	{TEXT("editor_spawn_light"), EditorSpawnLightCodes, 7},
+	{TEXT("editor_stop_pie"), EditorStopPieCodes, 7},
+	{TEXT("interaction_submit"), InteractionSubmitCodes, 9},
+	{TEXT("payload_ack"), PayloadAckCodes, 5},
+	{TEXT("payload_begin"), PayloadBeginCodes, 7},
+	{TEXT("payload_commit"), PayloadCommitCodes, 8},
+	{TEXT("payload_read"), PayloadReadCodes, 8},
+	{TEXT("payload_release"), PayloadReleaseCodes, 5},
+	{TEXT("payload_write"), PayloadWriteCodes, 11},
 	{TEXT("pose_stream_describe"), PoseStreamDescribeCodes, 2},
 	{TEXT("render_capture_cancel"), RenderCaptureCancelCodes, 3},
-	{TEXT("render_capture_history_query"), RenderCaptureHistoryQueryCodes, 3},
+	{TEXT("render_capture_history_query"), RenderCaptureHistoryQueryCodes, 5},
 	{TEXT("render_capture_poll"), RenderCapturePollCodes, 3},
 	{TEXT("render_capture_release"), RenderCaptureReleaseCodes, 3},
-	{TEXT("render_capture_submit"), RenderCaptureSubmitCodes, 3},
+	{TEXT("render_capture_submit"), RenderCaptureSubmitCodes, 6},
 	{TEXT("render_owner_attach"), RenderOwnerAttachCodes, 1},
 	{TEXT("render_owner_release"), RenderOwnerReleaseCodes, 1},
 	{TEXT("render_owner_renew"), RenderOwnerRenewCodes, 1},
 	{TEXT("render_owner_status"), RenderOwnerStatusCodes, 1},
-	{TEXT("render_scene_describe"), RenderSceneDescribeCodes, 3},
+	{TEXT("render_scene_describe"), RenderSceneDescribeCodes, 4},
 	{TEXT("render_scene_patch"), RenderScenePatchCodes, 4},
-	{TEXT("render_source_install"), RenderSourceInstallCodes, 4},
-	{TEXT("simulation_apply_state"), SimulationApplyStateCodes, 15},
+	{TEXT("render_source_install"), RenderSourceInstallCodes, 3},
+	{TEXT("simulation_apply_state"), SimulationApplyStateCodes, 7},
 	{TEXT("simulation_camera_stream_configure"), SimulationCameraStreamConfigureCodes, 3},
-	{TEXT("simulation_capture_state"), SimulationCaptureStateCodes, 12},
-	{TEXT("simulation_claim_control"), SimulationClaimControlCodes, 12},
-	{TEXT("simulation_clock_status"), SimulationClockStatusCodes, 7},
-	{TEXT("simulation_control_status"), SimulationControlStatusCodes, 6},
-	{TEXT("simulation_describe"), SimulationDescribeCodes, 8},
-	{TEXT("simulation_forward"), SimulationForwardCodes, 14},
+	{TEXT("simulation_capture_state"), SimulationCaptureStateCodes, 5},
+	{TEXT("simulation_claim_control"), SimulationClaimControlCodes, 4},
+	{TEXT("simulation_clock_status"), SimulationClockStatusCodes, 1},
+	{TEXT("simulation_control_status"), nullptr, 0},
+	{TEXT("simulation_describe"), SimulationDescribeCodes, 2},
+	{TEXT("simulation_forward"), SimulationForwardCodes, 6},
 	{TEXT("simulation_interaction_grant_issue"), SimulationInteractionGrantIssueCodes, 4},
-	{TEXT("simulation_interaction_grant_revoke"), SimulationInteractionGrantRevokeCodes, 4},
-	{TEXT("simulation_observe"), SimulationObserveCodes, 8},
-	{TEXT("simulation_release_control"), SimulationReleaseControlCodes, 12},
-	{TEXT("simulation_renew_control"), SimulationRenewControlCodes, 13},
-	{TEXT("simulation_reset"), SimulationResetCodes, 14},
-	{TEXT("simulation_set_actuators"), SimulationSetActuatorsCodes, 16},
-	{TEXT("simulation_set_clock"), SimulationSetClockCodes, 13},
-	{TEXT("simulation_set_control"), SimulationSetControlCodes, 15},
-	{TEXT("simulation_step"), SimulationStepCodes, 16},
+	{TEXT("simulation_interaction_grant_revoke"), SimulationInteractionGrantRevokeCodes, 5},
+	{TEXT("simulation_observe"), SimulationObserveCodes, 2},
+	{TEXT("simulation_release_control"), SimulationReleaseControlCodes, 4},
+	{TEXT("simulation_renew_control"), SimulationRenewControlCodes, 5},
+	{TEXT("simulation_reset"), SimulationResetCodes, 6},
+	{TEXT("simulation_set_actuators"), SimulationSetActuatorsCodes, 8},
+	{TEXT("simulation_set_clock"), SimulationSetClockCodes, 5},
+	{TEXT("simulation_set_control"), SimulationSetControlCodes, 7},
+	{TEXT("simulation_step"), SimulationStepCodes, 8},
 	{TEXT("viewer_camera_stream_configure"), ViewerCameraStreamConfigureCodes, 3},
-	{TEXT("viewer_interaction_submit"), ViewerInteractionSubmitCodes, 5},
+	{TEXT("viewer_interaction_submit"), ViewerInteractionSubmitCodes, 13},
 	{TEXT("viewer_owner_attach"), ViewerOwnerAttachCodes, 1},
 	{TEXT("viewer_owner_release"), ViewerOwnerReleaseCodes, 1},
 	{TEXT("viewer_owner_renew"), ViewerOwnerRenewCodes, 1},
 	{TEXT("viewer_owner_status"), ViewerOwnerStatusCodes, 1},
 	{TEXT("viewer_scene_patch"), ViewerScenePatchCodes, 4},
-	{TEXT("viewer_source_install"), ViewerSourceInstallCodes, 4},
+	{TEXT("viewer_source_install"), ViewerSourceInstallCodes, 3},
 	{TEXT("viewer_stream_bind"), ViewerStreamBindCodes, 3},
 };
 inline constexpr int32 Count = 74;
@@ -2152,7 +2184,7 @@ inline constexpr double SessionIdleTimeoutS = 300.0;
 inline constexpr int64 RequestWindow = 1024;
 inline constexpr int64 MaxSessionPending = 32;
 inline constexpr int64 MaxGlobalPending = 256;
-inline constexpr int64 MaxInlineReplyBytes = 262144;
+inline constexpr int64 MaxInlineReplyBytes = 67108864;
 inline constexpr double DataNegotiationTimeoutS = 30.0;
 }
 namespace ConfigurableLimit
@@ -2383,6 +2415,7 @@ inline const FField RenderSceneDescribeFields[] = {
 	{TEXT("light_names"), TEXT("array<string>"), nullptr, nullptr, true},
 	{TEXT("supports_qpos"), TEXT("bool"), nullptr, nullptr, true},
 	{TEXT("qpos_width"), TEXT("nonnegative_int64"), nullptr, nullptr, true},
+	{TEXT("mocap_count"), TEXT("nonnegative_int64"), nullptr, nullptr, true},
 };
 inline const FField RenderScenePatchFields[] = {
 	{TEXT("committed"), TEXT("bool"), nullptr, nullptr, true},
@@ -2831,6 +2864,10 @@ inline const FField PayloadReadFields[] = {
 	{TEXT("blob_id"), TEXT("nonempty_string"), nullptr, nullptr, true},
 	{TEXT("offset"), TEXT("nonnegative_int64"), nullptr, nullptr, true},
 	{TEXT("data"), TEXT("binary"), nullptr, nullptr, true},
+	{TEXT("encoding"), TEXT("nonempty_string"), nullptr, nullptr, false},
+	{TEXT("raw_byte_length"), TEXT("nonnegative_int64"), nullptr, nullptr, false},
+	{TEXT("chunk_bytes"), TEXT("positive_int64"), nullptr, nullptr, false},
+	{TEXT("chunk_sizes"), TEXT("array<nonnegative_int64>"), nullptr, nullptr, false},
 };
 inline const FField PayloadAckFields[] = {
 	{TEXT("acknowledged"), TEXT("bool"), nullptr, TEXT("true"), true},
@@ -2874,7 +2911,7 @@ inline const FShape All[] = {
 	{TEXT("render_scene_intrinsics"), RenderSceneIntrinsicsFields, 4},
 	{TEXT("render_scene_optics"), RenderSceneOpticsFields, 7},
 	{TEXT("render_scene_camera"), RenderSceneCameraFields, 6},
-	{TEXT("render_scene_describe"), RenderSceneDescribeFields, 8},
+	{TEXT("render_scene_describe"), RenderSceneDescribeFields, 9},
 	{TEXT("render_scene_patch"), RenderScenePatchFields, 3},
 	{TEXT("viewer_scene_patch"), ViewerScenePatchFields, 3},
 	{TEXT("render_capture_frame_identity"), RenderCaptureFrameIdentityFields, 5},
@@ -2955,7 +2992,7 @@ inline const FShape All[] = {
 	{TEXT("payload_descriptor"), nullptr, 0},
 	{TEXT("payload_write"), PayloadWriteFields, 3},
 	{TEXT("payload_commit"), PayloadCommitFields, 1},
-	{TEXT("payload_read"), PayloadReadFields, 3},
+	{TEXT("payload_read"), PayloadReadFields, 7},
 	{TEXT("payload_ack"), PayloadAckFields, 2},
 	{TEXT("payload_release"), PayloadReleaseFields, 1},
 };

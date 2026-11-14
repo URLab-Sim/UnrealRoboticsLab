@@ -29,15 +29,9 @@
  * @class FURLabRosModule
  * @brief The optional ROS 2 integration module.
  *
- * On startup it installs the core's FMjExternalTransportProvider factory hooks
- * (so the bridge can create the ROS control RPC + state publish transports
- * without naming their types) and subscribes a camera image sink to
- * FMjCameraFrameBus. All ROS-specific code lives in this module; the core URLab
- * module has no dependency on it.
+ * All ROS-specific code lives in this module; the core URLab module has no
+ * dependency on it.
  */
 class FURLabRosModule : public IModuleInterface
 {
-public:
-	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
 };

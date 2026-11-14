@@ -27,9 +27,7 @@
 #include "HAL/PlatformProperties.h"
 
 TArray<FMjExternalRpcTransportFactory> FMjExternalTransportProvider::ControlRpcTransportFactories;
-TMap<FString, FMjMakeExternalClientSubscribeTransport> FMjExternalTransportProvider::ClientSubscribeTransportFactories;
 TMap<FString, FMjMakeExternalRpcClientTransport> FMjExternalTransportProvider::RpcClientTransportFactories;
-FMjMakeExternalCameraPublishTransport FMjExternalTransportProvider::MakeCameraPublishTransport;
 
 bool FMjExternalTransportProvider::HasControlRpcTransport()
 {
@@ -45,12 +43,6 @@ FString FMjExternalTransportProvider::SchemeOf(const FString& Endpoint)
 bool FMjExternalTransportProvider::IsBuiltInZmqScheme(const FString& Scheme)
 {
 	return Scheme.IsEmpty() || Scheme.Equals(TEXT("tcp"), ESearchCase::IgnoreCase);
-}
-
-bool FMjExternalTransportProvider::HasClientSubscribeScheme(const FString& Scheme)
-{
-	const FMjMakeExternalClientSubscribeTransport* Factory = ClientSubscribeTransportFactories.Find(Scheme);
-	return Factory != nullptr && Factory->IsBound();
 }
 
 bool FMjExternalTransportProvider::HasRpcClientScheme(const FString& Scheme)
@@ -73,8 +65,7 @@ FString FMjExternalTransportProvider::DescribeUnavailableScheme(
 	}
 	else if (Scheme.Equals(TEXT("shm"), ESearchCase::IgnoreCase))
 	{
-		Provider = TEXT("no command module: shm:// is reserved for the built-in "
-						"latest-render subscription reader");
+		Provider = TEXT("no command module: shm:// carries data only");
 	}
 	else
 	{

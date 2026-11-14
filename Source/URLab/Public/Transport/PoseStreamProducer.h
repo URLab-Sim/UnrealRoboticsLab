@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Transport/LockedLatestFrame.h"
 #include "Transport/ShmExactPayload.h"
 #include "Render/RenderFrame.h"
 
@@ -10,7 +11,7 @@ struct URLAB_API FURLabPoseStreamProducerConfig
 	FString BindEndpoint;
 	/** Explicit dialable endpoint advertised after BindEndpoint successfully binds. */
 	FString AdvertisedEndpoint;
-	int64 MaxPayloadBytes = 4 * 1024 * 1024;
+	int64 MaxPayloadBytes = 32 * 1024 * 1024;
 	FURLabShmExactRegionPtr ShmRegion;
 };
 
@@ -34,7 +35,7 @@ struct URLAB_API FURLabPoseStreamZmqDelivery
 struct URLAB_API FURLabPoseStreamShmDelivery
 {
 	FURLabShmLiveObjectDescriptor Object;
-	uint32 LayoutVersion = 1;
+	uint32 LayoutVersion = URLabLatestFrameLayoutVersion;
 	uint32 MaxPayloadBytes = 0;
 };
 

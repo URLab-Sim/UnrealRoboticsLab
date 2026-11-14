@@ -28,6 +28,9 @@ public:
 	static FURLabWireValue MakeFloat(double Value);
 	static FURLabWireValue MakeString(FString Value);
 	static FURLabWireValue MakeBinary(TArray<uint8> Value);
+	/** Binary value sharing immutable storage: copying the value (into a map,
+	 *  a reply envelope, the retention ledger) never copies the bytes. */
+	static FURLabWireValue MakeBinaryShared(TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> Value);
 	static FURLabWireValue MakeArray(TArray<FURLabWireValue> Value);
 	static FURLabWireValue MakeMap(TArray<FString> Keys, TArray<FURLabWireValue> Values);
 
@@ -50,7 +53,7 @@ private:
 	int64 IntValue = 0;
 	double FloatValue = 0.0;
 	FString StringValue;
-	TArray<uint8> BinaryValue;
+	TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> BinaryValue;
 	TArray<FURLabWireValue> ArrayValue;
 	TArray<FString> MapKeys;
 	TArray<FURLabWireValue> MapValues;
@@ -162,10 +165,10 @@ struct URLAB_API FURLabProtocolError
 
 struct URLAB_API FURLabWireLimits
 {
-	int32 MaxInputBytes = 4 * 1024 * 1024;
+	int32 MaxInputBytes = 64 * 1024 * 1024;
 	int32 MaxDepth = 64;
 	int32 MaxContainerItems = 65'536;
-	int32 MaxOutputBytes = 4 * 1024 * 1024;
+	int32 MaxOutputBytes = 64 * 1024 * 1024;
 	int32 MaxIdentifierBytes = 256;
 };
 

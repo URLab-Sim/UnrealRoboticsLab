@@ -108,6 +108,7 @@ bool FMjResultOptionalOperationSchemaTest::RunTest(const FString& Parameters)
 		{TEXT("light_names"), V::MakeArray(TArray<V>())},
 		{TEXT("supports_qpos"), V::MakeBool(false)},
 		{TEXT("qpos_width"), V::MakeInt(0)},
+		{TEXT("mocap_count"), V::MakeInt(0)},
 	});
 	TestTrue(TEXT("optional nested user camera may be absent"),
 		FURLabOperationSchema::ValidateResultBody(TEXT("render_scene_describe"), Describe).IsOk());
@@ -118,6 +119,7 @@ bool FMjResultOptionalOperationSchemaTest::RunTest(const FString& Parameters)
 		{TEXT("light_names"), V::MakeArray(TArray<V>())},
 		{TEXT("supports_qpos"), V::MakeBool(false)},
 		{TEXT("qpos_width"), V::MakeInt(0)},
+		{TEXT("mocap_count"), V::MakeInt(0)},
 	});
 	TestFalse(TEXT("missing required result field still rejects"),
 		FURLabOperationSchema::ValidateResultBody(

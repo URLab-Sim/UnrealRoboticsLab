@@ -15,7 +15,14 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionAdd.h"
 #include "Materials/MaterialExpressionAppendVector.h"
+#include "Materials/MaterialExpressionClamp.h"
+#include "Materials/MaterialExpressionConstant.h"
+#include "Materials/MaterialExpressionMaterialFunctionCall.h"
+#include "Materials/MaterialFunctionInterface.h"
+#include "Materials/MaterialExpressionFresnel.h"
+#include "Materials/MaterialExpressionLinearInterpolate.h"
 #include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionOneMinus.h"
 #include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionTextureCoordinate.h"
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
@@ -35,6 +42,9 @@ namespace
 
 const TCHAR* const kPackageName = TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo_Master");
 const TCHAR* const kAssetName = TEXT("M_MuJoCo_Master");
+const TCHAR* const kTranslucentPackageName =
+	TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo_Master_Translucent");
+const TCHAR* const kTranslucentAssetName = TEXT("M_MuJoCo_Master_Translucent");
 const TCHAR* const kNeutralWhite = TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture");
 const TCHAR* const kNeutralLinearWhite =
 	TEXT("/UnrealRoboticsLab/Materials/T_URLabNeutralLinearWhite.T_URLabNeutralLinearWhite");
@@ -190,7 +200,7 @@ UTexture2D* BuildNeutralLinearWhite(bool bSave)
 } // namespace
 
 UMaterial* BuildMuJoCoMasterMaterialAt(
-	const TCHAR* PackageName, const TCHAR* AssetName, bool bSave)
+	const TCHAR* PackageName, const TCHAR* AssetName, bool bSave, bool bTranslucent = false)
 {
 	UMaterial* Material = OpenOrCreate(PackageName, AssetName);
 	if (Material == nullptr)
@@ -204,8 +214,27 @@ UMaterial* BuildMuJoCoMasterMaterialAt(
 	// older or hand-edited asset cannot leave the generated pins disconnected or
 	// interpreted through a different domain/shading pipeline.
 	Material->MaterialDomain = MD_Surface;
-	Material->BlendMode = BLEND_Opaque;
+	Material->BlendMode = bTranslucent ? BLEND_Translucent : BLEND_Opaque;
 	Material->SetShadingModel(MSM_DefaultLit);
+	if (bTranslucent)
+	{
+		Material->TranslucencyLightingMode = TLM_SurfacePerPixelLighting;
+		Material->bScreenSpaceReflections = true;
+		Material->bContactShadows = true;
+		Material->bCastRayTracedShadows = true;
+		// Translucency does not render into shadow depth, so a clear bottle cast
+		// no shadow at all and looked detached from the surface it stands on.
+		// Shadow "as masked" from a temporally dithered opacity instead: the
+		// fraction of covered shadow-map texels equals the surface opacity, and
+		// soft-shadow filtering plus TSR resolve it into a partial shadow whose
+		// density follows the material (clear plastic ~ light, tinted ~ dark).
+		Material->bCastDynamicShadowAsMasked = true;
+		Material->OpacityMaskClipValue = 0.5f;
+	}
+	else
+	{
+		Material->bCastDynamicShadowAsMasked = false;
+	}
 	Material->bUseMaterialAttributes = false;
 
 	// Wholesale replacement rather than a patch: the graph is defined here and
@@ -313,11 +342,71 @@ UMaterial* BuildMuJoCoMasterMaterialAt(
 	UMaterialEditingLibrary::ConnectMaterialProperty(EmissiveOut, TEXT(""), MP_EmissiveColor);
 
 	// Wired, and unused while the blend mode is opaque: the engine drops the
-	// samples. It stays connected so that switching this material to a
-	// translucent blend mode is the only edit that transparency would need.
-	UMaterialExpression* AlphaMul = Graph.Mul(BaseColor, TEXT("A"), Rgba, TEXT("A"), -600, 800);
+	// samples. In the translucent variant (M_MuJoCo_Master_Translucent) this
+	// drives MP_Opacity from BaseColor.A * Rgb.A * Rgba.A * Opacity.R, plus a
+	// smooth dielectric Schlick Fresnel rim response on non-cutout translucent
+	// surfaces (e.g. clear glass/plastic bottles).
+	UMaterialExpression* AlphaRgb = Graph.Mul(BaseColor, TEXT("A"), Rgb, TEXT("A"), -800, 800);
+	UMaterialExpression* AlphaMul = Graph.Mul(AlphaRgb, TEXT(""), Rgba, TEXT("A"), -600, 800);
 	UMaterialExpression* OpacityOut = Graph.Mul(AlphaMul, TEXT(""), Opacity, TEXT("R"), -400, 800);
-	UMaterialEditingLibrary::ConnectMaterialProperty(OpacityOut, TEXT(""), MP_Opacity);
+	if (bTranslucent)
+	{
+		UMaterialExpressionFresnel* Fresnel = Graph.Make<UMaterialExpressionFresnel>(-800, 1050);
+		Fresnel->Exponent = 4.0f;
+		Fresnel->BaseReflectFraction = 0.04f;
+		Graph.Link(Normal, TEXT("RGB"), Fresnel, TEXT("Normal"));
+
+		UMaterialExpressionOneMinus* Smoothness = Graph.Make<UMaterialExpressionOneMinus>(-800, 1200);
+		Graph.Link(RoughnessOut, TEXT(""), Smoothness, TEXT(""));
+
+		UMaterialExpressionConstant* RimScale = Graph.Make<UMaterialExpressionConstant>(-800, 1300);
+		RimScale->R = 0.55f;
+
+		UMaterialExpressionConstant* CutoutScale = Graph.Make<UMaterialExpressionConstant>(-800, 1400);
+		CutoutScale->R = 8.0f;
+		UMaterialExpression* CutoutScaled = Graph.Mul(OpacityOut, TEXT(""), CutoutScale, TEXT(""), -650, 1400);
+		UMaterialExpressionClamp* CutoutGate = Graph.Make<UMaterialExpressionClamp>(-500, 1400);
+		Graph.Link(CutoutScaled, TEXT(""), CutoutGate, TEXT(""));
+
+		UMaterialExpression* FresnelSmooth = Graph.Mul(Fresnel, TEXT(""), Smoothness, TEXT(""), -600, 1100);
+		UMaterialExpression* FresnelRim = Graph.Mul(FresnelSmooth, TEXT(""), RimScale, TEXT(""), -450, 1100);
+		UMaterialExpression* GatedRim = Graph.Mul(FresnelRim, TEXT(""), CutoutGate, TEXT(""), -350, 1100);
+
+		UMaterialExpressionOneMinus* OneMinusAlpha = Graph.Make<UMaterialExpressionOneMinus>(-350, 950);
+		Graph.Link(OpacityOut, TEXT(""), OneMinusAlpha, TEXT(""));
+		UMaterialExpression* RimContribution = Graph.Mul(OneMinusAlpha, TEXT(""), GatedRim, TEXT(""), -250, 1000);
+
+		UMaterialExpressionAdd* CombinedOpacity = Graph.Make<UMaterialExpressionAdd>(-150, 900);
+		Graph.Link(OpacityOut, TEXT(""), CombinedOpacity, TEXT("A"));
+		Graph.Link(RimContribution, TEXT(""), CombinedOpacity, TEXT("B"));
+
+		UMaterialExpressionClamp* ClampedOpacity = Graph.Make<UMaterialExpressionClamp>(-50, 900);
+		Graph.Link(CombinedOpacity, TEXT(""), ClampedOpacity, TEXT(""));
+		UMaterialEditingLibrary::ConnectMaterialProperty(ClampedOpacity, TEXT(""), MP_Opacity);
+
+		// Shadow coverage (bCastDynamicShadowAsMasked reads OpacityMask): the
+		// raw surface opacity, without the view-dependent Fresnel rim.
+		UMaterialFunctionInterface* DitherFunction = LoadObject<UMaterialFunctionInterface>(nullptr,
+			TEXT("/Engine/Functions/Engine_MaterialFunctions02/Utility/DitherTemporalAA.DitherTemporalAA"));
+		if (DitherFunction != nullptr)
+		{
+			UMaterialExpressionMaterialFunctionCall* ShadowDither =
+				Graph.Make<UMaterialExpressionMaterialFunctionCall>(-250, 1250);
+			ShadowDither->SetMaterialFunction(DitherFunction);
+			Graph.Link(OpacityOut, TEXT(""), ShadowDither, TEXT("Alpha Threshold"));
+			UMaterialEditingLibrary::ConnectMaterialProperty(ShadowDither, TEXT("Result"), MP_OpacityMask);
+		}
+		else
+		{
+			UE_LOG(LogURLabEditor, Warning,
+				TEXT("DitherTemporalAA missing; translucent shadows use a hard opacity cut"));
+			UMaterialEditingLibrary::ConnectMaterialProperty(OpacityOut, TEXT(""), MP_OpacityMask);
+		}
+	}
+	else
+	{
+		UMaterialEditingLibrary::ConnectMaterialProperty(OpacityOut, TEXT(""), MP_Opacity);
+	}
 
 	// CreateMaterialExpression registers parameter nodes immediately, before this
 	// generator assigns their contract names.  Rebuild the lookup after every
@@ -361,7 +450,12 @@ UMaterial* BuildMuJoCoMasterMaterial(bool bSave)
 	{
 		return nullptr;
 	}
-	return BuildMuJoCoMasterMaterialAt(kPackageName, kAssetName, bSave);
+	if (!BuildMuJoCoMasterMaterialAt(
+		kTranslucentPackageName, kTranslucentAssetName, bSave, /*bTranslucent=*/true))
+	{
+		return nullptr;
+	}
+	return BuildMuJoCoMasterMaterialAt(kPackageName, kAssetName, bSave, /*bTranslucent=*/false);
 }
 
 } // namespace urlab::editor

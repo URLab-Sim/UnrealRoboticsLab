@@ -20,13 +20,40 @@
 #include "Engine/TextureCube.h"
 #include "TextureResource.h"
 #include "Engine/World.h"
+#include "Engine/GameViewportClient.h"
+#include "Misc/CommandLine.h"
 #include "Misc/ScopeExit.h"
 #include "Misc/SecureHash.h"
 #include "GameFramework/Actor.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "MaterialShared.h"
+#include "HAL/IConsoleManager.h"
 #include "ProceduralMeshComponent.h"
+#include "Scalability.h"
 #include "UObject/StrongObjectPtr.h"
+
+
+static TAutoConsoleVariable<float> CVarLocalLightShadowBias(
+	TEXT("urlab.Render.LocalLightShadowBias"), 0.5f,
+	TEXT("ShadowBias for point/spot lights (UE default 0.5). Lower keeps small\n")
+	TEXT("objects' shadows attached to their contact points."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarLocalLightShadowSlopeBias(
+	TEXT("urlab.Render.LocalLightShadowSlopeBias"), 0.5f,
+	TEXT("ShadowSlopeBias for point/spot lights (UE default 0.5)."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarContactShadowLength(
+	TEXT("urlab.Render.ContactShadowLength"), 0.04f,
+	TEXT("Screen-space contact shadow length (fraction of screen) for shadowing lights."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarSkyDomeImageScale(
+	TEXT("urlab.Render.SkyDomeImageScale"), 0.83f,
+	TEXT("Visible skybox emission per unit of image-light SkyLight intensity."),
+	ECVF_Default);
 
 namespace
 {
@@ -85,6 +112,29 @@ FLinearColor EncodeSegmentationId(int32 ObjectId)
 	return FLinearColor(static_cast<float>(Encoded & 0xFFu),
 		static_cast<float>((Encoded >> 8) & 0xFFu),
 		static_cast<float>((Encoded >> 16) & 0xFFu), 1.0f);
+}
+
+/** Make a sibling drawable by scene captures only, with no lighting participation. */
+void MakeSceneCaptureOnly(UPrimitiveComponent& Component)
+{
+	Component.bVisibleInSceneCaptureOnly = true;
+	Component.SetCastShadow(false);
+	Component.SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Component.SetGenerateOverlapEvents(false);
+	Component.bAffectDynamicIndirectLighting = false;
+	Component.bAffectIndirectLightingWhileHidden = false;
+	Component.bAffectDistanceFieldLighting = false;
+	Component.bVisibleInReflectionCaptures = false;
+	Component.bVisibleInRealTimeSkyCaptures = false;
+	Component.bVisibleInRayTracing = false;
+	Component.bReceivesDecals = false;
+}
+
+/** Translucent, additive and modulated surfaces do not write scene depth. */
+bool WritesSceneDepth(const UPrimitiveComponent& Component)
+{
+	const UMaterialInterface* Material = Component.GetMaterial(0);
+	return !Material || IsOpaqueOrMaskedBlendMode(*Material);
 }
 
 bool IsRigidGeomPose(const FTransform& Transform)
@@ -176,6 +226,35 @@ bool AURLabRenderScene::InstallScene(FRenderSceneInstallPayload&& Payload,
 		return false;
 	}
 
+	if (Scalability::GetQualityLevels().ViewDistanceQuality != 3)
+	{
+		Scalability::FQualityLevels QualityLevels;
+		QualityLevels.SetFromSingleQualityLevel(3);
+		Scalability::SetQualityLevels(QualityLevels, true);
+	}
+	if (FParse::Param(FCommandLine::Get(), TEXT("RenderOffScreen")))
+	{
+		if (UWorld* World = GetWorld())
+		{
+			if (UGameViewportClient* Viewport = World->GetGameViewport())
+			{
+				Viewport->EngineShowFlags.SetPostProcessing(false);
+				Viewport->EngineShowFlags.SetLumenGlobalIllumination(false);
+				Viewport->EngineShowFlags.SetLumenReflections(false);
+				Viewport->EngineShowFlags.SetDynamicShadows(false);
+				Viewport->EngineShowFlags.SetLighting(false);
+				Viewport->EngineShowFlags.SetAtmosphere(false);
+				Viewport->EngineShowFlags.SetFog(false);
+				Viewport->EngineShowFlags.SetVolumetricFog(false);
+				Viewport->EngineShowFlags.SetAntiAliasing(false);
+				Viewport->EngineShowFlags.SetTemporalAA(false);
+				Viewport->EngineShowFlags.SetAmbientOcclusion(false);
+				Viewport->EngineShowFlags.SetScreenSpaceReflections(false);
+				Viewport->EngineShowFlags.SetScreenSpaceAO(false);
+			}
+		}
+	}
+
 	TStrongObjectPtr<URenderAssetBuilder> CandidateBuilder(
 		NewObject<URenderAssetBuilder>(this));
 	bool bBuilderCommitted = false;
@@ -202,8 +281,8 @@ bool AURLabRenderScene::InstallScene(FRenderSceneInstallPayload&& Payload,
 		DestroyTree(CandidateTree);
 		return false;
 	}
-	if (!BuildEnvironment(CandidateScene, CandidateBuilder->GetResources(),
-		CandidateTree, OutError))
+	if (!BuildEnvironment(CandidateScene, *CandidateBuilder,
+		CandidateBuilder->GetResources(), CandidateTree, OutError))
 	{
 		DestroyTree(CandidateTree);
 		return false;
@@ -221,6 +300,8 @@ bool AURLabRenderScene::InstallScene(FRenderSceneInstallPayload&& Payload,
 	for (UPrimitiveComponent* Component : CandidateTree.SemanticSegComps)
 		if (Component) Component->GetUsedMaterials(CandidateMaterials);
 	for (UPrimitiveComponent* Component : CandidateTree.Deformables)
+		if (Component) Component->GetUsedMaterials(CandidateMaterials);
+	for (UPrimitiveComponent* Component : CandidateTree.DeformableDepthStandIns)
 		if (Component) Component->GetUsedMaterials(CandidateMaterials);
 	for (UPrimitiveComponent* Component : CandidateTree.DebugMeshes)
 		if (Component) Component->GetUsedMaterials(CandidateMaterials);
@@ -246,10 +327,36 @@ bool AURLabRenderScene::InstallScene(FRenderSceneInstallPayload&& Payload,
 		if (Component) InstanceSubjects.Add(Component);
 	for (UPrimitiveComponent* Component : CandidateTree.SemanticSegComps)
 		if (Component) SemanticSubjects.Add(Component);
+	// Translucency writes no scene depth, so each translucent primitive gets an
+	// opaque, capture-only stand-in for depth: the geom's instance-segmentation
+	// sibling (same mesh, same actor) or the deformable's depth twin.
+	TArray<UPrimitiveComponent*> DepthStandIns;
+	TArray<UPrimitiveComponent*> DepthTranslucent;
+	for (int32 GeomIndex = 0; GeomIndex < CandidateTree.GeomComps.Num(); ++GeomIndex)
+	{
+		UPrimitiveComponent* Visual = CandidateTree.GeomComps[GeomIndex];
+		UPrimitiveComponent* StandIn = CandidateTree.InstanceSegComps[GeomIndex];
+		if (Visual && StandIn && !WritesSceneDepth(*Visual))
+		{
+			DepthStandIns.Add(StandIn);
+			DepthTranslucent.Add(Visual);
+		}
+	}
+	for (int32 Index = 0; Index < CandidateTree.DeformableDepthStandIns.Num(); ++Index)
+	{
+		if (CandidateTree.DeformableDepthStandIns[Index] && CandidateTree.Deformables[Index])
+		{
+			DepthStandIns.Add(CandidateTree.DeformableDepthStandIns[Index]);
+			DepthTranslucent.Add(CandidateTree.Deformables[Index]);
+		}
+	}
 	TArray<URenderCameraComponent*> CandidateCameras;
 	CandidateTree.CameraRig->GetAllCameras(CandidateCameras);
 	for (URenderCameraComponent* Camera : CandidateCameras)
+	{
 		Camera->SetNeutralSegmentationComponents(InstanceSubjects, SemanticSubjects);
+		Camera->SetNeutralDepthComponents(DepthStandIns, DepthTranslucent);
+	}
 
 	FCandidateTree OldTree;
 	OldTree.Bodies = MoveTemp(BodyActors);
@@ -261,12 +368,25 @@ bool AURLabRenderScene::InstallScene(FRenderSceneInstallPayload&& Payload,
 	OldTree.SkyLight = SkyLightComponent;
 	OldTree.SkyDome = SkyDomeComponent;
 	OldTree.Deformables = MoveTemp(DeformableComponents);
+	OldTree.DeformableDepthStandIns = MoveTemp(DeformableDepthStandInComponents);
 	OldTree.DebugMeshes = MoveTemp(DebugMeshComponents);
 	OldTree.CameraRig = CameraRig;
 	URenderAssetBuilder* OldBuilder = AssetBuilder;
 	FRenderSceneResourceLifetimeLeasePtr RetiredLease = MoveTemp(ResourceLifetimeLease);
 	SetTreeHidden(OldTree, true);
 
+	if (CandidateScene.Environment.ShadowSize > 0)
+	{
+		const int32 EffectiveShadowRes = FMath::Min(CandidateScene.Environment.ShadowSize, 2048);
+		if (IConsoleVariable* MaxRes = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shadow.MaxResolution")))
+		{
+			MaxRes->Set(EffectiveShadowRes, ECVF_SetByCode);
+		}
+		if (IConsoleVariable* MaxCSMRes = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shadow.MaxCSMResolution")))
+		{
+			MaxCSMRes->Set(EffectiveShadowRes, ECVF_SetByCode);
+		}
+	}
 	SetActorTransform(Options.SceneTransform);
 	AssetBuilder = CandidateBuilder.Get();
 	Scene = MoveTemp(OwnedPayload.Scene);
@@ -282,6 +402,7 @@ bool AURLabRenderScene::InstallScene(FRenderSceneInstallPayload&& Payload,
 	SkyLightComponent = CandidateTree.SkyLight;
 	SkyDomeComponent = CandidateTree.SkyDome;
 	DeformableComponents = MoveTemp(CandidateTree.Deformables);
+	DeformableDepthStandInComponents = MoveTemp(CandidateTree.DeformableDepthStandIns);
 	DebugMeshComponents = MoveTemp(CandidateTree.DebugMeshes);
 	CameraRig = CandidateTree.CameraRig;
 	SetSceneVisible(Options.bInitiallyVisible);
@@ -301,7 +422,7 @@ bool AURLabRenderScene::ApplyFrame(const FRenderFrame& Candidate, FString& OutEr
 	ApplyFrameToBodies(Candidate, BodyActors);
 	ApplyFrameToLights(Candidate, LightComponents);
 	if (!ApplyDynamicMeshes(Scene, Candidate, DeformableComponents,
-		DebugMeshComponents, OutError)) return false;
+		DeformableDepthStandInComponents, DebugMeshComponents, OutError)) return false;
 	if (CameraRig && !CameraRig->ApplyFrame(Candidate, OutError)) return false;
 	AppliedFrame = Candidate;
 	return true;
@@ -587,10 +708,33 @@ bool AURLabRenderScene::BuildCandidate(const FRenderScene& CandidateScene,
 		Light->SetLightColor(Desc.Color);
 		Light->SetIntensity(Desc.Intensity);
 		Light->SetCastShadows(Desc.bCastShadows);
+		Light->ContactShadowLength = Desc.bCastShadows
+			? CVarContactShadowLength.GetValueOnGameThread() : 0.0f;
+		Light->ContactShadowLengthInWS = false;
 		Light->SetVisibility(false);
+		if (UDirectionalLightComponent* Directional = Cast<UDirectionalLightComponent>(Light))
+		{
+			Directional->LightSourceAngle = 1.5f;
+			Directional->LightSourceSoftAngle = 1.5f;
+			Directional->DynamicShadowCascades = 2;
+			Directional->CascadeDistributionExponent = 2.0f;
+			Directional->ShadowBias = 0.08f;
+			Directional->ShadowSlopeBias = 0.15f;
+			if (CandidateScene.Environment.ShadowClipCm > 0.0f)
+			{
+				Directional->DynamicShadowDistanceMovableLight =
+					2.0f * CandidateScene.Environment.ShadowClipCm;
+			}
+			else
+			{
+				Directional->DynamicShadowDistanceMovableLight = 1200.0f;
+			}
+		}
 		if (UPointLightComponent* Point = Cast<UPointLightComponent>(Light))
 		{
 			Point->IntensityUnits = ELightUnits::Candelas;
+			Point->ShadowBias = CVarLocalLightShadowBias.GetValueOnGameThread();
+			Point->ShadowSlopeBias = CVarLocalLightShadowSlopeBias.GetValueOnGameThread();
 			Point->SetAttenuationRadius(Desc.RangeCm);
 			Point->SetSourceRadius(Desc.SourceRadiusCm);
 		}
@@ -612,6 +756,7 @@ bool AURLabRenderScene::BuildDynamicMeshes(const FRenderScene& CandidateScene,
 	FCandidateTree& OutTree, FString& OutError)
 {
 	OutTree.Deformables.SetNum(CandidateScene.Deformables.Num());
+	OutTree.DeformableDepthStandIns.SetNum(CandidateScene.Deformables.Num());
 	OutTree.DebugMeshes.SetNum(InitialFrame.DebugMeshes.Num());
 	auto CreateSection = [this, &OutError](const FString& Name,
 		const TArray<FVector>& Positions, const TArray<FVector>& SuppliedNormals,
@@ -660,6 +805,7 @@ bool AURLabRenderScene::BuildDynamicMeshes(const FRenderScene& CandidateScene,
 		return true;
 	};
 
+	UMaterialInterface* DepthStandInMaterial = nullptr;
 	for (int32 Index = 0; Index < CandidateScene.Deformables.Num(); ++Index)
 	{
 		const FRenderDeformableDesc& Desc = CandidateScene.Deformables[Index];
@@ -668,6 +814,26 @@ bool AURLabRenderScene::BuildDynamicMeshes(const FRenderScene& CandidateScene,
 			FLinearColor::White, true, OutTree.Deformables[Index])) return false;
 		if (Desc.SurfaceIndex != INDEX_NONE)
 			CandidateBuilder.ApplyDeformableMaterial(OutTree.Deformables[Index], Desc.SurfaceIndex);
+		if (WritesSceneDepth(*OutTree.Deformables[Index])) continue;
+		// A translucent deformable writes no scene depth: give it an opaque,
+		// capture-only twin that depth draws in its place (see InstallScene).
+		if (!DepthStandInMaterial)
+		{
+			DepthStandInMaterial = LoadObject<UMaterialInterface>(nullptr,
+				TEXT("/UnrealRoboticsLab/Materials/M_MjSegId.M_MjSegId"));
+			if (!DepthStandInMaterial)
+			{
+				OutError = TEXT("neutral depth stand-in material is unavailable");
+				return false;
+			}
+			CandidateBuilder.RetainResolvedObject(DepthStandInMaterial);
+		}
+		if (!CreateSection(Desc.Name, FrameData.Positions, FrameData.Normals, Desc.Triangles, Desc.UVs,
+			FLinearColor::White, false, OutTree.DeformableDepthStandIns[Index])) return false;
+		UProceduralMeshComponent* StandIn = OutTree.DeformableDepthStandIns[Index];
+		MakeSceneCaptureOnly(*StandIn);
+		StandIn->SetMaterial(0, DepthStandInMaterial);
+		StandIn->MarkRenderStateDirty();
 	}
 	for (int32 Index = 0; Index < InitialFrame.DebugMeshes.Num(); ++Index)
 	{
@@ -686,7 +852,8 @@ bool AURLabRenderScene::BuildDynamicMeshes(const FRenderScene& CandidateScene,
 }
 
 bool AURLabRenderScene::BuildEnvironment(const FRenderScene& CandidateScene,
-	const FRenderSceneResources& Resources, FCandidateTree& OutTree, FString& OutError)
+	URenderAssetBuilder& CandidateBuilder, const FRenderSceneResources& Resources,
+	FCandidateTree& OutTree, FString& OutError)
 {
 	const FRenderEnvironmentDesc& Env = CandidateScene.Environment;
 	const float Fill = Env.AmbientIntensity
@@ -699,9 +866,27 @@ bool AURLabRenderScene::BuildEnvironment(const FRenderScene& CandidateScene,
 		Sky->SetMobility(EComponentMobility::Movable);
 		Sky->SetupAttachment(GetRootComponent());
 		Sky->bLowerHemisphereIsBlack = false;
-		Sky->SetLightColor(Env.AmbientColor + (Env.bHeadlightEnabled
-			? Env.HeadlightColor * Env.HeadlightIntensity : FLinearColor::Black));
-		Sky->SetIntensity(FMath::Max(Fill, 0.0f));
+		if (Env.SkyboxFaceTextureIndices.Num() == 6)
+		{
+			Sky->bLowerHemisphereIsBlack = false;
+			if (Env.SkyLightIntensity >= 0.0f)
+			{
+				// Source declared an image light: physical environment intensity.
+				Sky->SetLightColor(Env.SkyLightColor);
+				Sky->SetIntensity(Env.SkyLightIntensity);
+			}
+			else
+			{
+				Sky->SetLightColor(FLinearColor::White);
+				Sky->SetIntensity(0.68f);
+			}
+		}
+		else
+		{
+			Sky->SetLightColor(Env.AmbientColor + (Env.bHeadlightEnabled
+				? Env.HeadlightColor * Env.HeadlightIntensity : FLinearColor::Black));
+			Sky->SetIntensity(FMath::Max(Fill, 0.0f));
+		}
 		if (Env.SkyboxFaceTextureIndices.Num() == 6)
 		{
 			const FRenderTextureResource& First =
@@ -744,43 +929,209 @@ bool AURLabRenderScene::BuildEnvironment(const FRenderScene& CandidateScene,
 			Sky->SourceType = SLS_SpecifiedCubemap;
 			Sky->Cubemap = Cube;
 		}
+		else
+		{
+			constexpr int32 kFallbackSize = 32;
+			UTextureCube* Cube = UTextureCube::CreateTransient(
+				kFallbackSize, kFallbackSize, PF_B8G8R8A8);
+			if (!Cube || !Cube->GetPlatformData() || Cube->GetPlatformData()->Mips.IsEmpty())
+			{
+				OutError = TEXT("failed to create neutral fallback sky cubemap"); return false;
+			}
+			Cube->SRGB = true;
+			Cube->NeverStream = true;
+			FTexture2DMipMap& Mip = Cube->GetPlatformData()->Mips[0];
+			uint8* Dest = static_cast<uint8*>(Mip.BulkData.Lock(LOCK_READ_WRITE));
+			const FVector KeySoftbox = FVector(0.35, -0.30, 0.88).GetSafeNormal();
+			const FVector FillSoftbox = FVector(-0.45, 0.35, 0.82).GetSafeNormal();
+			for (int32 Face = 0; Face < 6; ++Face)
+			{
+				for (int32 Row = 0; Row < kFallbackSize; ++Row)
+				{
+					const double Y = (static_cast<double>(Row) + 0.5) / kFallbackSize * 2.0 - 1.0;
+					for (int32 Col = 0; Col < kFallbackSize; ++Col)
+					{
+						const double X = (static_cast<double>(Col) + 0.5) / kFallbackSize * 2.0 - 1.0;
+						FVector Ret;
+						switch (Face)
+						{
+							case 0: Ret = FVector(+1.0, -Y, -X); break;
+							case 1: Ret = FVector(-1.0, -Y, +X); break;
+							case 2: Ret = FVector(+X, +1.0, +Y); break;
+							case 3: Ret = FVector(+X, -1.0, -Y); break;
+							case 4: Ret = FVector(+X, -Y, +1.0); break;
+							default: Ret = FVector(-X, -Y, -1.0); break;
+						}
+						const FVector Dir = FVector(Ret.X, Ret.Z, Ret.Y).GetSafeNormal();
+						const double UpT = FMath::Clamp(0.5 * (Dir.Z + 1.0), 0.0, 1.0);
+						const double KeySpot = FMath::Pow(
+							FMath::Max(0.0, FVector::DotProduct(Dir, KeySoftbox)), 6.0);
+						const double FillSpot = FMath::Pow(
+							FMath::Max(0.0, FVector::DotProduct(Dir, FillSoftbox)), 5.0);
+						const double BaseVal = FMath::Lerp(0.68, 0.92, UpT);
+						const double R = FMath::Clamp(BaseVal + 0.28 * KeySpot + 0.14 * FillSpot, 0.0, 1.0);
+						const double G = FMath::Clamp(BaseVal + 0.26 * KeySpot + 0.15 * FillSpot, 0.0, 1.0);
+						const double B = FMath::Clamp(BaseVal + 0.22 * KeySpot + 0.18 * FillSpot, 0.0, 1.0);
+						uint8* Dst = Dest + ((Face * kFallbackSize + Row) * kFallbackSize + Col) * 4;
+						Dst[0] = static_cast<uint8>(FMath::RoundToInt(B * 255.0));
+						Dst[1] = static_cast<uint8>(FMath::RoundToInt(G * 255.0));
+						Dst[2] = static_cast<uint8>(FMath::RoundToInt(R * 255.0));
+						Dst[3] = 255;
+					}
+				}
+			}
+			Mip.BulkData.Unlock();
+			Cube->UpdateResource();
+			Sky->SourceType = SLS_SpecifiedCubemap;
+			Sky->Cubemap = Cube;
+		}
 		Sky->SetVisibility(false);
 		Sky->RegisterComponent();
 	}
 	if (Env.bSkyboxEnabled)
 	{
-		UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
-			TEXT("/UnrealRoboticsLab/Materials/M_MjSkyDome.M_MjSkyDome"));
-		UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr,
-			TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-		if (!Base || !Sphere)
+		if (Env.SkyboxFaceTextureIndices.Num() == 6)
 		{
-			OutError = TEXT("neutral sky dome material or sphere is missing"); return false;
+			UMaterialInterface* MasterBase = LoadObject<UMaterialInterface>(nullptr,
+				TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo_Master.M_MuJoCo_Master"));
+			if (!MasterBase)
+			{
+				OutError = TEXT("neutral skybox master material is missing"); return false;
+			}
+			UProceduralMeshComponent* Dome = NewObject<UProceduralMeshComponent>(this);
+			if (!Dome) { OutError = TEXT("failed to create neutral 6-face skybox dome"); return false; }
+			OutTree.SkyDome = Dome;
+			Dome->SetMobility(EComponentMobility::Movable);
+			Dome->SetupAttachment(GetRootComponent());
+			Dome->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Dome->SetCastShadow(false);
+			Dome->bAffectDynamicIndirectLighting = false;
+			Dome->bAffectDistanceFieldLighting = false;
+			Dome->bVisibleInRayTracing = false;
+			constexpr int32 kGrid = 24;
+			constexpr double kSkyRadiusCm = 10000.0;
+			for (int32 Face = 0; Face < 6; ++Face)
+			{
+				UTexture2D* FaceTex = CandidateBuilder.GetOrBuildTexture(Env.SkyboxFaceTextureIndices[Face], /*bSRGB=*/true);
+				if (!FaceTex)
+				{
+					OutError = TEXT("failed to build skybox face texture"); return false;
+				}
+				FaceTex->AddressX = TA_Clamp;
+				FaceTex->AddressY = TA_Clamp;
+				FaceTex->UpdateResource();
+				UMaterialInstanceDynamic* FaceMat = UMaterialInstanceDynamic::Create(MasterBase, this);
+				if (!FaceMat)
+				{
+					OutError = TEXT("failed to create skybox face MID"); return false;
+				}
+				FaceMat->SetVectorParameterValue(TEXT("BaseColor"), FLinearColor(0.0001f, 0.0001f, 0.0001f, 1.0f));
+				// With an image light the visible sky follows its intensity, as
+				// Filament's skybox does (calibrated: 0.83 per renderer unit).
+				FaceMat->SetScalarParameterValue(TEXT("Emission"), Env.SkyLightIntensity >= 0.0f
+					? 10000.0f * Env.SkyLightIntensity * CVarSkyDomeImageScale.GetValueOnGameThread()
+					: 10000.0f);
+				FaceMat->SetScalarParameterValue(TEXT("Metallic"), 0.0f);
+				FaceMat->SetScalarParameterValue(TEXT("Roughness"), 1.0f);
+				FaceMat->SetScalarParameterValue(TEXT("Specular"), 0.0f);
+				FaceMat->SetScalarParameterValue(TEXT("Reflectance"), 0.0f);
+				FaceMat->SetTextureParameterValue(TEXT("RgbTexture"), FaceTex);
+				TArray<FVector> Positions;
+				TArray<FVector> Normals;
+				TArray<FVector2D> UVs;
+				TArray<FLinearColor> Colors;
+				TArray<FProcMeshTangent> Tangents;
+				TArray<int32> Triangles;
+				const int32 Stride = kGrid + 1;
+				Positions.Reserve(Stride * Stride);
+				Normals.Reserve(Stride * Stride);
+				UVs.Reserve(Stride * Stride);
+				Colors.Init(FLinearColor::White, Stride * Stride);
+				Tangents.Init(FProcMeshTangent(FVector(1, 0, 0), false), Stride * Stride);
+				for (int32 Row = 0; Row <= kGrid; ++Row)
+				{
+					const double V = static_cast<double>(Row) / static_cast<double>(kGrid);
+					const double Y = 2.0 * V - 1.0;
+					for (int32 Col = 0; Col <= kGrid; ++Col)
+					{
+						const double U = static_cast<double>(Col) / static_cast<double>(kGrid);
+						const double X = 2.0 * U - 1.0;
+						FVector Ret;
+						switch (Face)
+						{
+							case 0: Ret = FVector(+1.0, -Y, -X); break;
+							case 1: Ret = FVector(-1.0, -Y, +X); break;
+							case 2: Ret = FVector(+X, +1.0, +Y); break;
+							case 3: Ret = FVector(+X, -1.0, -Y); break;
+							case 4: Ret = FVector(+X, -Y, +1.0); break;
+							default: Ret = FVector(-X, -Y, -1.0); break;
+						}
+						const FVector Dir = FVector(Ret.X, Ret.Z, Ret.Y).GetSafeNormal();
+						Positions.Add(Dir * kSkyRadiusCm);
+						Normals.Add(-Dir);
+						UVs.Add(FVector2D(U, V));
+					}
+				}
+				Triangles.Reserve(kGrid * kGrid * 12);
+				for (int32 Row = 0; Row < kGrid; ++Row)
+				{
+					for (int32 Col = 0; Col < kGrid; ++Col)
+					{
+						const int32 I00 = Row * Stride + Col;
+						const int32 I10 = Row * Stride + (Col + 1);
+						const int32 I01 = (Row + 1) * Stride + Col;
+						const int32 I11 = (Row + 1) * Stride + (Col + 1);
+						Triangles.Add(I00); Triangles.Add(I10); Triangles.Add(I11);
+						Triangles.Add(I00); Triangles.Add(I11); Triangles.Add(I01);
+						Triangles.Add(I00); Triangles.Add(I11); Triangles.Add(I10);
+						Triangles.Add(I00); Triangles.Add(I01); Triangles.Add(I11);
+					}
+				}
+				Dome->CreateMeshSection_LinearColor(Face, Positions, Triangles, Normals, UVs, Colors, Tangents, false);
+				Dome->SetMaterial(Face, FaceMat);
+			}
+			Dome->SetVisibility(false);
+			Dome->RegisterComponent();
 		}
-		UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, this);
-		if (!Material) { OutError = TEXT("failed to create neutral sky dome material"); return false; }
-		Material->SetVectorParameterValue(TEXT("Top"), Env.SkyTop);
-		Material->SetVectorParameterValue(TEXT("Bottom"), Env.SkyBottom);
-		UStaticMeshComponent* Dome = NewObject<UStaticMeshComponent>(this);
-		if (!Dome) { OutError = TEXT("failed to create neutral sky dome"); return false; }
-		OutTree.SkyDome = Dome;
-		Dome->SetMobility(EComponentMobility::Movable);
-		Dome->SetupAttachment(GetRootComponent());
-		Dome->SetStaticMesh(Sphere);
-		Dome->SetMaterial(0, Material);
-		// The camera lives inside this sphere. Reverse its winding so the sky
-		// remains visible even when the authored material is single-sided.
-		Dome->SetRelativeScale3D(FVector(-200.0, 200.0, 200.0));
-		Dome->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Dome->SetCastShadow(false);
-		Dome->SetVisibility(false);
-		Dome->RegisterComponent();
+		else
+		{
+			UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr,
+				TEXT("/UnrealRoboticsLab/Materials/M_MjSkyDome.M_MjSkyDome"));
+			UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr,
+				TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+			if (!Base || !Sphere)
+			{
+				OutError = TEXT("neutral sky dome material or sphere is missing"); return false;
+			}
+			UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(Base, this);
+			if (!Material) { OutError = TEXT("failed to create neutral sky dome material"); return false; }
+			Material->SetVectorParameterValue(TEXT("Top"), Env.SkyTop);
+			Material->SetVectorParameterValue(TEXT("Bottom"), Env.SkyBottom);
+			UStaticMeshComponent* Dome = NewObject<UStaticMeshComponent>(this);
+			if (!Dome) { OutError = TEXT("failed to create neutral sky dome"); return false; }
+			OutTree.SkyDome = Dome;
+			Dome->SetMobility(EComponentMobility::Movable);
+			Dome->SetupAttachment(GetRootComponent());
+			Dome->SetStaticMesh(Sphere);
+			Dome->SetMaterial(0, Material);
+			// The camera lives inside this sphere. Reverse its winding so the sky
+			// remains visible even when the authored material is single-sided.
+			Dome->SetRelativeScale3D(FVector(-200.0, 200.0, 200.0));
+			Dome->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Dome->SetCastShadow(false);
+			Dome->bAffectDynamicIndirectLighting = false;
+			Dome->bAffectDistanceFieldLighting = false;
+			Dome->bVisibleInRayTracing = false;
+			Dome->SetVisibility(false);
+			Dome->RegisterComponent();
+		}
 	}
 	return true;
 }
 
 bool AURLabRenderScene::ApplyDynamicMeshes(const FRenderScene& CandidateScene,
 	const FRenderFrame& Frame, TArray<TObjectPtr<UProceduralMeshComponent>>& Deformables,
+	TArray<TObjectPtr<UProceduralMeshComponent>>& DeformableDepthStandIns,
 	TArray<TObjectPtr<UProceduralMeshComponent>>& DebugMeshes, FString& OutError)
 {
 	for (int32 Index = 0; Index < Frame.Deformables.Num(); ++Index)
@@ -809,6 +1160,11 @@ bool AURLabRenderScene::ApplyDynamicMeshes(const FRenderScene& CandidateScene,
 		TArray<FColor> Colors; Colors.Init(FColor::White, Dynamic.Positions.Num());
 		TArray<FProcMeshTangent> Tangents = DeformableTangents(Dynamic.Positions, Normals, Static.Triangles, Static.UVs);
 		Component->UpdateMeshSection(0, Dynamic.Positions, Normals, UVs, Colors, Tangents);
+		if (UProceduralMeshComponent* StandIn = DeformableDepthStandIns.IsValidIndex(Index)
+			? DeformableDepthStandIns[Index].Get() : nullptr)
+		{
+			StandIn->UpdateMeshSection(0, Dynamic.Positions, Normals, UVs, Colors, Tangents);
+		}
 	}
 	while (DebugMeshes.Num() > Frame.DebugMeshes.Num())
 	{
@@ -863,22 +1219,31 @@ UPrimitiveComponent* AURLabRenderScene::BuildSegmentationGeom(int32 GeomIndex, i
 {
 	UPrimitiveComponent* Component = BuildGeom(GeomIndex, CandidateScene, CandidateBuilder, GeomActor);
 	if (!Component) return nullptr;
-	Component->bVisibleInSceneCaptureOnly = true;
-	Component->SetCastShadow(false);
-	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Component->SetGenerateOverlapEvents(false);
-	Component->bAffectDynamicIndirectLighting = false;
-	Component->bAffectDistanceFieldLighting = false;
-	Component->bVisibleInReflectionCaptures = false;
-	Component->bVisibleInRealTimeSkyCaptures = false;
-	Component->bVisibleInRayTracing = false;
-	Component->bReceivesDecals = false;
+	MakeSceneCaptureOnly(*Component);
+	TArray<USceneComponent*> AttachedChildren;
+	Component->GetChildrenComponents(true, AttachedChildren);
+	for (USceneComponent* Child : AttachedChildren)
+	{
+		if (UPrimitiveComponent* PrimChild = Cast<UPrimitiveComponent>(Child))
+		{
+			MakeSceneCaptureOnly(*PrimChild);
+			PrimChild->MarkRenderStateDirty();
+		}
+	}
 	UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(
 		&SegmentationMaterial, Component);
 	if (!Material) return nullptr;
 	Material->SetVectorParameterValue(TEXT("SegId"), EncodeSegmentationId(ObjectId));
 	const int32 Slots = FMath::Max(1, Component->GetNumMaterials());
 	for (int32 Slot = 0; Slot < Slots; ++Slot) Component->SetMaterial(Slot, Material);
+	for (USceneComponent* Child : AttachedChildren)
+	{
+		if (UPrimitiveComponent* PrimChild = Cast<UPrimitiveComponent>(Child))
+		{
+			const int32 ChildSlots = FMath::Max(1, PrimChild->GetNumMaterials());
+			for (int32 Slot = 0; Slot < ChildSlots; ++Slot) PrimChild->SetMaterial(Slot, Material);
+		}
+	}
 	// BuildGeom registers the primitive before this sibling-only state is known.
 	// Recreate its proxy so the renderer observes scene-capture-only visibility,
 	// disabled lighting participation, and the segmentation material together.
@@ -899,25 +1264,23 @@ UPrimitiveComponent* AURLabRenderScene::BuildGeom(int32 GeomIndex,
 	{
 		return BuildNeutralPrimitive(Geom, &GeomActor, ApplyMaterial);
 	}
-#if WITH_EDITOR
 	UStaticMesh* Mesh = CandidateBuilder.GetOrBuildStaticMesh(Geom.MeshResourceIndex);
 	if (!Mesh) return nullptr;
 	UStaticMeshComponent* Component = NewObject<UStaticMeshComponent>(&GeomActor);
 	if (!Component) return nullptr;
 	Component->SetStaticMesh(Mesh);
 	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Component->SetCastShadow(true);
+	Component->bCastDynamicShadow = true;
+	Component->bAffectDynamicIndirectLighting = true;
+	Component->bAffectIndirectLightingWhileHidden = true;
+	Component->bVisibleInRayTracing = true;
 	DisableDistanceFields(Component);
 	Component->RegisterComponent();
 	Component->AttachToComponent(GeomActor.GetRootComponent(),
 		FAttachmentTransformRules::KeepRelativeTransform);
 	ApplyMaterial(Component);
 	return Component;
-#else
-	UProceduralMeshComponent* Component = CandidateBuilder.BuildMesh(
-		Geom.MeshResourceIndex, &GeomActor);
-	if (Component) ApplyMaterial(Component);
-	return Component;
-#endif
 }
 
 void AURLabRenderScene::ApplyFrameToBodies(const FRenderFrame& Frame,
@@ -948,6 +1311,7 @@ void AURLabRenderScene::DestroyTree(FCandidateTree& Tree)
 	if (Tree.SkyLight) Tree.SkyLight->DestroyComponent();
 	if (Tree.SkyDome) Tree.SkyDome->DestroyComponent();
 	for (UProceduralMeshComponent* Mesh : Tree.Deformables) if (Mesh) Mesh->DestroyComponent();
+	for (UProceduralMeshComponent* Mesh : Tree.DeformableDepthStandIns) if (Mesh) Mesh->DestroyComponent();
 	for (UProceduralMeshComponent* Mesh : Tree.DebugMeshes) if (Mesh) Mesh->DestroyComponent();
 	for (AActor* GeomActor : Tree.GeomActors) if (GeomActor) GeomActor->Destroy();
 	for (AActor* Body : Tree.Bodies) if (Body) Body->Destroy();
@@ -960,6 +1324,7 @@ void AURLabRenderScene::DestroyTree(FCandidateTree& Tree)
 	Tree.SkyLight = nullptr;
 	Tree.SkyDome = nullptr;
 	Tree.Deformables.Reset();
+	Tree.DeformableDepthStandIns.Reset();
 	Tree.DebugMeshes.Reset();
 }
 
@@ -983,6 +1348,8 @@ void AURLabRenderScene::SetTreeHidden(const FCandidateTree& Tree, bool bHidden)
 	if (Tree.SkyDome) Tree.SkyDome->SetVisibility(!bHidden);
 	for (UProceduralMeshComponent* Mesh : Tree.Deformables)
 		if (Mesh) Mesh->SetVisibility(!bHidden);
+	for (UProceduralMeshComponent* Mesh : Tree.DeformableDepthStandIns)
+		if (Mesh) Mesh->SetVisibility(!bHidden);
 	for (UProceduralMeshComponent* Mesh : Tree.DebugMeshes)
 		if (Mesh) Mesh->SetVisibility(!bHidden);
 }
@@ -1001,6 +1368,7 @@ void AURLabRenderScene::TeardownScene()
 	SkyLightComponent = nullptr;
 	SkyDomeComponent = nullptr;
 	Tree.Deformables = MoveTemp(DeformableComponents);
+	Tree.DeformableDepthStandIns = MoveTemp(DeformableDepthStandInComponents);
 	Tree.DebugMeshes = MoveTemp(DebugMeshComponents);
 	Tree.CameraRig = CameraRig;
 	CameraRig = nullptr;
@@ -1074,8 +1442,11 @@ bool AURLabRenderScene::AreRenderResourcesReadyForCapture() const
 		if (!IsReady(Component)) return false;
 	for (const UPrimitiveComponent* Component : DeformableComponents)
 		if (!IsReady(Component)) return false;
+	for (const UPrimitiveComponent* Component : DeformableDepthStandInComponents)
+		if (!IsReady(Component)) return false;
 	for (const UPrimitiveComponent* Component : DebugMeshComponents)
 		if (!IsReady(Component)) return false;
+	if (!IsReady(SkyDomeComponent)) return false;
 	return true;
 }
 
@@ -1095,8 +1466,16 @@ void AURLabRenderScene::SetSceneVisible(bool bVisible)
 	Tree.SkyLight = SkyLightComponent;
 	Tree.SkyDome = SkyDomeComponent;
 	Tree.Deformables = DeformableComponents;
+	Tree.DeformableDepthStandIns = DeformableDepthStandInComponents;
 	Tree.DebugMeshes = DebugMeshComponents;
 	Tree.CameraRig = CameraRig;
 	SetTreeHidden(Tree, !bVisible);
-	if (bVisible && SkyLightComponent) SkyLightComponent->RecaptureSky();
+	if (bVisible && SkyLightComponent)
+	{
+		SkyLightComponent->RecaptureSky();
+		if (UWorld* World = GetWorld())
+		{
+			USkyLightComponent::UpdateSkyCaptureContents(World);
+		}
+	}
 }

@@ -21,7 +21,15 @@ struct FMjSimulationInteractionOwner::FImpl
 	mjData* ActiveData = nullptr;
 	FURLabInteractionOwnerContext ActiveContext;
 	TArray<FSavedBody> SavedBodies;
+	TArray<FSavedBody> LastStepWrenches;
 	TArray<uint64> ApplicationIds;
+	bool bKinematicsFresh = false;
+	TFunction<bool()> InputPermission;
+
+	bool InputPermitted() const
+	{
+		return !InputPermission || InputPermission();
+	}
 
 	void Restore()
 	{
@@ -36,6 +44,45 @@ struct FMjSimulationInteractionOwner::FImpl
 		ActiveModel = nullptr;
 		ActiveData = nullptr;
 		SavedBodies.Reset();
+		bKinematicsFresh = false;
+	}
+
+	/** World-frame wrench about the body COM for one request at the current pose. */
+	void WorldWrench(const FURLabInteractionWrenchRequest& Request, FVector3d& OutForce,
+		FVector3d& OutTorque)
+	{
+		OutForce = Request.ForceNewton;
+		OutTorque = Request.TorqueNewtonMetre;
+		if (!Request.bBodyFrame && !Request.bHasPoint) return;
+		if (!bKinematicsFresh)
+		{
+			mj_kinematics(ActiveModel, ActiveData);
+			mj_comPos(ActiveModel, ActiveData);
+			bKinematicsFresh = true;
+		}
+		const int32 Body = Request.BodyIndex;
+		const mjtNum* R = ActiveData->xmat + 9 * Body;
+		auto Rotate = [R](const FVector3d& V)
+		{
+			return FVector3d(R[0] * V.X + R[1] * V.Y + R[2] * V.Z,
+				R[3] * V.X + R[4] * V.Y + R[5] * V.Z,
+				R[6] * V.X + R[7] * V.Y + R[8] * V.Z);
+		};
+		if (Request.bBodyFrame)
+		{
+			OutForce = Rotate(OutForce);
+			OutTorque = Rotate(OutTorque);
+		}
+		if (Request.bHasPoint)
+		{
+			const mjtNum* Origin = ActiveData->xpos + 3 * Body;
+			const mjtNum* Com = ActiveData->xipos + 3 * Body;
+			const FVector3d Point = Request.bBodyFrame
+				? FVector3d(Origin[0], Origin[1], Origin[2]) + Rotate(Request.PointMetre)
+				: Request.PointMetre;
+			OutTorque += FVector3d::CrossProduct(
+				Point - FVector3d(Com[0], Com[1], Com[2]), OutForce);
+		}
 	}
 };
 
@@ -85,6 +132,11 @@ bool FMjSimulationInteractionOwner::IssueGrant(FMjSimulationRuntime& Runtime,
 		OutError = TEXT("simulation interaction pose publisher identity is unavailable or stale");
 		return false;
 	}
+	if (!Impl->InputPermitted())
+	{
+		OutError = TEXT("accept_input is not granted");
+		return false;
+	}
 	FURLabInteractionOwnerContext Context;
 	if (!Runtime.AuthorizeInteractionContext(Control, Impl->Source.GetValue(), Context,
 		OutError))
@@ -97,6 +149,7 @@ bool FMjSimulationInteractionOwner::IssueGrant(FMjSimulationRuntime& Runtime,
 
 void FMjSimulationInteractionOwner::RevokeGrant()
 {
+	Impl->LastStepWrenches.Reset();
 	Impl->Inbox.RevokeGrant();
 }
 
@@ -154,14 +207,36 @@ bool FMjSimulationInteractionOwner::ApplyNextStepContribution(
 		FMemory::Memcpy(Added.Values,
 			Impl->ActiveData->xfrc_applied + Request.BodyIndex * 6, sizeof(Added.Values));
 	}
+	FVector3d Force;
+	FVector3d Torque;
+	Impl->WorldWrench(Request, Force, Torque);
+	if (!FMath::IsFinite(Force.X) || !FMath::IsFinite(Force.Y) || !FMath::IsFinite(Force.Z)
+		|| !FMath::IsFinite(Torque.X) || !FMath::IsFinite(Torque.Y) || !FMath::IsFinite(Torque.Z))
+	{
+		OutError = TEXT("interaction wrench is not finite in the world frame");
+		return false;
+	}
 	double* Wrench = Impl->ActiveData->xfrc_applied + Request.BodyIndex * 6;
-	Wrench[0] += Request.ForceNewton.X;
-	Wrench[1] += Request.ForceNewton.Y;
-	Wrench[2] += Request.ForceNewton.Z;
-	Wrench[3] += Request.TorqueNewtonMetre.X;
-	Wrench[4] += Request.TorqueNewtonMetre.Y;
-	Wrench[5] += Request.TorqueNewtonMetre.Z;
-	Impl->ApplicationIds.Add(ApplicationId);
+	Wrench[0] += Force.X;
+	Wrench[1] += Force.Y;
+	Wrench[2] += Force.Z;
+	Wrench[3] += Torque.X;
+	Wrench[4] += Torque.Y;
+	Wrench[5] += Torque.Z;
+	FImpl::FSavedBody* Last = Impl->LastStepWrenches.FindByPredicate(
+		[&](const FImpl::FSavedBody& Item) { return Item.BodyIndex == Request.BodyIndex; });
+	if (!Last)
+	{
+		Last = &Impl->LastStepWrenches.AddDefaulted_GetRef();
+		Last->BodyIndex = Request.BodyIndex;
+	}
+	Last->Values[0] += Force.X;
+	Last->Values[1] += Force.Y;
+	Last->Values[2] += Force.Z;
+	Last->Values[3] += Torque.X;
+	Last->Values[4] += Torque.Y;
+	Last->Values[5] += Torque.Z;
+	Impl->ApplicationIds.AddUnique(ApplicationId);
 	return true;
 }
 
@@ -169,11 +244,14 @@ void FMjSimulationInteractionOwner::BeforeStepLocked(
 	const FURLabInteractionOwnerContext& Context, mjModel_* Model, mjData_* Data)
 {
 	AbortStepLocked();
+	Impl->LastStepWrenches.Reset();
 	Impl->ActiveModel = Model;
 	Impl->ActiveData = Data;
 	FURLabInteractionOwnerContext BoundContext = Context;
 	if (Impl->Source) BoundContext.Source = Impl->Source.GetValue();
+	if (Data) BoundContext.SourceTime = Data->time;
 	Impl->ActiveContext = BoundContext;
+	if (!Impl->InputPermitted()) Impl->Inbox.RevokeGrant();
 	Impl->Inbox.Drain(BoundContext);
 }
 
@@ -197,6 +275,36 @@ void FMjSimulationInteractionOwner::AfterStepLocked(
 
 void FMjSimulationInteractionOwner::AbortStepLocked()
 {
+	if (Impl->ActiveData) Impl->LastStepWrenches.Reset();
 	Impl->Restore();
+	for (uint64 ApplicationId : Impl->ApplicationIds)
+		Impl->Inbox.AbortApplied(ApplicationId, TEXT("authoritative step did not complete"));
 	Impl->ApplicationIds.Reset();
+}
+
+int32 FMjSimulationInteractionOwner::NumHolds() const
+{
+	return Impl->Inbox.NumHolds();
+}
+
+int32 FMjSimulationInteractionOwner::NumGrants() const
+{
+	return Impl->Inbox.NumGrants();
+}
+
+void FMjSimulationInteractionOwner::SetInputPermission(TFunction<bool()> Predicate)
+{
+	Impl->InputPermission = MoveTemp(Predicate);
+}
+
+void FMjSimulationInteractionOwner::OverlayLastStepWrenchesLocked(
+	const mjModel_* Model, mjData_* Scratch) const
+{
+	if (!Model || !Scratch || !Scratch->xfrc_applied) return;
+	for (const FImpl::FSavedBody& Applied : Impl->LastStepWrenches)
+	{
+		if (Applied.BodyIndex < 0 || Applied.BodyIndex >= Model->nbody) continue;
+		double* Wrench = Scratch->xfrc_applied + Applied.BodyIndex * 6;
+		for (int32 Index = 0; Index < 6; ++Index) Wrench[Index] += Applied.Values[Index];
+	}
 }

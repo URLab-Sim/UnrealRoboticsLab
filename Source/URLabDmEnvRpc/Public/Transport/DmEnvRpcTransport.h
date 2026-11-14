@@ -51,7 +51,6 @@ public:
 	virtual bool TransportInit() override;
 	virtual void TransportShutdown() override;
 	virtual FString GetTransportName() const override { return TEXT("dm_env_rpc"); }
-	virtual void AppendHandshakeBlock(TSharedPtr<class FJsonObject>& Reply) const override;
 
 	/** Sets the port the gRPC server binds. The bridge's net config supplies it
 	 *  (via the factory), so the port advertised in the registry is the port

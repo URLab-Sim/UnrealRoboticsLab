@@ -252,7 +252,7 @@ bool FMjRequestEnvelopeProgrammaticValidation::RunTest(const FString& Parameters
 		EURLabWireError::ContainerLimit);
 
 	TArray<uint8> Oversized;
-	Oversized.SetNumZeroed(4 * 1024 * 1024 + 1);
+	Oversized.SetNumZeroed(FURLabWireLimits().MaxInputBytes + 1);
 	FURLabRequestEnvelope Unchanged;
 	Unchanged.RequestId = 918;
 	TestEqual(TEXT("input bound rejects before parsing"),

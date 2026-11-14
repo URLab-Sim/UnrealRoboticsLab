@@ -63,6 +63,11 @@ struct FSha256
 
 	void Transform()
 	{
+		TransformBlock(Block);
+	}
+
+	void TransformBlock(const uint8* InBlock)
+	{
 		static const uint32 K[64] = {
 			0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u,
 			0x923f82a4u, 0xab1c5ed5u, 0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
@@ -79,8 +84,8 @@ struct FSha256
 		uint32 W[64];
 		for (int32 i = 0; i < 16; ++i)
 		{
-			W[i] = (uint32(Block[i * 4]) << 24) | (uint32(Block[i * 4 + 1]) << 16)
-				 | (uint32(Block[i * 4 + 2]) << 8) | uint32(Block[i * 4 + 3]);
+			W[i] = (uint32(InBlock[i * 4]) << 24) | (uint32(InBlock[i * 4 + 1]) << 16)
+				 | (uint32(InBlock[i * 4 + 2]) << 8) | uint32(InBlock[i * 4 + 3]);
 		}
 		for (int32 i = 16; i < 64; ++i)
 		{
@@ -120,15 +125,26 @@ struct FSha256
 
 	void Update(const uint8* Data, int32 Size)
 	{
-		for (int32 i = 0; i < Size; ++i)
+		int32 Offset = 0;
+		if (BlockLen > 0 && BlockLen + Size >= 64)
 		{
-			Block[BlockLen++] = Data[i];
-			if (BlockLen == 64)
-			{
-				Transform();
-				BitLen += 512;
-				BlockLen = 0;
-			}
+			const int32 Fill = 64 - BlockLen;
+			FMemory::Memcpy(Block + BlockLen, Data, Fill);
+			TransformBlock(Block);
+			BitLen += 512;
+			BlockLen = 0;
+			Offset += Fill;
+		}
+		while (Size - Offset >= 64)
+		{
+			TransformBlock(Data + Offset);
+			BitLen += 512;
+			Offset += 64;
+		}
+		if (Offset < Size)
+		{
+			FMemory::Memcpy(Block + BlockLen, Data + Offset, Size - Offset);
+			BlockLen += Size - Offset;
 		}
 	}
 

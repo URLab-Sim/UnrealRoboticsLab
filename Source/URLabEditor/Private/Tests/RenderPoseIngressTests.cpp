@@ -141,6 +141,71 @@ bool FURLabRenderPoseQposTest::RunTest(const FString&)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabRenderPoseQposExtrasTest,
+	"URLab.Workflows.RenderPoseIngress.QposMocapAndUserCamera",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FURLabRenderPoseQposExtrasTest::RunTest(const FString&)
+{
+	using namespace URLabRenderPoseIngressTest;
+	auto Store = MakeShared<FURLabPayloadStore, ESPMode::ThreadSafe>(TEXT("pose-extras"), Limits());
+	FURLabPayloadOwner Owner;
+	if (!Open(*this, *Store, TEXT("pose-extras"), TEXT("owner"), Owner)) return false;
+	FURLabRenderSourceDescription Source = Description(true, 1);
+	Source.MocapCount = 1;
+	FURLabRenderSourceBlobRef Full;
+	if (!Put(*this, *Store, Owner, Doubles({0.5, 1, 2, 3, 1, 0, 0, 0, 4, 5, 6, 1, 0, 0, 0}),
+		{}, Full)) return false;
+	FURLabRenderPoseRequest Request;
+	Request.Kind = EURLabRenderPoseKind::Qpos;
+	Request.Payload = Full;
+	Request.Identity = Identity();
+	Request.bMocap = true;
+	Request.bUserCamera = true;
+	FURLabDecodedRenderPose Pose;
+	FString Error;
+	if (!TestTrue(TEXT("qpos with mocap and user camera decodes"), FURLabRenderPoseIngress::Decode(
+		Store, Owner, Source, Request, Pose, Error))) return false;
+	TestEqual(TEXT("qpos prefix is exact"), Pose.Qpos.Num(), 1);
+	TestEqual(TEXT("mocap follows qpos"), Pose.Mocap.Num(), 7);
+	TestEqual(TEXT("mocap position is RHS metres"), Pose.Mocap[0], 1.0);
+	if (TestTrue(TEXT("user camera pose decodes"), Pose.UserCameraSceneTransform.IsSet()))
+	{
+		const double Position[3] = {4, 5, 6};
+		const double Wxyz[4] = {1, 0, 0, 0};
+		TestTrue(TEXT("user camera uses the optical convention"),
+			Pose.UserCameraSceneTransform->Equals(
+				URLabCoordinateConversion::RightHandedOpticalPoseToUnreal(Position, Wxyz)));
+	}
+
+	Request.bUserCamera = false;
+	TestFalse(TEXT("payload length must match the selected extras"),
+		FURLabRenderPoseIngress::Decode(Store, Owner, Source, Request, Pose, Error));
+	FURLabRenderSourceBlobRef MocapOnly;
+	if (!Put(*this, *Store, Owner, Doubles({0.5, 1, 2, 3, 1, 0, 0, 0}), {}, MocapOnly)) return false;
+	Request.Payload = MocapOnly;
+	TestTrue(TEXT("mocap without user camera decodes"),
+		FURLabRenderPoseIngress::Decode(Store, Owner, Source, Request, Pose, Error));
+	TestFalse(TEXT("mocap-only frame carries no user camera"), Pose.UserCameraSceneTransform.IsSet());
+
+	FURLabRenderSourceBlobRef BadQuat;
+	if (!Put(*this, *Store, Owner, Doubles({0.5, 1, 2, 3, 2, 0, 0, 0}), {}, BadQuat)) return false;
+	Request.Payload = BadQuat;
+	TestFalse(TEXT("non-unit mocap quaternion is rejected"),
+		FURLabRenderPoseIngress::Decode(Store, Owner, Source, Request, Pose, Error));
+
+	FURLabRenderSourceDescription NoUser = Source;
+	NoUser.UserCamera.Reset();
+	Request.Payload = Full;
+	Request.bUserCamera = true;
+	TestFalse(TEXT("user camera extra requires an installed user camera"),
+		FURLabRenderPoseIngress::Decode(Store, Owner, NoUser, Request, Pose, Error));
+	Request.Kind = EURLabRenderPoseKind::Cartesian;
+	TestFalse(TEXT("extras are qpos only"),
+		FURLabRenderPoseIngress::Decode(Store, Owner, Source, Request, Pose, Error));
+	return !HasAnyErrors();
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabRenderPoseCartesianTest,
 	"URLab.Workflows.RenderPoseIngress.CartesianShmValidationAndRollback",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

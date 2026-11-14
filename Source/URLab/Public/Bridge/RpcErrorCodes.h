@@ -16,52 +16,79 @@
 
 #include "CoreMinimal.h"
 
-// Every code a reply can carry in {op:"error", code, message}. There is exactly
-// one error envelope on the wire and exactly one place a code may be spelled, so
-// a client can enumerate the failures it must handle; a code typed out at a call
-// site is invisible to that enumeration and is what let four upload codes and
-// three ownership codes ship undeclared. Nothing here may be dead either: a code
-// nothing raises is a promise to a client that cannot be kept.
+// Error code constants matching wire/urlab_wire.yaml (dispatcher_errors and
+// active message errors). Checked against the handlers by wire/check_emission.py.
 namespace URLabError
 {
-// Dispatcher-level errors
 inline const TCHAR* BadRequest = TEXT("bad_request");
-inline const TCHAR* MissingOp = TEXT("missing_op");
-inline const TCHAR* UnknownOp = TEXT("unknown_op");
-inline const TCHAR* NotInEditor = TEXT("not_in_editor");
-// The two shapes an op can be missing its context in. Split because they are
-// different facts about the instance: a render server HAS a world and will never
-// have a simulation, so telling a client "no manager" when it asked for a light
-// sent it looking for a PIE session that is never coming.
-inline const TCHAR* NoSimulation = TEXT("no_simulation");
-inline const TCHAR* NoWorld = TEXT("no_world");
-inline const TCHAR* SessionExpired = TEXT("session_expired");
-inline const TCHAR* MissingField = TEXT("missing_field");
-inline const TCHAR* NotReady = TEXT("not_ready");
-inline const TCHAR* BadMode = TEXT("bad_mode");
 inline const TCHAR* BadValue = TEXT("bad_value");
-inline const TCHAR* UnknownArticulation = TEXT("unknown_articulation");
-inline const TCHAR* UnknownBody = TEXT("unknown_body");
-inline const TCHAR* NotMocapBody = TEXT("not_mocap_body");
-inline const TCHAR* UnknownKeyframe = TEXT("unknown_keyframe");
-inline const TCHAR* DimMismatch = TEXT("dim_mismatch");
-inline const TCHAR* NoJoints = TEXT("no_joints");
-inline const TCHAR* StepTimeout = TEXT("step_timeout");
-inline const TCHAR* Timeout = TEXT("timeout");
-inline const TCHAR* ReplyTooLarge = TEXT("reply_too_large");
-inline const TCHAR* WrongTransport = TEXT("wrong_transport");
-inline const TCHAR* CapabilityDisabled = TEXT("capability_disabled");
-inline const TCHAR* UnknownJob = TEXT("unknown_job");
-inline const TCHAR* ShuttingDown = TEXT("shutting_down");
-// Control ownership and instance leasing
-inline const TCHAR* NotControlOwner = TEXT("not_control_owner");
-inline const TCHAR* ControlClaimed = TEXT("control_claimed");
+inline const TCHAR* BootMismatch = TEXT("boot_mismatch");
 inline const TCHAR* Busy = TEXT("busy");
-// Content-addressed model upload
+inline const TCHAR* CameraInvalid = TEXT("camera_invalid");
+inline const TCHAR* CapabilityDisabled = TEXT("capability_disabled");
+inline const TCHAR* CaptureInvalid = TEXT("capture_invalid");
+inline const TCHAR* ControlClaimed = TEXT("control_claimed");
+inline const TCHAR* ControlExpired = TEXT("control_expired");
+inline const TCHAR* ControlInvalid = TEXT("control_invalid");
+inline const TCHAR* CounterExhausted = TEXT("counter_exhausted");
+inline const TCHAR* DataNegotiationRequired = TEXT("data_negotiation_required");
+inline const TCHAR* DataSelectionConflict = TEXT("data_selection_conflict");
+inline const TCHAR* DataTransferMismatch = TEXT("data_transfer_mismatch");
+inline const TCHAR* DimMismatch = TEXT("dim_mismatch");
+inline const TCHAR* EditorFailed = TEXT("editor_failed");
+inline const TCHAR* EncodingError = TEXT("encoding_error");
+inline const TCHAR* ForwardingFailed = TEXT("forwarding_failed");
+inline const TCHAR* GrantInvalid = TEXT("grant_invalid");
+inline const TCHAR* HistoryMiss = TEXT("history_miss");
+inline const TCHAR* InvalidState = TEXT("invalid_state");
+inline const TCHAR* InvalidStateMask = TEXT("invalid_state_mask");
+inline const TCHAR* MissingField = TEXT("missing_field");
+inline const TCHAR* ModelNotReady = TEXT("model_not_ready");
+inline const TCHAR* MutationCommittedObservationUnavailable = TEXT("mutation_committed_observation_unavailable");
+inline const TCHAR* NotControlOwner = TEXT("not_control_owner");
+inline const TCHAR* NotInEditor = TEXT("not_in_editor");
+inline const TCHAR* NotReady = TEXT("not_ready");
+inline const TCHAR* OwnerInvalid = TEXT("owner_invalid");
+inline const TCHAR* OwnerUnavailable = TEXT("owner_unavailable");
+inline const TCHAR* PatchInvalid = TEXT("patch_invalid");
+inline const TCHAR* PayloadBackingFailure = TEXT("payload_backing_failure");
+inline const TCHAR* PayloadChunkLimitExceeded = TEXT("payload_chunk_limit_exceeded");
+inline const TCHAR* PayloadChunkTooLarge = TEXT("payload_chunk_too_large");
+inline const TCHAR* PayloadClockInvalid = TEXT("payload_clock_invalid");
+inline const TCHAR* PayloadConfigurationInvalid = TEXT("payload_configuration_invalid");
+inline const TCHAR* PayloadExpired = TEXT("payload_expired");
+inline const TCHAR* PayloadIdentityMismatch = TEXT("payload_identity_mismatch");
+inline const TCHAR* PayloadIncomplete = TEXT("payload_incomplete");
+inline const TCHAR* PayloadIntegrityMismatch = TEXT("payload_integrity_mismatch");
+inline const TCHAR* PayloadNotFound = TEXT("payload_not_found");
+inline const TCHAR* PayloadOutOfBounds = TEXT("payload_out_of_bounds");
+inline const TCHAR* PayloadOverlap = TEXT("payload_overlap");
+inline const TCHAR* PayloadQuotaExceeded = TEXT("payload_quota_exceeded");
 inline const TCHAR* PayloadTooLarge = TEXT("payload_too_large");
-inline const TCHAR* UnknownUpload = TEXT("unknown_upload");
-inline const TCHAR* HashMismatch = TEXT("hash_mismatch");
-inline const TCHAR* ImportFailed = TEXT("import_failed");
-inline const TCHAR* PathNotWritable = TEXT("path_not_writable");
-inline const TCHAR* PathNotReadable = TEXT("path_not_readable");
+inline const TCHAR* RequestCapacity = TEXT("request_capacity");
+inline const TCHAR* RequestIdConflict = TEXT("request_id_conflict");
+inline const TCHAR* RequestRetired = TEXT("request_retired");
+inline const TCHAR* ResultUnavailable = TEXT("result_unavailable");
+inline const TCHAR* RevisionConflict = TEXT("revision_conflict");
+inline const TCHAR* ServerDraining = TEXT("server_draining");
+inline const TCHAR* ServerSchemaError = TEXT("server_schema_error");
+inline const TCHAR* ServiceUnavailable = TEXT("service_unavailable");
+inline const TCHAR* SessionExpired = TEXT("session_expired");
+inline const TCHAR* ShmChallengeExpired = TEXT("shm_challenge_expired");
+inline const TCHAR* ShmChallengeInvalid = TEXT("shm_challenge_invalid");
+inline const TCHAR* ShmUnavailable = TEXT("shm_unavailable");
+inline const TCHAR* ShuttingDown = TEXT("shutting_down");
+inline const TCHAR* SourceInvalid = TEXT("source_invalid");
+inline const TCHAR* SourceRevisionConflict = TEXT("source_revision_conflict");
+inline const TCHAR* StaleModelGeneration = TEXT("stale_model_generation");
+inline const TCHAR* StateUnavailable = TEXT("state_unavailable");
+inline const TCHAR* StreamInvalid = TEXT("stream_invalid");
+inline const TCHAR* StreamUnavailable = TEXT("stream_unavailable");
+inline const TCHAR* Timeout = TEXT("timeout");
+inline const TCHAR* UnknownActuator = TEXT("unknown_actuator");
+inline const TCHAR* UnknownJob = TEXT("unknown_job");
+inline const TCHAR* UnknownOp = TEXT("unknown_op");
+inline const TCHAR* Unsupported = TEXT("unsupported");
+inline const TCHAR* WrongClockMode = TEXT("wrong_clock_mode");
+inline const TCHAR* WrongTransport = TEXT("wrong_transport");
 } // namespace URLabError

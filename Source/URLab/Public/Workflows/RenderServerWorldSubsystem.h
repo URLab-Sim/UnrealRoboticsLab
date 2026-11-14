@@ -10,6 +10,7 @@
 
 class FMjRenderKinematics;
 class FMjRenderKinematicsCandidate;
+struct FMjRenderQposExtras;
 class FURLabCameraStreamController;
 class UURLabRenderServerWorldSubsystem;
 struct FURLabRenderWorldServiceBinding;
@@ -56,6 +57,7 @@ struct URLAB_API FURLabRenderSourceDescription
 	TOptional<FRenderCameraEffectiveConfiguration> UserCamera;
 	bool bSupportsQpos = false;
 	int32 QposWidth = 0;
+	int32 MocapCount = 0;
 };
 
 /** Explicit, world-scoped render-request owner/source workflow. */
@@ -113,7 +115,7 @@ public:
 	FURLabRenderFramePublicationResult PublishQpos(
 		const FURLabRenderOwnerProof& Proof, const FString& ExpectedRevision,
 		TConstArrayView<double> Qpos, uint64 FrameId, double SourceTime,
-		bool bHasSourceTime, uint64 ClockEpoch);
+		bool bHasSourceTime, uint64 ClockEpoch, const FMjRenderQposExtras* Extras = nullptr);
 	bool PlanCapture(const FURLabRenderOwnerProof& Proof,
 		const FString& ExpectedRevision, const TArray<FString>& CameraNames,
 		FURLabRenderExactCapturePlan& OutPlan, FString& OutError);
@@ -138,7 +140,7 @@ public:
 		bool bHasSourceTime, uint64 ClockEpoch, FURLabRenderExactCapturePlan Plan,
 		FRenderCameraCaptureLifetimeLeasePtr PixelLease,
 		FRenderCameraCaptureLifetimeLeasePtr ResultLease,
-		double TimeoutSeconds = 0.0);
+		double TimeoutSeconds = 0.0, const FMjRenderQposExtras* Extras = nullptr);
 	FURLabRenderServerCaptureAdmission QueryCaptureHistory(
 		const FURLabRenderOwnerProof& Proof, const FURLabRenderHistoryQuery& Query,
 		FRenderCameraCaptureLifetimeLeasePtr ResultLease);
@@ -186,6 +188,10 @@ private:
 	bool ValidateMutation(const FURLabRenderOwnerProof& Proof,
 		const FString& ExpectedRevision, FString& OutError);
 	bool IsBoundOwner(const FURLabRenderOwnerProof& Proof) const;
+	/** Revision an install replaces. An owner with no bound source may pass an
+	 *  empty revision to replace whatever scene a retired owner left active. */
+	FString InstallBaseRevision(const FURLabRenderOwnerProof& Proof,
+		const FString& ExpectedRevision) const;
 	bool ValidateJobOwner(const FURLabRenderOwnerProof& Proof,
 		const FURLabRenderServerCaptureHandle& Handle,
 		FCaptureJobRecord*& OutRecord, FString& OutError);

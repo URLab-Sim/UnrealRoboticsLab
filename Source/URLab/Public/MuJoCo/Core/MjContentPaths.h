@@ -24,6 +24,10 @@ namespace URLabContent
 // --- materials -----------------------------------------------------------
 /** Master material every imported geom instances. Missing => default lighting. */
 URLAB_API extern const TCHAR* const MasterMaterial;
+/** Translucent master material for geoms with opacity < 1 or opacity/rgba textures. */
+URLAB_API extern const TCHAR* const TranslucentMasterMaterial;
+/** Neutral 1x1 linear white fallback texture for unbound material texture slots. */
+URLAB_API extern const TCHAR* const NeutralLinearWhiteTexture;
 /** Translucent per-instance-colour parent for overlay meshes. Missing => opaque overlays. */
 URLAB_API extern const TCHAR* const OverlayMaterial;
 /** Sky-dome material. Missing => no dome is drawn. */

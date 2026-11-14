@@ -637,6 +637,10 @@ bool FMjSimulationRuntime::CaptureRenderFrame(FMjRenderSceneAdapter& Adapter,
 	mj_comPos(Model, Scratch);
 	mj_camlight(Model, Scratch);
 	mj_flex(Model, Scratch);
+	if (InteractionOwner)
+	{
+		InteractionOwner->OverlayLastStepWrenchesLocked(Model, Scratch);
+	}
 	FRenderFrame Candidate;
 	if (!Adapter.FrameFromData(Scratch, FrameId, Candidate, OutError))
 		return false;

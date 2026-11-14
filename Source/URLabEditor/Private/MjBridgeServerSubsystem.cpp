@@ -7,6 +7,7 @@
 
 #include "Bridge/BridgeServerConfigUtils.h"
 #include "URLabEditorLogging.h"
+#include "CoreGlobals.h"
 
 void UURLabBridgeServerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -17,6 +18,16 @@ void UURLabBridgeServerSubsystem::Initialize(FSubsystemCollectionBase& Collectio
 		TEXT("[BridgeServer] config: AutoStart=%s StepPort=%d StatePort=%d"),
 		Config.bAutoStart ? TEXT("true") : TEXT("false"),
 		Config.StepPort, Config.StatePort);
+
+	// Commandlets (cook, -run=pythonscript, resave, ...) are batch jobs with no
+	// interactive session to serve. Binding here would make them fight a running
+	// editor or packaged server for the same ports and fail the whole job.
+	if (IsRunningCommandlet())
+	{
+		UE_LOG(LogURLabEditor, Log,
+			TEXT("[BridgeServer] not auto-starting: running a commandlet"));
+		return;
+	}
 
 	if (Config.bAutoStart)
 	{

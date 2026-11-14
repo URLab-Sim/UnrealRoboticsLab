@@ -163,7 +163,7 @@ bool FURLabRpcDispatcher::DispatchBytes(TConstArrayView<uint8> RequestBytes,
 	if (IsDraining())
 		return ReplyError(TEXT("server_draining"), TEXT("Bridge server is shutting down"), EURLabExecution::Unknown);
 	if (Request.BootId != BootId)
-		return ReplyError(TEXT("outcome_unknown"), TEXT("Request boot does not match this process"), EURLabExecution::Unknown);
+		return ReplyError(TEXT("boot_mismatch"), TEXT("Request boot does not match this process; reconnect"), EURLabExecution::Unknown);
 	TSharedPtr<FURLabRequestLedger::FSession, ESPMode::ThreadSafe> Session;
 	TSharedPtr<FMjSimulationControlSessionLifetime, ESPMode::ThreadSafe> ControlSession;
 	FURLabRenderOwnerSessionScopePtr RenderOwnerScope;
@@ -172,7 +172,7 @@ bool FURLabRpcDispatcher::DispatchBytes(TConstArrayView<uint8> RequestBytes,
 	FURLabDataSessionPtr DataSession;
 	if (!FindAndTouchSession(Request.SessionId, Adapter, Session, ControlSession, RenderOwnerScope, ViewerOwnerScope,
 		PayloadSession, DataSession))
-		return ReplyError(TEXT("outcome_unknown"), TEXT("Session is unavailable on this command adapter"), EURLabExecution::Unknown);
+		return ReplyError(TEXT("session_expired"), TEXT("Session is unknown or expired on this command adapter; reconnect"), EURLabExecution::Unknown);
 	if (Request.Op != TEXT("data_select") && !DataSession->IsSelected())
 		return ReplyError(TEXT("data_negotiation_required"),
 			TEXT("Complete data-plane selection before issuing commands"),

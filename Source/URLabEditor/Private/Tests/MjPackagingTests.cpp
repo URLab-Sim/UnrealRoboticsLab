@@ -14,16 +14,24 @@
 //
 // --- LEGAL DISCLAIMER ---
 // UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
-// trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
+// endorsed by, or sponsored by Epic Games, Inc.
 //
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "MuJoCo/Capture/MjCameraFrameBus.h"
+// The MJZ archive decoder ships inside libmujoco, so module startup must find it
+// registered whenever the bundled runtime is the one loaded.
 
-FMjCameraFrameBus& FMjCameraFrameBus::Get()
+#include "CoreMinimal.h"
+#include "Misc/AutomationTest.h"
+#include "URLab.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjMjzDecoderAvailable,
+	"URLab.Packaging.MjzDecoderAvailable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjMjzDecoderAvailable::RunTest(const FString& Parameters)
 {
-	static FMjCameraFrameBus Instance;
-	return Instance;
+	TestTrue(TEXT("module startup found the MJZ decoder in the linked MuJoCo"), FURLabModule::HasMjzDecoder());
+	return true;
 }

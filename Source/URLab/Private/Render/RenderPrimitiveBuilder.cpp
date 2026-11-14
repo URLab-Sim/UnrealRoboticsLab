@@ -31,7 +31,8 @@ UStaticMesh* LoadBasic(const TCHAR* Path)
 	return LoadObject<UStaticMesh>(nullptr, Path);
 }
 
-UStaticMeshComponent* MakePrimitivePart(AActor* Body, UStaticMesh* Mesh, const FVector& Scale)
+UStaticMeshComponent* MakePrimitivePart(AActor* Body, UStaticMesh* Mesh, const FVector& Scale,
+	bool bAllowDistanceFields)
 {
 	if (!Body || !Body->GetRootComponent() || !Mesh)
 	{
@@ -45,7 +46,17 @@ UStaticMeshComponent* MakePrimitivePart(AActor* Body, UStaticMesh* Mesh, const F
 	Component->SetStaticMesh(Mesh);
 	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Component->SetRelativeScale3D(Scale);
-	DisableDistanceFields(Component);
+	Component->bAffectDynamicIndirectLighting = true;
+	Component->bAffectIndirectLightingWhileHidden = true;
+	Component->bVisibleInRayTracing = true;
+	if (!bAllowDistanceFields || FMath::Abs(Scale.X * Scale.Y * Scale.Z) < 1.0e-3)
+	{
+		DisableDistanceFields(Component);
+	}
+	else
+	{
+		Component->SetAffectDistanceFieldLighting(true);
+	}
 	Component->RegisterComponent();
 	Component->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 	return Component;
@@ -65,6 +76,7 @@ UPrimitiveComponent* BuildNeutralPrimitive(const FRenderGeomDesc& Geom, AActor* 
 	const TCHAR* MeshPath = nullptr;
 	FVector Scale = FVector::OneVector;
 	bool bCapsuleWithShaft = false;
+	bool bAllowDistanceFields = true;
 
 	switch (Geom.Kind)
 	{
@@ -74,6 +86,7 @@ UPrimitiveComponent* BuildNeutralPrimitive(const FRenderGeomDesc& Geom, AActor* 
 				return nullptr;
 			}
 			MeshPath = kBasicPlane;
+			bAllowDistanceFields = false;
 			Scale = FVector((Geom.SizeCm.X > 0.0 ? Geom.SizeCm.X : kInfinitePlaneHalfCm)
 					* kSizeCmToBasicShapeScale,
 				(Geom.SizeCm.Y > 0.0 ? Geom.SizeCm.Y : kInfinitePlaneHalfCm)
@@ -119,7 +132,8 @@ UPrimitiveComponent* BuildNeutralPrimitive(const FRenderGeomDesc& Geom, AActor* 
 			return nullptr;
 	}
 
-	UStaticMeshComponent* Component = MakePrimitivePart(Body, LoadBasic(MeshPath), Scale);
+	UStaticMeshComponent* Component = MakePrimitivePart(
+		Body, LoadBasic(MeshPath), Scale, bAllowDistanceFields);
 	if (!Component)
 	{
 		return nullptr;
@@ -144,7 +158,17 @@ UPrimitiveComponent* BuildNeutralPrimitive(const FRenderGeomDesc& Geom, AActor* 
 			Cap->SetStaticMesh(SphereMesh);
 			Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			Cap->SetRelativeScale3D(CapScale);
-			DisableDistanceFields(Cap);
+			Cap->bAffectDynamicIndirectLighting = true;
+			Cap->bAffectIndirectLightingWhileHidden = true;
+			Cap->bVisibleInRayTracing = true;
+			if (FMath::Abs(Scale.X * Scale.Y * Scale.Z * CapScale.Z) < 1.0e-3)
+			{
+				DisableDistanceFields(Cap);
+			}
+			else
+			{
+				Cap->SetAffectDistanceFieldLighting(true);
+			}
 			Cap->RegisterComponent();
 			Cap->AttachToComponent(Component, FAttachmentTransformRules::KeepRelativeTransform);
 			Cap->SetRelativeLocation(FVector(0.0, 0.0, CapZ));

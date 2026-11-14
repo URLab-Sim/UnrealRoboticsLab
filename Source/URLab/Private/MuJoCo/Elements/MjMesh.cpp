@@ -75,7 +75,7 @@ bool UMjMesh::DumpAssetToFile(const FString& BaseDirectory, const FString& Outpu
 	bool bHasMissingCornerNormal = false;
 	for (const FPolygonID PolygonId : Description->Polygons().GetElementIDs())
 	{
-		for (const FTriangleID TriangleId : Description->GetPolygonTriangleIDs(PolygonId))
+		for (const FTriangleID TriangleId : Description->GetPolygonTriangles(PolygonId))
 		{
 			const TArrayView<const FVertexInstanceID> Instances =
 				Description->GetTriangleVertexInstances(TriangleId);

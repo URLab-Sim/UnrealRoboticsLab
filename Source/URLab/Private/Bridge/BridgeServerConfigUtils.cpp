@@ -12,6 +12,7 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "HAL/PlatformProcess.h"
 
 namespace URLabBridgeServerConfigUtils
 {
@@ -91,6 +92,21 @@ void DerivePorts(FURLabBridgeServerConfig& Cfg,
 
 	if (Cfg.InstanceId.IsEmpty() && Cfg.InstanceIndex >= 0)
 		Cfg.InstanceId = FString::Printf(TEXT("instance_%d"), Cfg.InstanceIndex);
+}
+
+FString ResolveDialHost(const FURLabBridgeServerConfig& Cfg)
+{
+	const FString Bind = Cfg.BindAddress.TrimStartAndEnd();
+	if (Bind.IsEmpty() || Bind == TEXT("0.0.0.0") || Bind == TEXT("::") || Bind == TEXT("[::]")
+		|| Bind == TEXT("*"))
+	{
+		return FPlatformProcess::ComputerName();
+	}
+	if (Bind.Contains(TEXT(":")) && !Bind.StartsWith(TEXT("[")))
+	{
+		return FString::Printf(TEXT("[%s]"), *Bind);
+	}
+	return Bind;
 }
 
 FString BuildCameraEndpoint(const FURLabBridgeServerConfig& Cfg, int32 CameraIndex)

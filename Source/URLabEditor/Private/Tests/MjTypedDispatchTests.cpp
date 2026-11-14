@@ -82,8 +82,9 @@ bool FURLabTypedDispatchProductionBytes::RunTest(const FString&)
 	Transport->SetOwningBridge(Server);
 	FURLabConnectReply Connection;
 	TestTrue(TEXT("strict connect uses production byte path"), Connect(Transport, Connection));
-	TestEqual(TEXT("model-free connection advertises only data"), Connection.Services.Num(), 1);
 	TestTrue(TEXT("model-free data service is advertised"), Connection.Services.Contains(TEXT("data")));
+	TestFalse(TEXT("model-free connection advertises no simulation"), Connection.Services.Contains(TEXT("simulation")));
+	TestFalse(TEXT("model-free connection advertises no render"), Connection.Services.Contains(TEXT("render")));
 
 	FURLabRequestEnvelope Request = RequestFor(Connection, 1, TEXT("simulation_observe"));
 	TArray<uint8> Bytes, First, Duplicate;
@@ -115,6 +116,16 @@ bool FURLabTypedDispatchProductionBytes::RunTest(const FString&)
 	FURLabReplyEnvelope ClosedReply;
 	TestTrue(TEXT("closed reply decodes"), FURLabRequestEnvelopeCodec::DecodeReply(ClosedReplyBytes, ClosedReply).IsOk());
 	TestEqual(TEXT("closed session cannot imply non-execution"), ClosedReply.Error.Execution, EURLabExecution::Unknown);
+	TestEqual(TEXT("closed session reports session_expired"), ClosedReply.Error.Code, FString(TEXT("session_expired")));
+	FURLabRequestEnvelope Restarted = RequestFor(Connection, 2, TEXT("simulation_observe"));
+	Restarted.BootId = TEXT("boot-from-an-earlier-process");
+	TArray<uint8> RestartedBytes, RestartedReplyBytes;
+	TestTrue(TEXT("encode foreign boot envelope"), FURLabRequestEnvelopeCodec::Encode(Restarted, RestartedBytes).IsOk());
+	Transport->ProcessRequestBytes(RestartedBytes, RestartedReplyBytes);
+	FURLabReplyEnvelope RestartedReply;
+	TestTrue(TEXT("foreign boot reply decodes"), FURLabRequestEnvelopeCodec::DecodeReply(RestartedReplyBytes, RestartedReply).IsOk());
+	TestEqual(TEXT("foreign boot reports boot_mismatch"), RestartedReply.Error.Code, FString(TEXT("boot_mismatch")));
+	TestEqual(TEXT("foreign boot cannot imply non-execution"), RestartedReply.Error.Execution, EURLabExecution::Unknown);
 	Server->Stop();
 	return true;
 }

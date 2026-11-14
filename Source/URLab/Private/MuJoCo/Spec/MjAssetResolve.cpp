@@ -409,6 +409,11 @@ UMaterialInterface* MjLoadMasterMaterial()
 	return LoadRenderMasterMaterial();
 }
 
+UMaterialInterface* MjLoadTranslucentMasterMaterial()
+{
+	return LoadRenderTranslucentMasterMaterial();
+}
+
 bool MjResolveMaterial(const FSpecRef& Spec, const FString& Name, FMjMaterialValues& Out)
 {
 	Out = FMjMaterialValues();

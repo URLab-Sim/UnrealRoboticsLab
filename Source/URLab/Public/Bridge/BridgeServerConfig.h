@@ -58,10 +58,12 @@ struct URLAB_API FURLabBridgeServerConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
 	int32 CamBasePort = 0;
 
-	/** Interface the RPC, state, and camera sockets bind. Default 0.0.0.0 so
-	 *  remote clients can connect; pin a NIC or loopback to restrict reach. */
+	/** Interface the RPC, state, and camera sockets bind. Loopback by default:
+	 *  the bridge has no authentication and grants model loads, so serving other
+	 *  hosts is opt-in through -URLabNet=bind=0.0.0.0 (or a NIC address), the
+	 *  URLAB_BIND_ADDRESS environment variable, or BindAddress in the INI. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
-	FString BindAddress = TEXT("0.0.0.0");
+	FString BindAddress = TEXT("127.0.0.1");
 
 	/** Owner-side render broadcast: when true, an owner binds a PUB on
 	 *  RenderBusPort and publishes the render frame each step so consumers can

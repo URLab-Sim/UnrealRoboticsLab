@@ -17,6 +17,7 @@
 #include "Bridge/BridgeServerConfig.h"
 #include "Transport/ZmqContext.h"
 #include "Wire/RequestEnvelope.h"
+#include "Bridge/RequestLedger.h"
 #include "Wire/UrlabWire.gen.h"
 #include "Engine/Engine.h"
 #include "Utils/URLabLogging.h"
@@ -27,7 +28,7 @@
 
 namespace
 {
-constexpr int64 MaxCommandEnvelopeBytes = 4 * 1024 * 1024;
+constexpr int64 MaxCommandEnvelopeBytes = 64 * 1024 * 1024;
 
 bool IsCommandEnvelopeSizeAllowed(size_t Size)
 {
@@ -85,6 +86,16 @@ bool UURLabZmqRpcTransport::CreateAndBindRep()
 		zmq_close(ZmqRep);
 		ZmqRep = nullptr;
 		return false;
+	}
+	// Record the address libzmq actually bound. A wildcard port (tcp://host:*)
+	// binds an ephemeral port, and the advertised command endpoint must name that
+	// port rather than the '*' it was requested with.
+	char LastEndpoint[256] = {};
+	size_t LastEndpointSize = sizeof(LastEndpoint);
+	if (zmq_getsockopt(ZmqRep, ZMQ_LAST_ENDPOINT, LastEndpoint, &LastEndpointSize) == 0
+		&& LastEndpoint[0] != '\0')
+	{
+		BoundEndpoint = UTF8_TO_TCHAR(LastEndpoint);
 	}
 	return true;
 }
@@ -154,6 +165,7 @@ void UURLabZmqRpcTransport::RunPollLoop()
 
 		const size_t WireSize = zmq_msg_size(&Msg);
 		TArray<uint8> OutBytes;
+		FURLabSharedReplySink::FBytesPtr SharedReply;
 		if (!IsCommandEnvelopeSizeAllowed(WireSize))
 		{
 			// ZMQ_MAXMSGSIZE should reject this before delivery. Keep the
@@ -172,13 +184,23 @@ void UURLabZmqRpcTransport::RunPollLoop()
 			{
 				FMemory::Memcpy(InBytes.GetData(), zmq_msg_data(&Msg), Size);
 			}
-			// Wire detect / parse / dispatch / encode all live on the base.
-			ProcessRequestBytes(InBytes, OutBytes);
+			// Wire detect / parse / dispatch / encode all live on the base. A
+			// large retained reply is handed over as shared ledger storage so it
+			// is sent without another 38 MB copy.
+			const double TProcStart = FPlatformTime::Seconds();
+			{
+				FURLabSharedReplySink::FScope ReplyScope;
+				ProcessRequestBytes(InBytes, OutBytes);
+				SharedReply = FURLabSharedReplySink::Take();
+			}
+			LastProcessSeconds = FPlatformTime::Seconds() - TProcStart;
 		}
 		zmq_msg_close(&Msg);
 
-		if (OutBytes.Num() > URLabWire::Limits::MaxInlineReplyBytes)
+		const int64 ReplySize = SharedReply.IsValid() ? SharedReply->Num() : OutBytes.Num();
+		if (ReplySize > URLabWire::Limits::MaxInlineReplyBytes)
 		{
+			SharedReply.Reset();
 			FURLabRequestEnvelopeCodec::EncodeProtocolError(
 				{TEXT("reply_too_large"), TEXT("Command reply exceeds the inline terminal-reply limit")},
 				OutBytes);
@@ -192,15 +214,54 @@ void UURLabZmqRpcTransport::RunPollLoop()
 		// socket to reset the state machine instead of busy-spinning.
 		constexpr int MaxSendAttempts = 3;
 		bool bSent = false;
-		for (int Attempt = 0; Attempt < MaxSendAttempts && !bStop.load(std::memory_order_acquire); ++Attempt)
+		const double TSendStart = FPlatformTime::Seconds();
+		if (SharedReply.IsValid())
 		{
-			if (zmq_send(ZmqRep, OutBytes.GetData(), OutBytes.Num(), 0) >= 0)
+			// Zero-copy: libzmq frees the message by dropping our reference to the
+			// immutable ledger storage once the bytes have left the socket.
+			using FHolder = FURLabSharedReplySink::FBytesPtr;
+			zmq_msg_t Reply;
+			FHolder* Holder = new FHolder(SharedReply);
+			const int InitRc = zmq_msg_init_data(&Reply,
+				const_cast<uint8*>(SharedReply->GetData()), SharedReply->Num(),
+				[](void*, void* Hint) { delete static_cast<FHolder*>(Hint); }, Holder);
+			if (InitRc != 0)
 			{
-				bSent = true;
-				break;
+				delete Holder;
 			}
-			if (zmq_errno() != EAGAIN)
-				break; // hard error; rebuild rather than keep retrying
+			else
+			{
+				for (int Attempt = 0; Attempt < MaxSendAttempts && !bStop.load(std::memory_order_acquire); ++Attempt)
+				{
+					if (zmq_msg_send(&Reply, ZmqRep, 0) >= 0)
+					{
+						bSent = true;
+						break;
+					}
+					if (zmq_errno() != EAGAIN)
+						break;
+				}
+				if (!bSent) zmq_msg_close(&Reply);
+			}
+		}
+		else
+		{
+			for (int Attempt = 0; Attempt < MaxSendAttempts && !bStop.load(std::memory_order_acquire); ++Attempt)
+			{
+				if (zmq_send(ZmqRep, OutBytes.GetData(), OutBytes.Num(), 0) >= 0)
+				{
+					bSent = true;
+					break;
+				}
+				if (zmq_errno() != EAGAIN)
+					break; // hard error; rebuild rather than keep retrying
+			}
+		}
+		if (ReplySize > 1024 * 1024)
+		{
+			UE_LOG(LogURLabNet, Verbose, TEXT("[RenderPerf] zmq reply bytes=%lld shared=%d process=%.2fms zmq_send=%.2fms"),
+				ReplySize, SharedReply.IsValid() ? 1 : 0, LastProcessSeconds * 1000.0,
+				(FPlatformTime::Seconds() - TSendStart) * 1000.0);
 		}
 		if (!bSent && !bStop.load(std::memory_order_acquire))
 		{

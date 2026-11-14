@@ -4,6 +4,7 @@
 // you may not use this file except in compliance with the License.
 
 #include "Bridge/BridgeServer.h"
+#include "Bridge/GameThreadCommandQueue.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/InstanceRegistry.h"
 #include "Bridge/BridgeServerConfigUtils.h"
@@ -11,17 +12,108 @@
 #include "Transport/RpcTransport.h"
 #include "Transport/MjExternalTransportProvider.h"
 #include "Utils/URLabLogging.h"
+#include "Features/IModularFeatures.h"
+#include "HAL/Event.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "Engine/Engine.h"
+#include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Guid.h"
 #include "HAL/PlatformTime.h"
+#include "Performance/MaxTickRateHandlerModule.h"
 
 namespace
 {
+class FURLabMaxTickRateHandler final : public IMaxTickRateHandlerModule
+{
+public:
+	virtual void Initialize() override {}
+	virtual void SetEnabled(bool bInEnabled) override { bEnabled = bInEnabled; }
+	virtual bool GetEnabled() override { return bEnabled; }
+	virtual bool GetAvailable() override { return true; }
+	virtual void SetFlags(uint32 InFlags) override { Flags = InFlags; }
+	virtual uint32 GetFlags() override { return Flags; }
+
+	void AcquireRef()
+	{
+		check(IsInGameThread());
+		if (ActiveServerCount++ == 0)
+		{
+			bEnabled = true;
+			IModularFeatures::Get().RegisterModularFeature(
+				IMaxTickRateHandlerModule::GetModularFeatureName(), this);
+		}
+	}
+
+	void ReleaseRef()
+	{
+		check(IsInGameThread());
+		if (ActiveServerCount > 0 && --ActiveServerCount == 0)
+		{
+			bEnabled = false;
+			IModularFeatures::Get().UnregisterModularFeature(
+				IMaxTickRateHandlerModule::GetModularFeatureName(), this);
+		}
+	}
+
+	virtual bool HandleMaxTickRate(float DesiredMaxTickRate) override
+	{
+		if (!bEnabled)
+		{
+			return false;
+		}
+		FURLabGameThreadCommandQueue::DrainAllOnGameThread();
+		if (DesiredMaxTickRate <= 0.0f)
+		{
+			return false;
+		}
+		const double StartTime = FApp::GetCurrentTime();
+		const double DeltaRealTime = FMath::Max(0.0, StartTime - FApp::GetLastTime());
+		const double WaitTime = (1.0 / static_cast<double>(DesiredMaxTickRate)) - DeltaRealTime;
+		if (WaitTime <= 0.0)
+		{
+			return true;
+		}
+		const double HardCapEndTime = StartTime + 0.050;
+		double WaitEndTime = StartTime + WaitTime;
+		for (;;)
+		{
+			if (FURLabGameThreadCommandQueue::DrainAllOnGameThread())
+			{
+				WaitEndTime = FMath::Min(HardCapEndTime,
+					FMath::Max(WaitEndTime, FPlatformTime::Seconds() + 0.003));
+			}
+			const double Now = FPlatformTime::Seconds();
+			const double Remaining = WaitEndTime - Now;
+			if (Remaining <= 0.0)
+			{
+				break;
+			}
+			if (FEvent* WakeEvent = FURLabGameThreadCommandQueue::GetWakeEvent())
+			{
+				const uint32 WaitMs = static_cast<uint32>(
+					FMath::Clamp(FMath::CeilToInt(Remaining * 1000.0), 1, 4));
+				WakeEvent->Wait(WaitMs);
+			}
+			else
+			{
+				FPlatformProcess::SleepNoStats(static_cast<float>(FMath::Min(Remaining, 0.001)));
+			}
+		}
+		FURLabGameThreadCommandQueue::DrainAllOnGameThread();
+		return true;
+	}
+
+private:
+	int32 ActiveServerCount = 0;
+	bool bEnabled = false;
+	uint32 Flags = 0;
+};
+
+FURLabMaxTickRateHandler GURLabMaxTickRateHandler;
 /** The dialable dm_env_rpc endpoint this instance should advertise, or empty
  *  when it has none. Presence is decided by a BOUND transport, never by the
  *  configured port: DmEnvPort defaults to the well-known 50051, so keying the
@@ -34,17 +126,17 @@ namespace
  *  so the advertised port is the bound one. Carries a scheme: a scheme-less
  *  host:port is routed to ZMQ by the client transport factory. */
 FString ResolveAdvertisedGrpcEndpoint(
-	const TArray<TObjectPtr<UURLabRpcTransport>>& Transports, int32 DmEnvPort)
+	const TArray<TObjectPtr<UURLabRpcTransport>>& Transports, const FURLabBridgeServerConfig& Cfg)
 {
-	if (DmEnvPort <= 0)
+	if (Cfg.DmEnvPort <= 0)
 		return FString();
 
 	for (const TObjectPtr<UURLabRpcTransport>& T : Transports)
 	{
-		if (T && T->GetTransportName() == TEXT("dm_env_rpc"))
+		if (T && T->GetTransportName() == URLabBridgeTransportNames::Grpc)
 		{
 			return FString::Printf(TEXT("grpc://%s:%d"),
-				FPlatformProcess::ComputerName(), DmEnvPort);
+				*URLabBridgeServerConfigUtils::ResolveDialHost(Cfg), Cfg.DmEnvPort);
 		}
 	}
 	return FString();
@@ -112,7 +204,7 @@ FString UURLabBridgeServer::NormalizeBoundCommandEndpoint(
 void UURLabBridgeServer::RefreshCommandEndpointSnapshot()
 {
 	TArray<FString> Updated;
-	const FString DialHost = FPlatformProcess::ComputerName();
+	const FString DialHost = URLabBridgeServerConfigUtils::ResolveDialHost(InstanceConfig);
 	for (const TObjectPtr<UURLabRpcTransport>& Transport : RpcTransports)
 	{
 		if (const UURLabZmqRpcTransport* Zmq = Cast<UURLabZmqRpcTransport>(Transport))
@@ -124,7 +216,7 @@ void UURLabBridgeServer::RefreshCommandEndpointSnapshot()
 			Updated.AddUnique(Endpoint);
 		}
 	}
-	const FString Grpc = ResolveAdvertisedGrpcEndpoint(RpcTransports, InstanceConfig.DmEnvPort);
+	const FString Grpc = ResolveAdvertisedGrpcEndpoint(RpcTransports, InstanceConfig);
 	if (!Grpc.IsEmpty())
 	{
 		Updated.AddUnique(Grpc);
@@ -160,7 +252,8 @@ void UURLabBridgeServer::ApplyPerformanceOverrides()
 #if WITH_EDITOR
 	Override(TEXT("r.VSyncEditor"), TEXT("r.VSyncEditor 0"), SavedVSyncEditor, bHadVSyncEditor);
 #endif
-	Override(TEXT("t.MaxFPS"), TEXT("t.MaxFPS 240"), SavedMaxFPS, bHadMaxFPS);
+	Override(TEXT("t.MaxFPS"), GIsEditor ? TEXT("t.MaxFPS 120") : TEXT("t.MaxFPS 60"),
+		SavedMaxFPS, bHadMaxFPS);
 
 	// Keep rendering when the editor is not the foreground window. Without this
 	// Slate throttles the whole app to a few FPS in the background, which starves
@@ -171,16 +264,18 @@ void UURLabBridgeServer::ApplyPerformanceOverrides()
 	Override(TEXT("t.IdleWhenNotForeground"), TEXT("t.IdleWhenNotForeground 0"),
 		SavedIdleWhenNotForeground, bHadIdleWhenNotForeground);
 
+	GURLabMaxTickRateHandler.AcquireRef();
 	bPacingOverridden = true;
 	UE_LOG(LogURLabNet, Log,
-		TEXT("UURLabBridgeServer: disabled editor frame pacing + background throttling "
-			 "while serving (VSync off, MaxFPS 240, Slate throttling off)"));
+		TEXT("UURLabBridgeServer: disabled editor frame pacing + registered event-driven command wake handler"));
 }
 
 void UURLabBridgeServer::RestorePerformanceOverrides()
 {
 	if (!bPacingOverridden || !GEngine)
 		return;
+
+	GURLabMaxTickRateHandler.ReleaseRef();
 
 	auto Restore = [](const TCHAR* Name, float Value, bool bHad) {
 		if (bHad)
@@ -262,7 +357,7 @@ void UURLabBridgeServer::WriteRegistryEntry()
 	// grants at all and could not satisfy a pool filter.
 	CollectGrantTokens(Live.GrantTokens);
 
-	Live.GrpcEndpoint = ResolveAdvertisedGrpcEndpoint(RpcTransports, InstanceConfig.DmEnvPort);
+	Live.GrpcEndpoint = ResolveAdvertisedGrpcEndpoint(RpcTransports, InstanceConfig);
 
 	FURLabInstanceRegistry::WriteEntry(InstanceConfig, Live);
 }
@@ -310,6 +405,39 @@ bool UURLabBridgeServer::EnsureZmqBound(const FString& Endpoint)
 	ApplyPerformanceOverrides();
 	UE_LOG(LogURLabNet, Log,
 		TEXT("UURLabBridgeServer: ZMQ REP bound at %s"), *Endpoint);
+	return true;
+}
+
+bool UURLabBridgeServer::HasRpcTransportNamed(const FString& Name) const
+{
+	for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
+	{
+		if (T && T->GetTransportName() == Name)
+			return true;
+	}
+	return false;
+}
+
+bool UURLabBridgeServer::VerifyCommandTransportsBound(FString& OutError) const
+{
+	OutError.Reset();
+	if (!HasRpcTransportNamed(URLabBridgeTransportNames::Zmq))
+	{
+		OutError = FString::Printf(TEXT("ZMQ command socket did not bind tcp://%s:%d"),
+			*InstanceConfig.BindAddress, InstanceConfig.StepPort);
+		return false;
+	}
+	const bool bGrpcAvailable = FMjExternalTransportProvider::ControlRpcTransportFactories.ContainsByPredicate(
+		[](const FMjExternalRpcTransportFactory& Reg)
+		{
+			return Reg.Factory.IsBound() && Reg.TransportName.ToString() == URLabBridgeTransportNames::Grpc;
+		});
+	if (bGrpcAvailable && InstanceConfig.DmEnvPort > 0 && !HasRpcTransportNamed(URLabBridgeTransportNames::Grpc))
+	{
+		OutError = FString::Printf(TEXT("gRPC command server did not bind %s:%d"),
+			*InstanceConfig.BindAddress, InstanceConfig.DmEnvPort);
+		return false;
+	}
 	return true;
 }
 

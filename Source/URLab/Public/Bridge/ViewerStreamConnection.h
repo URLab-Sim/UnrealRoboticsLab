@@ -22,7 +22,12 @@ public:
 	bool Prepare(const FURLabViewerStreamDescriptor& Expected,int32 TimeoutMs,FString& OutError);
 	bool PopLatest(TArray<uint8>& OutBytes);
 	using FInteractionCallback = TUniqueFunction<void(FURLabReplyEnvelope&&, FString&&)>;
-	/** Bounded asynchronous producer command; completion runs on the command worker. */
+	/**
+	 * Bounded asynchronous producer command; completion runs on the command worker.
+	 * The exact ticket is polled with backoff until TimeoutMs elapses; a ticket that
+	 * is still pending (or whose round trip failed after sending) completes with an
+	 * outcome_unknown error reply, because the producer may still apply it.
+	 */
 	bool ForwardInteraction(FURLabWireValue Body, int32 TimeoutMs,
 		FInteractionCallback&& Completion, FString& OutError);
 	enum class EHealth : uint8 { Healthy, Failed, Successor };
@@ -42,6 +47,9 @@ private:
 	{
 		FURLabWireValue Body;
 		int32 TimeoutMs = 0;
+		double Deadline = 0.0;
+		double NextPoll = 0.0;
+		double Backoff = 0.0;
 		FInteractionCallback Completion;
 	};
 	TStrongObjectPtr<UURLabViewerProducerSession> Session;

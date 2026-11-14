@@ -3,6 +3,9 @@
 #include "MuJoCo/Render/MjRenderSceneAdapter.h"
 
 #include "Utils/CoordinateConversion.h"
+#include "Utils/URLabLogging.h"
+
+#include "HAL/IConsoleManager.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -10,17 +13,42 @@ THIRD_PARTY_INCLUDES_END
 
 namespace
 {
+// MJCF light intensities are physical (candela for punctual lights, lux for
+// directional lights, the IndirectLight scale for image lights) and Filament
+// renders them through its default physical camera (f/16, 1/125 s, ISO 100,
+// EV100 = log2(16^2 * 125) = 14.966). URLab captures with manual exposure at
+// EV100 = 0, so physical intensities need roughly 2^-14.966 (3.1e-5). The
+// default is calibrated empirically against Filament on diffuse surfaces
+// (direct and image lighting both measured ~2.4x darker at 3.1e-5 after
+// inverting the ACES tone curve), giving 7.5e-5.
+TAutoConsoleVariable<float> CVarPhysicalLightScale(
+	TEXT("urlab.Render.PhysicalLightScale"), 7.5e-5f,
+	TEXT("Scale applied to explicit MJCF light intensities (physical units) so they\n")
+	TEXT("match Filament's default physical camera exposure under URLab's EV0 capture."),
+	ECVF_Default);
+
+TAutoConsoleVariable<float> CVarImageLightScale(
+	TEXT("urlab.Render.ImageLightScale"), 1.0f,
+	TEXT("Extra factor on MJCF image-light intensity (SkyLight) on top of\n")
+	TEXT("urlab.Render.PhysicalLightScale, calibrated against Filament's IBL."),
+	ECVF_Default);
+
 FString NameOf(const mjModel& Model, int32 Type, int32 Index)
 {
 	const char* Name = Model.names ? mj_id2name(&Model, Type, Index) : nullptr;
 	return Name && *Name ? FString(UTF8_TO_TCHAR(Name)) : FString();
 }
 
-bool MakeFlexVisual(const mjModel& Model, const mjData& Data, mjvScene& Visual,
+int32 FlexVisualGeomCapacity(const mjModel& Model)
+{
+	const int64 Capacity = 4096 + static_cast<int64>(Model.ngeom) + Model.nsite
+		+ Model.nflex + Model.nskin + 2 * static_cast<int64>(Model.nwrap);
+	return static_cast<int32>(FMath::Min<int64>(Capacity, MAX_int32 / 2));
+}
+
+bool UpdateFlexVisual(const mjModel& Model, const mjData& Data, mjvScene& Visual,
 	FString& OutError)
 {
-	FMemory::Memzero(Visual);
-	mjv_makeScene(&Model, &Visual, 4096);
 	mjvOption Option;
 	mjv_defaultOption(&Option);
 	mjvCamera Camera;
@@ -50,13 +78,21 @@ bool MakeFlexVisual(const mjModel& Model, const mjData& Data, mjvScene& Visual,
 	return false;
 }
 
+bool MakeFlexVisual(const mjModel& Model, const mjData& Data, mjvScene& Visual,
+	FString& OutError)
+{
+	FMemory::Memzero(Visual);
+	mjv_makeScene(&Model, &Visual, FlexVisualGeomCapacity(Model));
+	return UpdateFlexVisual(Model, Data, Visual, OutError);
+}
+
 struct FScopedFlexVisual
 {
 	mjvScene Scene{};
 	~FScopedFlexVisual() { mjv_freeScene(&Scene); }
 };
 
-ERenderGeomKind RenderKind(int32 MjKind)
+ERenderGeomKind RenderKind(int32 MjKind, int32 DataId)
 {
 	switch (MjKind)
 	{
@@ -68,6 +104,7 @@ ERenderGeomKind RenderKind(int32 MjKind)
 		case mjGEOM_BOX: return ERenderGeomKind::Box;
 		case mjGEOM_MESH: return ERenderGeomKind::Mesh;
 		case mjGEOM_HFIELD: return ERenderGeomKind::Mesh;
+		case mjGEOM_SDF: return DataId >= 0 ? ERenderGeomKind::Mesh : ERenderGeomKind::Unsupported;
 		default: return ERenderGeomKind::Unsupported;
 	}
 }
@@ -77,8 +114,18 @@ bool RenderLight(const mjModel& Model, int32 Index, FRenderLightDesc& Out, FStri
 	const int32 Type = Model.light_type[Index];
 	if (Type == mjLIGHT_IMAGE)
 	{
-		OutError = FString::Printf(TEXT("MuJoCo image light %d is unsupported"), Index);
-		return false;
+		// Image lights become the environment SkyLight (see the adapter's
+		// environment pass); keep an inert slot so light indices stay aligned.
+		Out.Kind = ERenderLightKind::Directional;
+		Out.Name = NameOf(Model, mjOBJ_LIGHT, Index);
+		if (Out.Name.IsEmpty()) Out.Name = FString::Printf(TEXT("light_%d"), Index);
+		Out.bEnabled = false;
+		Out.bCastShadows = false;
+		Out.Color = FLinearColor::Black;
+		Out.Intensity = 0.0f;
+		Out.RangeCm = 0.0f;
+		Out.SourceRadiusCm = 0.0f;
+		return true;
 	}
 	switch (Type)
 	{
@@ -113,7 +160,7 @@ bool RenderLight(const mjModel& Model, int32 Index, FRenderLightDesc& Out, FStri
 	if (ModelIntensity > 0.0f)
 	{
 		Out.Color = FLinearColor(Diffuse[0], Diffuse[1], Diffuse[2], 1.0f);
-		Out.Intensity = ModelIntensity;
+		Out.Intensity = ModelIntensity * CVarPhysicalLightScale.GetValueOnAnyThread();
 	}
 	else if (Luminance > UE_SMALL_NUMBER)
 	{
@@ -121,7 +168,7 @@ bool RenderLight(const mjModel& Model, int32 Index, FRenderLightDesc& Out, FStri
 		// Keep that bounded colour verbatim; the compatibility intensity carries
 		// the brightness approximation independently.
 		Out.Color = FLinearColor(Diffuse[0], Diffuse[1], Diffuse[2], 1.0f);
-		Out.Intensity = (Out.Kind == ERenderLightKind::Directional ? 6.0f : 42.0f)
+		Out.Intensity = (Out.Kind == ERenderLightKind::Directional ? 6.8f : 42.0f)
 			* Luminance;
 	}
 	else
@@ -197,6 +244,18 @@ FTransform ConvertCameraPose(const double* Position, const double* Quat)
 	return URLabCoordinateConversion::RightHandedOpticalPoseToUnreal(Position, Quat);
 }
 
+// MuJoCo reports depth from znear out to zfar (the background value), both
+// scaled by the model extent, so depth defaults to the camera clip range.
+void ApplyModelClipPlanes(const mjModel& Model, FRenderCameraDesc& Out)
+{
+	if (Model.vis.map.znear > 0.0f && Model.stat.extent > 0.0f)
+		Out.Optics.NearClipCm = Model.vis.map.znear * Model.stat.extent * 100.0f;
+	if (Model.vis.map.zfar > 0.0f && Model.stat.extent > 0.0f)
+		Out.Optics.FarClipCm = Model.vis.map.zfar * Model.stat.extent * 100.0f;
+	Out.Capture.DepthNearCm = Out.Optics.NearClipCm;
+	Out.Capture.DepthFarCm = Out.Optics.FarClipCm;
+}
+
 FRenderCameraDesc CameraDesc(const mjModel& Model, int32 CameraIndex, int32 MaxHeight)
 {
 	FRenderCameraDesc Out;
@@ -205,7 +264,11 @@ FRenderCameraDesc CameraDesc(const mjModel& Model, int32 CameraIndex, int32 MaxH
 		Out.CanonicalName = FString::Printf(TEXT("camera_%d"), CameraIndex);
 	int32 Width = Model.cam_resolution ? Model.cam_resolution[2 * CameraIndex] : 0;
 	int32 Height = Model.cam_resolution ? Model.cam_resolution[2 * CameraIndex + 1] : 0;
-	if (Width <= 1 || Height <= 1) { Width = 640; Height = 480; }
+	if (Width <= 1 || Height <= 1)
+	{
+		Width = Model.vis.global.offwidth > 1 ? Model.vis.global.offwidth : 640;
+		Height = Model.vis.global.offheight > 1 ? Model.vis.global.offheight : 480;
+	}
 	if (MaxHeight > 0 && Height > MaxHeight)
 	{
 		Width = FMath::Max(1, FMath::RoundToInt(Width * (static_cast<double>(MaxHeight) / Height)));
@@ -230,13 +293,36 @@ FRenderCameraDesc CameraDesc(const mjModel& Model, int32 CameraIndex, int32 MaxH
 		const float* Intrinsic = Model.cam_intrinsic + 4 * CameraIndex;
 		Out.Optics.FocalPixelsX = Intrinsic[0] * Width / SensorW;
 		Out.Optics.FocalPixelsY = Intrinsic[1] * Height / SensorH;
-		Out.Optics.PrincipalPixelsX = Width * 0.5f + Intrinsic[2] * Width / SensorW;
-		Out.Optics.PrincipalPixelsY = Height * 0.5f + Intrinsic[3] * Height / SensorH;
+		Out.Optics.PrincipalPixelsX = Width * 0.5f - Intrinsic[2] * Width / SensorW;
+		Out.Optics.PrincipalPixelsY = Height * 0.5f - Intrinsic[3] * Height / SensorH;
 	}
-	if (Model.vis.map.znear > 0.0f && Model.stat.extent > 0.0f)
-		Out.Optics.NearClipCm = Model.vis.map.znear * Model.stat.extent * 100.0f;
-	if (Model.vis.map.zfar > 0.0f && Model.stat.extent > 0.0f)
-		Out.Optics.FarClipCm = Model.vis.map.zfar * Model.stat.extent * 100.0f;
+	ApplyModelClipPlanes(Model, Out);
+	return Out;
+}
+
+FRenderCameraDesc UserCameraDesc(const mjModel& Model, int32 MaxHeight)
+{
+	FRenderCameraDesc Out;
+	Out.CanonicalName = TEXT("user");
+	int32 Width = Model.vis.global.offwidth;
+	int32 Height = Model.vis.global.offheight;
+	if (Width <= 1 || Height <= 1) { Width = 640; Height = 480; }
+	if (MaxHeight > 0 && Height > MaxHeight)
+	{
+		Width = FMath::Max(1, FMath::RoundToInt(Width * (static_cast<double>(MaxHeight) / Height)));
+		Height = MaxHeight;
+	}
+	Out.Optics.Resolution = FIntPoint(Width, Height);
+	if (FMath::IsFinite(Model.vis.global.fovy) && Model.vis.global.fovy > 0.0f
+		&& Model.vis.global.fovy < 180.0f)
+		Out.Optics.VerticalFovDegrees = Model.vis.global.fovy;
+	if (Model.vis.global.orthographic)
+	{
+		Out.Optics.Projection = ERenderCameraProjection::Orthographic;
+		Out.Optics.OrthographicWidthCm = Model.vis.global.fovy
+			* (static_cast<float>(Width) / Height) * 100.0f;
+	}
+	ApplyModelClipPlanes(Model, Out);
 	return Out;
 }
 
@@ -346,7 +432,7 @@ bool AppendVisualization(const mjModel& Model, const mjData& Data,
 			const FVector Torque = URLabCoordinateConversion::RightHandedDirectionToUnreal(AppliedTorque);
 			if (Force.SizeSquared() <= 1.e-12 && Torque.SizeSquared() <= 1.e-12) continue;
 			const FVector Origin = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(
-				Data.xpos + 3 * Body);
+				(Data.xipos ? Data.xipos : Data.xpos) + 3 * Body);
 			if (Force.SizeSquared() > 1.e-12)
 			{
 				const FVector End = Origin + Force.GetSafeNormal()
@@ -450,16 +536,26 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 		FRenderGeomDesc& Geom = CandidateScene.Geoms[GeomIndex];
 		Geom.BodyIndex = Model->geom_bodyid[GeomIndex];
 		Geom.Group = Model->geom_group[GeomIndex];
-		Geom.Kind = RenderKind(Model->geom_type[GeomIndex]);
+		const int32 GeomType = Model->geom_type[GeomIndex];
+		const bool bMeshBacked = GeomType == mjGEOM_MESH
+			|| (GeomType == mjGEOM_SDF && Model->geom_dataid[GeomIndex] >= 0);
+		Geom.Kind = RenderKind(GeomType, Model->geom_dataid[GeomIndex]);
 		Geom.SizeCm = FVector(Model->geom_size[3 * GeomIndex],
 			Model->geom_size[3 * GeomIndex + 1], Model->geom_size[3 * GeomIndex + 2]) * 100.0;
-		Geom.MeshResourceIndex = Model->geom_type[GeomIndex] == mjGEOM_MESH
+		Geom.MeshResourceIndex = bMeshBacked
 			? Model->geom_dataid[GeomIndex]
-			: (Model->geom_type[GeomIndex] == mjGEOM_HFIELD
+			: (GeomType == mjGEOM_HFIELD
 				? Model->nmesh + Model->geom_dataid[GeomIndex] : INDEX_NONE);
 		Geom.Name = NameOf(*Model, mjOBJ_GEOM, GeomIndex);
-		if (Model->geom_type[GeomIndex] == mjGEOM_MESH
-			&& Geom.MeshResourceIndex >= 0)
+		if (Geom.Kind == ERenderGeomKind::Unsupported
+			&& CandidateResources.Geoms[GeomIndex].Rgba.A > 0.0f)
+		{
+			UE_LOG(LogURLab, Warning,
+				TEXT("MuJoCo geom %d ('%s') of type %d has no renderable form and is hidden"),
+				GeomIndex, *Geom.Name, GeomType);
+			CandidateResources.Geoms[GeomIndex].Rgba.A = 0.0f;
+		}
+		if (bMeshBacked && Geom.MeshResourceIndex >= 0)
 		{
 			Geom.MeshName = NameOf(*Model, mjOBJ_MESH, Geom.MeshResourceIndex);
 		}
@@ -511,17 +607,7 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 		}
 		Plan.BodyLocalCaptureTransform = ConvertCameraPose(Position, Quat);
 	}
-	if (bIncludeUserCamera)
-	{
-		FRenderCameraDesc User;
-		User.CanonicalName = TEXT("user");
-		User.Optics.Resolution = FIntPoint(1280, 720);
-		User.Optics.NearClipCm = CandidateScene.Cameras.Num() > 0
-			? CandidateScene.Cameras[0].Optics.NearClipCm : 2.0f;
-		User.Optics.FarClipCm = CandidateScene.Cameras.Num() > 0
-			? CandidateScene.Cameras[0].Optics.FarClipCm : 10000.0f;
-		CandidateScene.UserCamera = User;
-	}
+	if (bIncludeUserCamera) CandidateScene.UserCamera = UserCameraDesc(*Model, CameraMaxHeight);
 	CandidateScene.Lights.SetNum(static_cast<int32>(Model->nlight));
 	for (int32 LightIndex = 0; LightIndex < CandidateScene.Lights.Num(); ++LightIndex)
 	{
@@ -540,6 +626,29 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 		Headlight.ambient[1], Headlight.ambient[2]);
 	Environment.AmbientIntensity = 0.2126f * Headlight.ambient[0]
 		+ 0.7152f * Headlight.ambient[1] + 0.0722f * Headlight.ambient[2];
+	Environment.ShadowClipCm = (Model->vis.map.shadowclip > 0.0f && Model->stat.extent > 0.0f)
+		? static_cast<float>(Model->vis.map.shadowclip * Model->stat.extent * 100.0)
+		: 0.0f;
+	for (int32 LightIndex = 0; LightIndex < Model->nlight; ++LightIndex)
+	{
+		if (Model->light_type[LightIndex] != mjLIGHT_IMAGE) continue;
+		const float* Diffuse = Model->light_diffuse + 3 * LightIndex;
+		const float ImageIntensity = Model->light_intensity[LightIndex];
+		Environment.SkyLightIntensity = FMath::Max(0.0f, ImageIntensity)
+			* CVarPhysicalLightScale.GetValueOnAnyThread()
+			* CVarImageLightScale.GetValueOnAnyThread();
+		Environment.SkyLightColor = FLinearColor(Diffuse[0], Diffuse[1], Diffuse[2], 1.0f);
+		const int32 TexId = Model->light_texid ? Model->light_texid[LightIndex] : -1;
+		if (TexId >= 0 && Model->tex_type && Model->tex_type[TexId] != mjTEXTURE_SKYBOX)
+		{
+			UE_LOG(LogURLab, Warning, TEXT("Image light %d texture %d is not the skybox; ")
+				TEXT("URLab lights the scene from the skybox cubemap."), LightIndex, TexId);
+		}
+		break;
+	}
+	Environment.ShadowSize = Model->vis.quality.shadowsize > 0
+		? static_cast<int32>(Model->vis.quality.shadowsize)
+		: 4096;
 	for (int32 TextureId = 0; TextureId < Model->ntex; ++TextureId)
 	{
 		if (!Model->tex_type || Model->tex_type[TextureId] != mjTEXTURE_SKYBOX) continue;
@@ -548,7 +657,10 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 		const int32 PixelsPerFace = Source.Width * Source.Width;
 		if (PixelsPerFace <= 0 || PixelsPerFace > MAX_int32 / 4) break;
 		Environment.bSkyboxEnabled = true;
-		float Brightest = -1.0f, Darkest = 2.0f;
+		// MuJoCo draws its GL cubemap rotated so that GL +Y is world +Z. Composed
+		// with the right-to-left-handed Y flip and UE's cube face convention
+		// (TextureCompressor TransformSideToWorldSpace), every UE face texel looks
+		// up the same GL face texel, so the faces transfer verbatim.
 		for (int32 Face = 0; Face < 6; ++Face)
 		{
 			FRenderTextureResource& FaceTexture = CandidateResources.Textures.AddDefaulted_GetRef();
@@ -557,17 +669,23 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 			FaceTexture.Rgba8.Append(Source.Rgba8.GetData() + Face * PixelsPerFace * 4,
 				PixelsPerFace * 4);
 			Environment.SkyboxFaceTextureIndices.Add(CandidateResources.Textures.Num() - 1);
-			for (int32 Pixel = 0; Pixel < PixelsPerFace; ++Pixel)
-			{
-				const uint8* Rgba = FaceTexture.Rgba8.GetData() + 4 * Pixel;
-				const float L = (0.2126f * Rgba[0] + 0.7152f * Rgba[1]
-					+ 0.0722f * Rgba[2]) / 255.0f;
-				const FLinearColor C(Rgba[0] / 255.0f, Rgba[1] / 255.0f,
-					Rgba[2] / 255.0f);
-				if (L > Brightest) { Brightest = L; Environment.SkyTop = C; }
-				if (L < Darkest) { Darkest = L; Environment.SkyBottom = C; }
-			}
 		}
+		auto FaceCentre = [&Source, PixelsPerFace](int32 Face)
+		{
+			const int32 Size = Source.Width;
+			const int32 Lo = (Size - 1) / 2, Hi = Size / 2;
+			FLinearColor Sum = FLinearColor::Transparent;
+			for (const int32 Row : {Lo, Hi})
+				for (const int32 Col : {Lo, Hi})
+				{
+					const uint8* Rgba = Source.Rgba8.GetData()
+						+ 4 * (Face * PixelsPerFace + Row * Size + Col);
+					Sum += FLinearColor(Rgba[0] / 255.0f, Rgba[1] / 255.0f, Rgba[2] / 255.0f, 1.0f);
+				}
+			return Sum * 0.25f;
+		};
+		Environment.SkyTop = FaceCentre(2);
+		Environment.SkyBottom = FaceCentre(3);
 		break;
 	}
 	// MuJoCo's visualizer owns flex surface expansion, smooth corner normals,
@@ -695,8 +813,36 @@ bool FMjRenderSceneAdapter::Extract(const mjModel_* ModelPtr, const mjData_* Ini
 	return true;
 }
 
+mjvScene_* FMjRenderSceneAdapter::MakeFlexScratch(const mjModel_* Model)
+{
+	if (!Model || Model->nflex <= 0) return nullptr;
+	mjvScene* Scene = new mjvScene;
+	FMemory::Memzero(*Scene);
+	mjv_makeScene(Model, Scene, FlexVisualGeomCapacity(*Model));
+	return Scene;
+}
+
+void FMjRenderSceneAdapter::FreeFlexScratch(mjvScene_* Scene)
+{
+	if (!Scene) return;
+	mjv_freeScene(Scene);
+	delete Scene;
+}
+
+bool FMjRenderSceneAdapter::RequiresDynamics() const
+{
+	static const TCHAR* const DynamicsFeatures[] = {
+		TEXT("contact_points"), TEXT("contact_forces"), TEXT("contact_split"),
+		TEXT("perturbation"), TEXT("actuators"), TEXT("tendons"), TEXT("rangefinders"),
+		TEXT("constraints")
+	};
+	for (const TCHAR* Feature : DynamicsFeatures)
+		if (Visualization.IsEnabled(Feature)) return true;
+	return false;
+}
+
 bool FMjRenderSceneAdapter::FrameFromData(const mjData_* DataPtr, uint64 FrameId,
-	FRenderFrame& Out, FString& OutError) const
+	FRenderFrame& Out, FString& OutError, mjvScene_* FlexScratch) const
 {
 	const mjModel* Model = InstalledModel;
 	const mjData* Data = DataPtr;
@@ -726,8 +872,11 @@ bool FMjRenderSceneAdapter::FrameFromData(const mjData_* DataPtr, uint64 FrameId
 		OutError = TEXT("render adapter has no installed MuJoCo model");
 		return false;
 	}
-	FScopedFlexVisual DynamicFlex;
-	if (Model->nflex > 0 && !MakeFlexVisual(*Model, *Data, DynamicFlex.Scene, OutError))
+	FScopedFlexVisual OwnedFlex;
+	mjvScene& FlexScene = FlexScratch ? *FlexScratch : OwnedFlex.Scene;
+	if (Model->nflex > 0 && !(FlexScratch
+		? UpdateFlexVisual(*Model, *Data, FlexScene, OutError)
+		: MakeFlexVisual(*Model, *Data, FlexScene, OutError)))
 		return false;
 	Candidate.Deformables.Reserve(Deformables.Num());
 	for (const FRenderDeformableDesc& Desc : Deformables)
@@ -738,19 +887,19 @@ bool FMjRenderSceneAdapter::FrameFromData(const mjData_* DataPtr, uint64 FrameId
 		if (Desc.SurfaceIndex < Model->nflex)
 		{
 			const int32 FlexId = Desc.SurfaceIndex;
-			const int32 Used = DynamicFlex.Scene.flexfaceused[FlexId];
-			if (Used < 0 || Used > DynamicFlex.Scene.flexfacenum[FlexId]
+			const int32 Used = FlexScene.flexfaceused[FlexId];
+			if (Used < 0 || Used > FlexScene.flexfacenum[FlexId]
 				|| Used * 3 != Desc.VertexCount)
 			{
 				OutError = FString::Printf(TEXT("flex %d visual topology changed; reinstall scene"), FlexId);
 				return false;
 			}
-			const int32 First = DynamicFlex.Scene.flexfaceadr[FlexId] * 9;
+			const int32 First = FlexScene.flexfaceadr[FlexId] * 9;
 			Surface.Normals.SetNumUninitialized(Desc.VertexCount);
 			for (int32 Vertex = 0; Vertex < Desc.VertexCount; ++Vertex)
 			{
-				const float* Position = DynamicFlex.Scene.flexface + First + 3 * Vertex;
-				const float* Normal = DynamicFlex.Scene.flexnormal + First + 3 * Vertex;
+				const float* Position = FlexScene.flexface + First + 3 * Vertex;
+				const float* Normal = FlexScene.flexnormal + First + 3 * Vertex;
 				const double PositionMetres[3] = {Position[0], Position[1], Position[2]};
 				const double NormalDirection[3] = {Normal[0], Normal[1], Normal[2]};
 				Surface.Positions[Vertex] =

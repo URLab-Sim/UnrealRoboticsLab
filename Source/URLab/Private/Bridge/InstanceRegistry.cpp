@@ -5,6 +5,7 @@
 
 #include "Bridge/InstanceRegistry.h"
 #include "Bridge/BridgeServerConfig.h"
+#include "Bridge/BridgeServerConfigUtils.h"
 #include "MuJoCo/Render/MjDriverDiscovery.h"
 
 #include "Dom/JsonObject.h"
@@ -82,7 +83,7 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 	// appear only when bBroadcastOnRenderBus is set -- made a single file two
 	// different shapes and pushed the difference onto four readers, each of
 	// which invented its own answer for the missing halves.
-	const FString Host = FPlatformProcess::ComputerName();
+	const FString Host = URLabBridgeServerConfigUtils::ResolveDialHost(Cfg);
 	const bool bOwner = Cfg.bBroadcastOnRenderBus;
 
 	TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
@@ -150,7 +151,8 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 	// port). Advertising the well-known port whenever the instance broadcast
 	// meant a discovering session read an endpoint from a build with no gRPC
 	// server at all, dialled it, and failed at connect time rather than at
-	// discovery time. Never the bind wildcard: the host is this machine's name.
+	// discovery time. Never the bind wildcard: the host is the bound interface,
+	// or this machine's name when bound to every interface.
 	if (!Live.GrpcEndpoint.IsEmpty())
 	{
 		AddString(Transports, TEXT("grpc"));

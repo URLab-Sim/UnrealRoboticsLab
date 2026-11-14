@@ -32,6 +32,10 @@ bool FURLabCameraStreamProducerTest::RunTest(const FString&)
 	FURLabCameraStreamConfiguration Camera;Camera.SourceRevision=TEXT("scene-a");
 	Camera.CameraName=TEXT("overview");Camera.CameraConfigurationRevision=3;
 	Camera.Encoding=TEXT("rgba8");Camera.Width=2;Camera.Height=1;Camera.StrideBytes=8;
+	FURLabCameraStreamConfiguration Oversized=Camera;Oversized.Width=32;Oversized.Height=32;Oversized.StrideBytes=128;
+	FURLabCameraStreamDescriptor Rejected;
+	TestFalse(TEXT("configuration above frame capacity is rejected"),Producer->CommitCamera(Oversized,Rejected,Error));
+	TestTrue(TEXT("oversize error names the capacity"),Error.Contains(TEXT("4096")));
 	FURLabCameraStreamDescriptor First;TestTrue(TEXT("camera commits"),Producer->CommitCamera(Camera,First,Error));
 	FURLabCameraStreamDescriptor Same;TestTrue(TEXT("same camera commit is idempotent"),
 		Producer->CommitCamera(Camera,Same,Error));
@@ -89,6 +93,14 @@ bool FURLabCameraStreamProducerTest::RunTest(const FString&)
 		FURLabCameraStreamFrameCodec::Decode(Bytes,Decoded,Error,8));
 	TestEqual(TEXT("SHM exposes only replacement generation"),
 		Decoded.StreamGeneration,Replaced.StreamGeneration);
+	TArray<uint8> Late;FCriticalSection LateMutex;
+	auto LateReader=FURLabPoseStreamZmqReader::Create(Delivery.ZmqEndpoint,Delivery.ZmqTopic,4096,
+		[&](TArray<uint8>&&B){FScopeLock L(&LateMutex);Late=MoveTemp(B);},Error);
+	bool bLate=false;
+	for(int32 I=0;I<500&&!bLate;++I){FPlatformProcess::SleepNoStats(.005f);FScopeLock L(&LateMutex);bLate=!Late.IsEmpty();}
+	{FScopeLock L(&LateMutex);TestTrue(TEXT("late ZMQ subscriber receives the idle latest frame"),bLate
+		&&FURLabCameraStreamFrameCodec::Decode(Late,Decoded,Error,8)&&Decoded.StreamGeneration==Replaced.StreamGeneration);}
+	if(LateReader)LateReader->Stop();
 	ZmqReader->Stop();Reader.Reset();Consumer.Reset();Producer->Stop();Producer.Reset();Region.Reset();
 	IFileManager::Get().DeleteDirectory(*Base,false,true);return !HasAnyErrors();
 #endif

@@ -9,8 +9,10 @@
 #include "HAL/PlatformTime.h"
 #include "Bridge/RetainedCompletion.h"
 #include "Bridge/RenderScenePatchWire.h"
+#include "MuJoCo/Render/MjLauncherFlags.h"
 #include "MuJoCo/Render/MjRenderKinematics.h"
 #include "Utils/CoordinateConversion.h"
+#include "Utils/URLabLogging.h"
 #include "Wire/UrlabWire.gen.h"
 #include "Workflows/RenderServerWorldSubsystem.h"
 #include "Workflows/RenderScenePatch.h"
@@ -521,11 +523,12 @@ void ExecuteTypedRender(
 		TArray<V> Lights;
 		for (const FString& Name : D.LightNames) Lights.Add(V::MakeString(Name));
 		TArray<FString> K{TEXT("scene_revision"), TEXT("scene_generation"), TEXT("body_names"),
-			TEXT("model_cameras"), TEXT("light_names"), TEXT("supports_qpos"), TEXT("qpos_width")};
+			TEXT("model_cameras"), TEXT("light_names"), TEXT("supports_qpos"), TEXT("qpos_width"),
+			TEXT("mocap_count")};
 		TArray<V> X{V::MakeString(D.SceneRevision),
 			V::MakeInt(static_cast<int64>(D.SceneGeneration)), V::MakeArray(MoveTemp(Bodies)),
 			V::MakeArray(MoveTemp(Cameras)), V::MakeArray(MoveTemp(Lights)),
-			V::MakeBool(D.bSupportsQpos), V::MakeInt(D.QposWidth)};
+			V::MakeBool(D.bSupportsQpos), V::MakeInt(D.QposWidth), V::MakeInt(D.MocapCount)};
 		if (D.UserCamera)
 		{
 			K.Add(TEXT("user_camera"));
@@ -624,7 +627,7 @@ void ExecuteTypedRender(
 	}
 	if (!DataSession || !DataSession->IsActive())
 	{
-		Completion->Error(TEXT("outcome_unknown"), TEXT("Payload session is inactive"));
+		Completion->Error(TEXT("session_expired"), TEXT("Payload session is inactive"));
 		return;
 	}
 	if (Op == TEXT("render_capture_history_query"))
@@ -677,6 +680,7 @@ void ExecuteTypedRender(
 	}
 	if (Op == TEXT("render_capture_submit"))
 	{
+		const double TExecStart = FPlatformTime::Seconds();
 		FString Error;
 		FURLabRenderSourceDescription D;
 		if (!Binding->CanAcceptCapture(Scope, Error))
@@ -718,8 +722,14 @@ void ExecuteTypedRender(
 			}
 			Pose.Payload = MoveTemp(Ref);
 		}
+		if (const V* Inline = PoseValue.FindMapValue(TEXT("values")))
+		{
+			Pose.InlineValues = MakeShared<TArray<uint8>, ESPMode::ThreadSafe>(Inline->GetBinary());
+		}
 		if (const V* Visualization = PoseValue.FindMapValue(TEXT("visualization")))
 			Pose.Visualization = *Visualization;
+		if (const V* Mocap = PoseValue.FindMapValue(TEXT("mocap"))) Pose.bMocap = Mocap->GetBool();
+		if (const V* User = PoseValue.FindMapValue(TEXT("user_camera"))) Pose.bUserCamera = User->GetBool();
 		TArray<FRenderCameraCaptureSelection> Selections;
 		if (!ParseSelections(*Completion->Request.Body.FindMapValue(TEXT("cameras")), Selections, Error))
 		{
@@ -765,6 +775,7 @@ void ExecuteTypedRender(
 			A.Admission->Abort();
 			Completion->Error(TEXT("bad_request"), Error); return;
 		}
+		const double TAfterDecode = FPlatformTime::Seconds();
 		const FURLabRenderOwnerAuthorizationResult Reauthorized =
 			Workflow->AuthorizeOwner(Scope, Generation, Token);
 		if (!Binding->IsActive() || !Scope->IsActive() || !DataSession->IsActive()
@@ -783,10 +794,13 @@ void ExecuteTypedRender(
 		FURLabRenderServerCaptureAdmission Native;
 		if (Decoded.Kind == EURLabRenderPoseKind::Qpos)
 		{
+			FMjRenderQposExtras Extras;
+			Extras.Mocap = Decoded.Mocap;
+			Extras.UserCameraSceneTransform = Decoded.UserCameraSceneTransform;
 			Native = Workflow->SubmitQposCapture(Authorized.Proof, Expected, Decoded.Qpos,
 				Pose.Identity.FrameId, Pose.Identity.SourceTime, Pose.Identity.bHasSourceTime,
 				Pose.Identity.ClockEpoch, MoveTemp(Plan), MoveTemp(Life),
-				MoveTemp(A.ResultLease), Timeout);
+				MoveTemp(A.ResultLease), Timeout, &Extras);
 		}
 		else
 		{
@@ -794,6 +808,7 @@ void ExecuteTypedRender(
 				MoveTemp(Decoded.Cartesian), MoveTemp(Plan), MoveTemp(Life),
 				MoveTemp(A.ResultLease), Timeout);
 		}
+		const double TAfterSubmit = FPlatformTime::Seconds();
 		if (!Native.bAccepted)
 		{
 			A.Admission->Abort();
@@ -813,6 +828,14 @@ void ExecuteTypedRender(
 			Completion->Error(TEXT("service_unavailable"), Error);
 			return;
 		}
+		const double TAfterAdd = FPlatformTime::Seconds();
+		UE_LOG(LogURLabNet, Verbose,
+			TEXT("[RenderPerf] submit cams=%d decode=%.2fms submit=%.2fms materialize=%.2fms total=%.2fms"),
+			Selections.Num(),
+			(TAfterDecode - TExecStart) * 1000.0,
+			(TAfterSubmit - TAfterDecode) * 1000.0,
+			(TAfterAdd - TAfterSubmit) * 1000.0,
+			(TAfterAdd - TExecStart) * 1000.0);
 		Completion->Publish(FURLabReplyEnvelope::MakeResult(Completion->Request,
 			Map({{TEXT("job_id"), V::MakeString(Job)},
 				{TEXT("frame"), FrameValue(Pose.Identity)},
@@ -822,8 +845,10 @@ void ExecuteTypedRender(
 	}
 	FString Error;
 	const V& SourceValue = *Completion->Request.Body.FindMapValue(TEXT("source"));
-	const int64 VisibleMask = Completion->Request.Body.FindMapValue(TEXT("options"))
-		->FindMapValue(TEXT("visible_group_mask"))->GetInt();
+	const V& OptionsValue = *Completion->Request.Body.FindMapValue(TEXT("options"));
+	const int64 VisibleMask = OptionsValue.FindMapValue(TEXT("visible_group_mask"))->GetInt();
+	const V* IncludeUserCamera = OptionsValue.FindMapValue(TEXT("include_user_camera"));
+	const bool bIncludeUserCamera = IncludeUserCamera && IncludeUserCamera->GetBool();
 	if (VisibleMask > MAX_int32)
 	{
 		Completion->Error(TEXT("bad_request"), TEXT("visible_group_mask exceeds int32"));
@@ -877,6 +902,8 @@ void ExecuteTypedRender(
 	}
 	FMjRenderKinematicsOptions KinematicsOptions;
 	KinematicsOptions.VisibleGroupMask = static_cast<int32>(VisibleMask);
+	KinematicsOptions.bIncludeUserCamera = bIncludeUserCamera;
+	URLabLauncherFlags::SceneCamMaxHeight(KinematicsOptions.CameraMaxHeight);
 	FMjRenderKinematicsCandidate Candidate;
 	if (!FURLabRenderSourceIngress::Prepare(PayloadStore,
 		DataSession->GetOwner(), Source, SceneRevision,
@@ -946,6 +973,12 @@ bool FURLabRpcDispatcher::DispatchTypedRender(const FURLabRequestEnvelope& Reque
 			bStartDrain = RenderCommandQueue->Enqueue(MoveTemp(Work));
 		}
 	}
+	if (Admission.Status == FURLabRequestLedger::ExistingPending
+		&& !IsInGameThread()
+		&& !bDraining.load(std::memory_order_acquire))
+	{
+		return EncodeSettledReply(Request, Digest, Session, OutReplyBytes);
+	}
 	const EURLabRetainedAdmissionReply Reply =
 		FURLabRetainedCompletion::EncodeAdmission(Admission, Request, OutReplyBytes);
 	if (Reply != EURLabRetainedAdmissionReply::Accepted)
@@ -956,13 +989,5 @@ bool FURLabRpcDispatcher::DispatchTypedRender(const FURLabRequestEnvelope& Reque
 		const TSharedRef<FURLabGameThreadCommandQueue, ESPMode::ThreadSafe> Queue = RenderCommandQueue;
 		AsyncTask(ENamedThreads::GameThread, [Queue]() { Queue->Drain(); });
 	}
-	const FURLabRequestLedger::FAdmissionResult Completed =
-		RequestLedger->Admit(Session, static_cast<int64>(Request.RequestId), Digest);
-	if (Completed.Terminal == FURLabRequestLedger::Completed && Completed.ReplyBytes)
-	{
-		OutReplyBytes = *Completed.ReplyBytes;
-		return true;
-	}
-	FURLabRequestEnvelopeCodec::EncodeReply(FURLabReplyEnvelope::MakePending(Request), OutReplyBytes);
-	return true;
+	return EncodeSettledReply(Request, Digest, Session, OutReplyBytes);
 }

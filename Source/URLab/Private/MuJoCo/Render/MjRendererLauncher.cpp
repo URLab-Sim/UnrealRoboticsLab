@@ -16,9 +16,83 @@
 #include "Workflows/RenderServerWorldSubsystem.h"
 #include "Workflows/ViewerWorldSubsystem.h"
 
+#include "Containers/Ticker.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "EngineUtils.h"
+#include "HAL/PlatformMisc.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
+
+namespace
+{
+/** Exit status of a headless boot that cannot serve. Distinct from a crash so a
+ *  launcher can tell "refused" from "died". */
+constexpr int32 BootFailureExitCode = 3;
+
+/** How long a graceful exit may take after the parent process has gone before
+ *  the process is forced down. */
+constexpr double ParentExitGraceSeconds = 10.0;
+
+/** Logs a boot failure and, outside the editor, ends the process with a nonzero
+ *  status. A headless server that cannot serve must not keep running with no
+ *  listener: the process that launched it would wait out its whole readiness
+ *  timeout instead of seeing the exit. */
+void FailBoot(const TCHAR* Tag, const FString& Error)
+{
+	UE_LOG(LogURLab, Error, TEXT("[%s] boot failed: %s"), Tag, *Error);
+	if (!GIsEditor)
+	{
+		FPlatformMisc::RequestExitWithStatus(false, BootFailureExitCode);
+	}
+}
+
+/** Watches -URLabNet=parent=<pid> and exits this process once that process is
+ *  gone, so a client that dies without cleaning up never strands a server. One
+ *  watchdog per process, independent of world lifetime. */
+class FParentProcessWatchdog
+{
+public:
+	static void Start(uint32 ParentPid)
+	{
+		if (ParentPid == 0 || GIsEditor || Handle.IsValid())
+		{
+			return;
+		}
+		Pid = ParentPid;
+		ExitRequestedAt = 0.0;
+		Handle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateStatic(&FParentProcessWatchdog::Tick), 1.0f);
+		UE_LOG(LogURLab, Display, TEXT("[URLab] exiting with parent process %u"), Pid);
+	}
+
+private:
+	static bool Tick(float)
+	{
+		if (ExitRequestedAt > 0.0)
+		{
+			if (FPlatformTime::Seconds() - ExitRequestedAt > ParentExitGraceSeconds)
+			{
+				UE_LOG(LogURLab, Warning, TEXT("[URLab] graceful exit stalled; forcing exit"));
+				FPlatformMisc::RequestExit(true);
+			}
+			return true;
+		}
+		if (FPlatformProcess::IsApplicationRunning(Pid))
+		{
+			return true;
+		}
+		UE_LOG(LogURLab, Display, TEXT("[URLab] parent process %u is gone; exiting"), Pid);
+		ExitRequestedAt = FPlatformTime::Seconds();
+		FPlatformMisc::RequestExitWithStatus(false, 0);
+		return true;
+	}
+
+	static inline FTSTicker::FDelegateHandle Handle;
+	static inline uint32 Pid = 0;
+	static inline double ExitRequestedAt = 0.0;
+};
+} // namespace
 
 
 void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
@@ -32,6 +106,10 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// Resolve the workflow before applying any render-world setup. A simulation world
 	// starts only its world service and must retain the authored game's pawn state.
 	FMjRendererBootPlan Plan = FMjRendererBoot::FromCommandLine();
+	if (Plan.Action != EMjBootAction::None)
+	{
+		FParentProcessWatchdog::Start(Plan.Net.ParentPid);
+	}
 
 	// Headless render server: the stock GameModeBase auto-spawns a visible ADefaultPawn
 	// (a ~1 m sphere) at the world origin when the level has no PlayerStart, and that
@@ -52,28 +130,36 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		FString Error;
 		if (!Simulation || !Simulation->ActivateRuntime(Error))
 		{
-			UE_LOG(LogURLab, Error, TEXT("[URLabSimulation] runtime activation failed: %s"),
-				Error.IsEmpty() ? TEXT("simulation world subsystem unavailable") : *Error);
+			FailBoot(TEXT("URLabSimulation"), FString::Printf(TEXT("runtime activation failed: %s"),
+				Error.IsEmpty() ? TEXT("simulation world subsystem unavailable") : *Error));
 			return;
 		}
 		if (!Simulation->ConfigureLocalClockMode(Plan.ClockMode, Error))
 		{
-			UE_LOG(LogURLab, Error, TEXT("[URLabSimulation] local clock configuration failed: %s"),
-				*Error);
+			FailBoot(TEXT("URLabSimulation"),
+				FString::Printf(TEXT("local clock configuration failed: %s"), *Error));
 			return;
 		}
 		if (FMjRendererBoot::WantsBridge(Plan, Plan.Drive, /*bHasBus=*/false))
 		{
 			if (!Simulation->AttachBridge(Error))
 			{
-				UE_LOG(LogURLab, Error, TEXT("[URLabSimulation] bridge attachment failed: %s"),
-					*Error);
+				FailBoot(TEXT("URLabSimulation"),
+					FString::Printf(TEXT("bridge attachment failed: %s"), *Error));
 				return;
 			}
 			if (UURLabBridgeServer* Bridge = UURLabBridgeSubsystem::Find(&InWorld))
 			{
 				Bridge->SetGrants(FMjRendererBoot::ResolvePermissionPolicy(
 					Plan, EMjPermissionProfile::Simulation));
+				if (!Bridge->HasRpcTransportNamed(URLabBridgeTransportNames::Zmq))
+				{
+					const FURLabBridgeServerConfig& Config = Bridge->GetInstanceConfig();
+					FailBoot(TEXT("URLabSimulation"), FString::Printf(
+						TEXT("ZMQ command socket did not bind tcp://%s:%d"),
+						*Config.BindAddress, Config.StepPort));
+					return;
+				}
 			}
 		}
 		if (Plan.SimulationSourceManifest.IsEmpty())
@@ -83,8 +169,8 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		}
 		for (TActorIterator<AAMjManager> It(&InWorld); It; ++It)
 		{
-			UE_LOG(LogURLab, Error,
-				TEXT("[URLabSimulation] refusing competing native manifest and authored manager scene"));
+			FailBoot(TEXT("URLabSimulation"),
+				TEXT("refusing competing native manifest and authored manager scene"));
 			return;
 		}
 
@@ -92,9 +178,8 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		if (!FMjModelSourceLoader::LoadManifest(
 				Plan.SimulationSourceManifest, Source, Error))
 		{
-			UE_LOG(LogURLab, Error,
-				TEXT("[URLabSimulation] source manifest '%s' was refused: %s"),
-				*Plan.SimulationSourceManifest, *Error);
+			FailBoot(TEXT("URLabSimulation"), FString::Printf(
+				TEXT("source manifest '%s' was refused: %s"), *Plan.SimulationSourceManifest, *Error));
 			return;
 		}
 		FMjSimulationPresentation Presentation;
@@ -105,9 +190,9 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 			Simulation->InstallSource(MoveTemp(Source), Presentation);
 		if (!Installed.bCommitted)
 		{
-			UE_LOG(LogURLab, Error,
-				TEXT("[URLabSimulation] source manifest '%s' was refused: %s"),
-				*Plan.SimulationSourceManifest, *Installed.Error);
+			FailBoot(TEXT("URLabSimulation"), FString::Printf(
+				TEXT("source manifest '%s' was refused: %s"),
+				*Plan.SimulationSourceManifest, *Installed.Error));
 			return;
 		}
 		if (!Installed.Error.IsEmpty())
@@ -136,18 +221,36 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	{
 		case EMjBootAction::Viewer:
 		{
-			auto* Bridge=UURLabBridgeSubsystem::EnsureFor(&InWorld);
-			if(Bridge) Bridge->SetGrants(FMjRendererBoot::ResolvePermissionPolicy(
-				Plan, EMjPermissionProfile::Render));
-			auto* Workflow=InWorld.GetSubsystem<UURLabViewerWorldSubsystem>();FString Error;
-			if(!Workflow||!Workflow->Activate(Error)||!Workflow->AttachBridge(Error))
+			UURLabBridgeServer* Bridge = UURLabBridgeSubsystem::EnsureFor(&InWorld);
+			if (Bridge)
 			{
-				if(Workflow)Workflow->ShutdownWorkflow();
-				UE_LOG(LogURLab,Error,TEXT("[URLabViewer] workflow activation failed: %s"),*Error);
+				Bridge->SetGrants(FMjRendererBoot::ResolvePermissionPolicy(
+					Plan, EMjPermissionProfile::Render));
+			}
+			UURLabViewerWorldSubsystem* Workflow = InWorld.GetSubsystem<UURLabViewerWorldSubsystem>();
+			FString Error;
+			if (!Workflow || !Workflow->Activate(Error) || !Workflow->AttachBridge(Error))
+			{
+				if (Workflow)
+				{
+					Workflow->ShutdownWorkflow();
+				}
+				FailBoot(TEXT("URLabViewer"),
+					FString::Printf(TEXT("workflow activation failed: %s"), *Error));
 				return;
 			}
-			if(Bridge) Bridge->EnsureExternalTransportsBound();
-			ViewerWorkflow=Workflow;
+			if (Bridge)
+			{
+				Bridge->EnsureExternalTransportsBound();
+				if (!Bridge->VerifyCommandTransportsBound(Error))
+				{
+					Workflow->DetachBridge();
+					Workflow->ShutdownWorkflow();
+					FailBoot(TEXT("URLabViewer"), Error);
+					return;
+				}
+			}
+			ViewerWorkflow = Workflow;
 			UE_LOG(LogURLab,Display,TEXT("[URLabViewer] typed viewer service started; awaiting explicit owner/source/bind"));
 			return;
 		}
@@ -159,8 +262,7 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 			// silently consuming the sole renderer slot with fabricated scene identity.
 			if (Plan.Drive != EMjDrive::Request)
 			{
-				UE_LOG(LogURLab, Error,
-					TEXT("[URLabRender] retired hybrid renderer boot was refused"));
+				FailBoot(TEXT("URLabRender"), TEXT("retired hybrid renderer boot was refused"));
 				return;
 			}
 			if (!FMjRendererBoot::WantsBridge(Plan, Plan.Drive, /*bHasBus=*/false))
@@ -174,16 +276,16 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 			FString Error;
 			if (!Workflow || !Workflow->Activate(Error))
 			{
-				UE_LOG(LogURLab, Error,
-					TEXT("[URLabRender] request workflow activation failed: %s"),
-					Error.IsEmpty() ? TEXT("render workflow subsystem unavailable") : *Error);
+				FailBoot(TEXT("URLabRender"), FString::Printf(
+					TEXT("request workflow activation failed: %s"),
+					Error.IsEmpty() ? TEXT("render workflow subsystem unavailable") : *Error));
 				return;
 			}
 			UURLabBridgeServer* Bridge = UURLabBridgeSubsystem::EnsureFor(&InWorld);
 			if (!Bridge)
 			{
 				Workflow->ShutdownWorkflow();
-				UE_LOG(LogURLab, Error, TEXT("[URLabRender] request bridge activation failed"));
+				FailBoot(TEXT("URLabRender"), TEXT("request bridge activation failed"));
 				return;
 			}
 			Bridge->SetGrants(FMjRendererBoot::ResolvePermissionPolicy(
@@ -191,11 +293,18 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 			if (!Workflow->AttachBridge(Error))
 			{
 				Workflow->ShutdownWorkflow();
-				UE_LOG(LogURLab, Error,
-					TEXT("[URLabRender] request service attachment failed: %s"), *Error);
+				FailBoot(TEXT("URLabRender"),
+					FString::Printf(TEXT("request service attachment failed: %s"), *Error));
 				return;
 			}
 			Bridge->EnsureExternalTransportsBound();
+			if (!Bridge->VerifyCommandTransportsBound(Error))
+			{
+				Workflow->DetachBridge();
+				Workflow->ShutdownWorkflow();
+				FailBoot(TEXT("URLabRender"), Error);
+				return;
+			}
 			RenderWorkflow = Workflow;
 			UE_LOG(LogURLab, Display,
 				TEXT("[URLabRender] typed request service started; awaiting explicit source install"));
@@ -204,9 +313,10 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 
 		case EMjBootAction::Fail:
 		{
-			// The flags name a shape nothing can build. Say so: this used to be silence in
-			// the packaged binary, which looked exactly like a successful headless boot.
-			UE_LOG(LogURLab, Error, TEXT("[MjRenderer] launch refused: %s"), *Plan.Error);
+			// The flags name a shape nothing can build. Say so and exit: this used to be
+			// silence in the packaged binary, which looked exactly like a successful
+			// headless boot.
+			FailBoot(TEXT("MjRenderer"), FString::Printf(TEXT("launch refused: %s"), *Plan.Error));
 			return;
 		}
 

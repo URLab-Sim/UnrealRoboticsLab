@@ -290,6 +290,41 @@ bool FURLabShmBootstrapChallengeTest::RunTest(const FString&)
 	Region.Reset();
 	TestFalse(TEXT("boot region is creator-cleaned"),
 		IFileManager::Get().DirectoryExists(*RegionPath));
+	{
+		const FString BaseDirectory = MakeBaseDirectory();
+		FURLabShmExactRegionPtr LiveRegion;
+		if (!TestTrue(TEXT("live region creates"),
+			FURLabShmExactRegion::Create(TEXT("boot-live"), BaseDirectory, LiveRegion).IsOk()))
+			return false;
+		const FString OrphanDir = FPaths::Combine(BaseDirectory,
+			TEXT("urlab-0123456789abcdef0123456789abcdef"));
+		FTCHARToUTF8 OrphanDirUtf8(*OrphanDir);
+		TestEqual(TEXT("orphan dir created"), ::mkdir(OrphanDirUtf8.Get(), S_IRWXU), 0);
+		const FString OrphanLock = FPaths::Combine(OrphanDir, TEXT(".urlab-lock"));
+		FTCHARToUTF8 OrphanLockUtf8(*OrphanLock);
+		const int OrphanLockFd = ::open(OrphanLockUtf8.Get(), O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
+		if (OrphanLockFd >= 0) ::close(OrphanLockFd);
+		const FString OrphanLiveObj = FPaths::Combine(OrphanDir,
+			TEXT("liv-0123456789abcdef0123456789abcdef.bin"));
+		FTCHARToUTF8 OrphanLiveObjUtf8(*OrphanLiveObj);
+		const int OrphanObjFd = ::open(OrphanLiveObjUtf8.Get(), O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR);
+		if (OrphanObjFd >= 0)
+		{
+			::ftruncate(OrphanObjFd, 64);
+			::close(OrphanObjFd);
+		}
+		FURLabShmExactRegionPtr SweeperRegion;
+		if (!TestTrue(TEXT("sweeper region creates"),
+			FURLabShmExactRegion::Create(TEXT("boot-sweeper"), BaseDirectory, SweeperRegion).IsOk()))
+			return false;
+		TestFalse(TEXT("unlocked orphan region directory is swept"),
+			IFileManager::Get().DirectoryExists(*OrphanDir));
+		TestTrue(TEXT("locked live region directory is preserved"),
+			IFileManager::Get().DirectoryExists(*LiveRegion->GetDescriptor().DirectoryPath));
+		SweeperRegion.Reset();
+		LiveRegion.Reset();
+		IFileManager::Get().DeleteDirectory(*BaseDirectory, false, true);
+	}
 	return !HasAnyErrors();
 #endif
 }

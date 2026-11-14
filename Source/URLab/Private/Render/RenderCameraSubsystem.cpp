@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Jonathan Embley-Riches. Licensed under the Apache License, Version 2.0.
 #include "Render/RenderCameraSubsystem.h"
 
+#include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "Async/TaskGraphInterfaces.h"
 #include "Misc/ScopeLock.h"
@@ -8,6 +9,20 @@
 #include "Render/RenderCameraComponent.h"
 #include "Render/RenderCameraRig.h"
 #include "Render/URLabRenderScene.h"
+#include "Utils/URLabLogging.h"
+#include "RenderCommandFence.h"
+#include "HAL/IConsoleManager.h"
+#include "Components/PrimitiveComponent.h"
+#include "UObject/UObjectIterator.h"
+
+static TAutoConsoleVariable<int32> CVarCamSettlePasses(
+	TEXT("urlab.Cam.SettlePasses"), 4,
+	TEXT("Extra renders of each colour camera at the requested pose before the exact\n")
+	TEXT("readback. TSR and Lumen converge over frames; with one render per pose the\n")
+	TEXT("image shows speckle/sparkle that changes every frame. 4 converges fully on\n")
+	TEXT("typical robot scenes; 2 is a cheaper middle ground;\n")
+	TEXT("0 = render once (fastest). Each pass costs one more render of the camera."),
+	ECVF_Default);
 
 struct FURLabRenderCaptureJobSharedState
 {
@@ -515,6 +530,15 @@ FURLabRenderCaptureJobAdmission URenderCameraSubsystem::SubmitExactCapture(
 	Result.Job.State = Job->Shared;
 	Result.bAccepted = true;
 	QueuedJobs.Add(MoveTemp(Job));
+	if (!bTickingScheduler && !bShuttingDown)
+	{
+		bTickingScheduler = true;
+		PumpDrainingJobs();
+		StartNextJob(Now);
+		PumpActiveJob(Now);
+		bTickingScheduler = false;
+		DrainNotifications();
+	}
 	return Result;
 }
 
@@ -712,6 +736,13 @@ void URenderCameraSubsystem::FinishActive(EURLabRenderCaptureJobState State,
 				if (ActiveJob->Shared->Message.IsEmpty())
 					ActiveJob->Shared->Message = MoveTemp(RestoreError);
 			}
+			if (UWorld* World = GetWorld())
+			{
+				// Flush the restored transform to the render scene in the same frame as
+				// the capture, so an immediate next-frame capture at the same pose
+				// does not race with a deferred restore update.
+				World->SendAllEndOfFrameUpdates();
+			}
 		}
 	}
 	QueueNotification(*ActiveJob);
@@ -743,6 +774,16 @@ void URenderCameraSubsystem::PumpActiveJob(double NowSeconds)
 			TEXT("exact capture scene changed before issuance"), true);
 		return;
 	}
+	TOptional<bool> bSceneResourcesReady;
+	struct FPreparedJobCamera
+	{
+		int32 Index = INDEX_NONE;
+		URenderCameraComponent* Camera = nullptr;
+		bool bNeedsWarmup = false;
+	};
+	TArray<FPreparedJobCamera, TInlineAllocator<16>> ReadyCameras;
+	bool bAnyNeedsWarmup = false;
+
 	for (int32 Index = 0; Index < ActiveJob->Receipts.Num(); ++Index)
 	{
 		if (ActiveJob->Receipts[Index].IsValid()) continue;
@@ -770,39 +811,198 @@ void URenderCameraSubsystem::PumpActiveJob(double NowSeconds)
 		// Material assignment can start component PSO work after scene installation.
 		// Validate scene and camera identity first, then leave the accepted job pending
 		// under its existing deadline until the registered primitives are ready.
-		if (!Scene->AreRenderResourcesReadyForCapture()) return;
-		const FRenderCameraCaptureIssueResult Issue =
-			Camera->TryIssueExactCapture(ActiveJob->LifetimeLease);
-		if (Issue.IsAccepted())
+		if (!bSceneResourcesReady.IsSet())
 		{
-			// Retain the writer before inspecting public metadata. Even a malformed
-			// accepted receipt may own a GPU copy and its workflow capacity lease.
-			ActiveJob->Receipts[Index] = Issue.Receipt;
+			bSceneResourcesReady = Scene->AreRenderResourcesReadyForCapture();
+			if (!bSceneResourcesReady.GetValue() && !GIsEditor)
 			{
-				FScopeLock Lock(&ActiveJob->Shared->Lock);
-				ActiveJob->Shared->WriterReceipts.Add(Issue.Receipt);
-				ActiveJob->Shared->bGpuWritersDrained = false;
+				if (UWorld* World = GetWorld())
+				{
+					World->SendAllEndOfFrameUpdates();
+				}
+				bSceneResourcesReady = Scene->AreRenderResourcesReadyForCapture();
 			}
-			if (!Issue.Receipt.IsValid()
-				|| Issue.Receipt.CameraName != ActiveJob->CameraNames[Index]
-				|| Issue.Receipt.Mode != ActiveJob->Plan.Cameras[Index].Mode
-				|| Issue.Receipt.Resolution != ActiveJob->Plan.Cameras[Index].Optics.Resolution
-				|| Issue.Receipt.ConfigurationRevision
-					!= ActiveJob->Plan.Cameras[Index].BaselineConfigurationRevision
-				|| !SameFrameIdentity(Issue.Receipt.Identity,
-					ActiveJob->PresentationFrame.Identity))
+			if (bSceneResourcesReady.GetValue())
+			{
+				for (int32 CamIdx = 0; CamIdx < ActiveJob->Cameras.Num(); ++CamIdx)
+				{
+					if (ActiveJob->Receipts.IsValidIndex(CamIdx)
+						&& ActiveJob->Receipts[CamIdx].IsValid())
+					{
+						continue;
+					}
+					if (URenderCameraComponent* PendingCam = ActiveJob->Cameras[CamIdx].Get())
+					{
+						if (!PendingCam->IsStreamingActive())
+						{
+							PendingCam->SetStreamingEnabled(true);
+						}
+					}
+				}
+			}
+		}
+		if (!bSceneResourcesReady.GetValue()) return;
+		bool bNeedsWarmup = false;
+		const FRenderCameraCaptureIssueResult Prep =
+			Camera->PrepareExactCapture(bNeedsWarmup);
+		if (Prep.Code == ERenderCameraCaptureIssue::Accepted)
+		{
+			ReadyCameras.Add({Index, Camera, bNeedsWarmup});
+			bAnyNeedsWarmup |= bNeedsWarmup;
+		}
+		else if (!Prep.IsRetryable())
+		{
+			FinishActive(EURLabRenderCaptureJobState::Failed,
+				ActiveJob->CameraNames[Index], Prep.Message, true);
+			return;
+		}
+	}
+
+	if (ReadyCameras.Num() > 0)
+	{
+		const double TPrepDone = FPlatformTime::Seconds();
+		UWorld* World = GetWorld();
+		if (World && World->Scene)
+		{
+			World->SendAllEndOfFrameUpdates();
+			if (bAnyNeedsWarmup)
+			{
+				for (const FPreparedJobCamera& Entry : ReadyCameras)
+				{
+					if (Entry.bNeedsWarmup)
+					{
+						Entry.Camera->QueueDeferredSceneCapturePass(/*bCameraCutPass=*/true);
+					}
+				}
+				USceneCaptureComponent::UpdateDeferredCaptures(World->Scene);
+			}
+			// Settle passes: render colour cameras extra times at the requested pose so
+			// temporal history (TSR/TAA, Lumen) converges before the frame that is read
+			// back. The first pass carries the real step-to-step motion vectors (UE keeps
+			// each primitive's previous transform until the next engine frame), so the
+			// history reprojects correctly. Velocity is then reset, so the remaining
+			// passes accumulate in place instead of re-applying that motion.
+			const int32 SettlePasses = FMath::Clamp(CVarCamSettlePasses.GetValueOnGameThread(), 0, 16);
+			for (int32 Pass = 0; Pass < SettlePasses; ++Pass)
+			{
+				bool bAnyQueued = false;
+				for (const FPreparedJobCamera& Entry : ReadyCameras)
+				{
+					if (ActiveJob->Plan.Cameras.IsValidIndex(Entry.Index)
+						&& ActiveJob->Plan.Cameras[Entry.Index].Mode == ERenderCameraMode::Real)
+					{
+						Entry.Camera->QueueDeferredSceneCapturePass(/*bCameraCutPass=*/false);
+						bAnyQueued = true;
+					}
+				}
+				if (!bAnyQueued) break;
+				USceneCaptureComponent::UpdateDeferredCaptures(World->Scene);
+				if (Pass == 0)
+				{
+					for (UPrimitiveComponent* Primitive : TObjectRange<UPrimitiveComponent>())
+					{
+						if (Primitive->GetWorld() == World && Primitive->IsRegistered()
+							&& Primitive->Mobility == EComponentMobility::Movable)
+						{
+							Primitive->ResetSceneVelocity();
+						}
+					}
+				}
+			}
+			for (const FPreparedJobCamera& Entry : ReadyCameras)
+			{
+				Entry.Camera->QueueDeferredSceneCapturePass(/*bCameraCutPass=*/false);
+			}
+			USceneCaptureComponent::UpdateDeferredCaptures(World->Scene);
+		}
+		else
+		{
+			for (const FPreparedJobCamera& Entry : ReadyCameras)
+			{
+				Entry.Camera->QueueDeferredSceneCapturePass(/*bCameraCutPass=*/false);
+			}
+		}
+		const double TUpdateCapturesDone = FPlatformTime::Seconds();
+
+		for (int32 Pos = 0; Pos < ReadyCameras.Num(); ++Pos)
+		{
+			const FPreparedJobCamera& Entry = ReadyCameras[Pos];
+			const int32 Index = Entry.Index;
+			const bool bForceSubmit = (Pos == ReadyCameras.Num() - 1);
+			const FRenderCameraCaptureIssueResult Issue =
+				Entry.Camera->IssuePreparedExactCaptureReadback(
+					ActiveJob->LifetimeLease, bForceSubmit);
+			if (Issue.IsAccepted())
+			{
+				// Retain the writer before inspecting public metadata. Even a malformed
+				// accepted receipt may own a GPU copy and its workflow capacity lease.
+				ActiveJob->Receipts[Index] = Issue.Receipt;
+				{
+					FScopeLock Lock(&ActiveJob->Shared->Lock);
+					ActiveJob->Shared->WriterReceipts.Add(Issue.Receipt);
+					ActiveJob->Shared->bGpuWritersDrained = false;
+				}
+				if (!Issue.Receipt.IsValid()
+					|| Issue.Receipt.CameraName != ActiveJob->CameraNames[Index]
+					|| Issue.Receipt.Mode != ActiveJob->Plan.Cameras[Index].Mode
+					|| Issue.Receipt.Resolution != ActiveJob->Plan.Cameras[Index].Optics.Resolution
+					|| Issue.Receipt.ConfigurationRevision
+						!= ActiveJob->Plan.Cameras[Index].BaselineConfigurationRevision
+					|| !SameFrameIdentity(Issue.Receipt.Identity,
+						ActiveJob->PresentationFrame.Identity))
+				{
+					FinishActive(EURLabRenderCaptureJobState::Failed,
+						ActiveJob->CameraNames[Index],
+						TEXT("camera accepted an inexact capture receipt"), true);
+					return;
+				}
+			}
+			else if (!Issue.IsRetryable())
 			{
 				FinishActive(EURLabRenderCaptureJobState::Failed,
-					ActiveJob->CameraNames[Index],
-					TEXT("camera accepted an inexact capture receipt"), true);
+					ActiveJob->CameraNames[Index], Issue.Message, true);
 				return;
 			}
 		}
-		else if (!Issue.IsRetryable())
+		const double TIssueDone = FPlatformTime::Seconds();
+		if (!GIsEditor)
 		{
-			FinishActive(EURLabRenderCaptureJobState::Failed,
-				ActiveJob->CameraNames[Index], Issue.Message, true);
-			return;
+			bool bAnyPendingMap = false;
+			for (const FPreparedJobCamera& Entry : ReadyCameras)
+			{
+				if (Entry.Camera)
+				{
+					Entry.Camera->FlushInFlightReadbacksToMap();
+					if (Entry.Camera->NumPendingMapCommands() > 0)
+					{
+						bAnyPendingMap = true;
+					}
+				}
+			}
+			const double TFlushDone = FPlatformTime::Seconds();
+			if (bAnyPendingMap)
+			{
+				FRenderCommandFence MapFence;
+				MapFence.BeginFence();
+				MapFence.Wait();
+				const double TFenceDone = FPlatformTime::Seconds();
+				for (const FPreparedJobCamera& Entry : ReadyCameras)
+				{
+					if (Entry.Camera)
+					{
+						Entry.Camera->HarvestCompletedReadbacks();
+					}
+				}
+				const double THarvestDone = FPlatformTime::Seconds();
+				UE_LOG(LogURLabRuntime, Verbose,
+					TEXT("[RenderPerf] PumpActiveJob cams=%d warmup=%d update_captures=%.2fms issue=%.2fms flush=%.2fms map_fence=%.2fms harvest=%.2fms"),
+					ReadyCameras.Num(), bAnyNeedsWarmup ? 1 : 0,
+					(TUpdateCapturesDone - TPrepDone) * 1000.0,
+					(TIssueDone - TUpdateCapturesDone) * 1000.0,
+					(TFlushDone - TIssueDone) * 1000.0,
+					(TFenceDone - TFlushDone) * 1000.0,
+					(THarvestDone - TFenceDone) * 1000.0);
+			}
 		}
 	}
 
@@ -843,20 +1043,18 @@ void URenderCameraSubsystem::PumpActiveJob(double NowSeconds)
 	FinishActive(EURLabRenderCaptureJobState::Succeeded, FString(), FString(), true);
 }
 
-FURLabRenderCaptureJobAdmission URenderCameraSubsystem::QueryExactCaptureHistory(
-	const FURLabRenderHistoryQuery& Query)
+int32 URenderCameraSubsystem::SelectHistoryGroup(const FURLabRenderHistoryQuery& Query,
+	TArray<int32>& OutCameraIndices) const
 {
-	check(IsInGameThread());
-	FURLabRenderCaptureJobAdmission Result;
+	OutCameraIndices.Reset();
 	if (!Query.RetentionContext.IsValid() || Query.ExpectedSceneRevision.IsEmpty()
 		|| Query.GeometryConfigurationId.IsEmpty()
 		|| !FMath::IsFinite(Query.TargetSourceTime) || Query.Cameras.IsEmpty()
 		|| Query.Cameras.Num() > MaxCamerasPerExactCaptureJob)
 	{
-		Result.Error = TEXT("history query is invalid"); return Result;
+		return INDEX_NONE;
 	}
-	const FHistoryGroup* Selected = nullptr;
-	TArray<int32> Indices;
+	int32 Selected = INDEX_NONE;
 	for (int32 GroupIndex = HistoryGroups.Num() - 1; GroupIndex >= 0; --GroupIndex)
 	{
 		const FHistoryGroup& Group = HistoryGroups[GroupIndex];
@@ -865,6 +1063,8 @@ FURLabRenderCaptureJobAdmission URenderCameraSubsystem::QueryExactCaptureHistory
 			|| Group.GeometryConfigurationId != Query.GeometryConfigurationId
 			|| !Group.Identity.bHasSourceTime || Group.Identity.ClockEpoch != Query.ClockEpoch
 			|| Group.Identity.SourceTime > Query.TargetSourceTime) continue;
+		if (Selected != INDEX_NONE
+			&& Group.Identity.SourceTime <= HistoryGroups[Selected].Identity.SourceTime) continue;
 		TArray<int32> Candidate;
 		for (const FURLabRenderHistoryCameraQuery& Camera : Query.Cameras)
 		{
@@ -872,24 +1072,38 @@ FURLabRenderCaptureJobAdmission URenderCameraSubsystem::QueryExactCaptureHistory
 			for (int32 Index = 0; Index < Group.Names.Num(); ++Index)
 				if (Group.Names[Index] == Camera.Name
 					&& Group.ConfigurationIds.IsValidIndex(Index)
+					&& Group.Configurations.IsValidIndex(Index)
+					&& Group.Frames.IsValidIndex(Index)
 					&& Group.ConfigurationIds[Index] == Camera.ConfigurationId) { Match = Index; break; }
 			if (Match == INDEX_NONE) { Candidate.Reset(); break; }
 			Candidate.Add(Match);
 		}
 		if (Candidate.Num() == Query.Cameras.Num())
 		{
-			Selected = &Group; Indices = MoveTemp(Candidate); break;
+			Selected = GroupIndex;
+			OutCameraIndices = MoveTemp(Candidate);
 		}
 	}
-	if (!Selected) { Result.Error = TEXT("history_miss"); return Result; }
+	return Selected;
+}
+
+FURLabRenderCaptureJobAdmission URenderCameraSubsystem::QueryExactCaptureHistory(
+	const FURLabRenderHistoryQuery& Query)
+{
+	check(IsInGameThread());
+	FURLabRenderCaptureJobAdmission Result;
+	TArray<int32> Indices;
+	const int32 GroupIndex = SelectHistoryGroup(Query, Indices);
+	if (GroupIndex == INDEX_NONE) { Result.Error = TEXT("history_miss"); return Result; }
+	const FHistoryGroup& Selected = HistoryGroups[GroupIndex];
 	auto Shared = MakeShared<FURLabRenderCaptureJobSharedState, ESPMode::ThreadSafe>();
 	Shared->State = EURLabRenderCaptureJobState::Succeeded;
-	Shared->SceneRevision = Selected->SceneRevision;
-	Shared->GeometryConfigurationId = Selected->GeometryConfigurationId;
+	Shared->SceneRevision = Selected.SceneRevision;
+	Shared->GeometryConfigurationId = Selected.GeometryConfigurationId;
 	for (int32 QueryIndex = 0; QueryIndex < Query.Cameras.Num(); ++QueryIndex)
 	{
 		Shared->CameraNames.Add(Query.Cameras[QueryIndex].Name);
-		Shared->Frames.Add(Selected->Frames[Indices[QueryIndex]]);
+		Shared->Frames.Add(Selected.Frames[Indices[QueryIndex]]);
 	}
 	FURLabRenderCaptureJob Job;
 	Job.Scheduler = this; Job.SchedulerLifetime = SchedulerLifetime;
@@ -902,36 +1116,21 @@ bool URenderCameraSubsystem::ResolveExactCaptureHistory(const FURLabRenderHistor
 	FString& OutError) const
 {
 	check(IsInGameThread()); OutPlan = {}; OutIdentity = {};
-	for (int32 GroupIndex = HistoryGroups.Num() - 1; GroupIndex >= 0; --GroupIndex)
+	TArray<int32> Indices;
+	const int32 GroupIndex = SelectHistoryGroup(Query, Indices);
+	if (GroupIndex == INDEX_NONE) { OutError = TEXT("history_miss"); return false; }
+	const FHistoryGroup& Group = HistoryGroups[GroupIndex];
+	OutPlan.RetentionContext = Query.RetentionContext;
+	OutPlan.Producer = Group.Producer; OutPlan.SceneGeneration = Group.SceneGeneration;
+	OutPlan.SceneRevision = Group.SceneRevision;
+	OutPlan.GeometryConfigurationId = Group.GeometryConfigurationId;
+	for (const int32 Match : Indices)
 	{
-		const FHistoryGroup& Group = HistoryGroups[GroupIndex];
-		if (Group.RetentionContext != Query.RetentionContext
-			|| Group.SceneRevision != Query.ExpectedSceneRevision
-			|| Group.GeometryConfigurationId != Query.GeometryConfigurationId
-			|| !Group.Identity.bHasSourceTime
-			|| Group.Identity.ClockEpoch != Query.ClockEpoch
-			|| Group.Identity.SourceTime > Query.TargetSourceTime) continue;
-		FURLabRenderExactCapturePlan Candidate; Candidate.RetentionContext = Query.RetentionContext;
-		Candidate.Producer = Group.Producer; Candidate.SceneGeneration = Group.SceneGeneration;
-		Candidate.SceneRevision = Group.SceneRevision;
-		Candidate.GeometryConfigurationId = Group.GeometryConfigurationId;
-		for (const FURLabRenderHistoryCameraQuery& Requested : Query.Cameras)
-		{
-			int32 Match = INDEX_NONE;
-			for (int32 Index = 0; Index < Group.Names.Num(); ++Index)
-				if (Group.Names[Index] == Requested.Name && Group.ConfigurationIds[Index] == Requested.ConfigurationId)
-				{ Match = Index; break; }
-			if (Match == INDEX_NONE) { Candidate.Cameras.Reset(); break; }
-			Candidate.Cameras.Add(Group.Configurations[Match]);
-			Candidate.AggregateLogicalPixelBytes += Group.Configurations[Match].LogicalPixelBytes;
-			Candidate.AggregatePhysicalArrayBytes += Group.Configurations[Match].PhysicalArrayBytes;
-		}
-		if (Candidate.Cameras.Num() == Query.Cameras.Num())
-		{
-			OutPlan = MoveTemp(Candidate); OutIdentity = Group.Identity; OutError.Reset(); return true;
-		}
+		OutPlan.Cameras.Add(Group.Configurations[Match]);
+		OutPlan.AggregateLogicalPixelBytes += Group.Configurations[Match].LogicalPixelBytes;
+		OutPlan.AggregatePhysicalArrayBytes += Group.Configurations[Match].PhysicalArrayBytes;
 	}
-	OutError = TEXT("history_miss"); return false;
+	OutIdentity = Group.Identity; OutError.Reset(); return true;
 }
 
 void URenderCameraSubsystem::RetireExactCaptureHistory(const FGuid& RetentionContext)
@@ -1120,21 +1319,151 @@ void URenderCameraSubsystem::DrainNotifications()
 		if (Notification) Notification();
 }
 
+void URenderCameraSubsystem::HarvestActiveCapture()
+{
+	check(IsInGameThread());
+	if (bTickingScheduler || bShuttingDown || !ActiveJob.IsValid()) return;
+	bTickingScheduler = true;
+	PumpDrainingJobs();
+	const double InitialNow = ReadMonotonicSeconds();
+	if (FMath::IsFinite(InitialNow))
+	{
+		PumpActiveJob(InitialNow);
+	}
+	if (!ActiveJob.IsValid())
+	{
+		bTickingScheduler = false;
+		DrainNotifications();
+		return;
+	}
+	bool bAllReceiptsIssued = (ActiveJob->Receipts.Num() == ActiveJob->Cameras.Num());
+	for (const FRenderCameraCaptureReceipt& Receipt : ActiveJob->Receipts)
+	{
+		if (!Receipt.IsValid())
+		{
+			bAllReceiptsIssued = false;
+			break;
+		}
+	}
+	if (bAllReceiptsIssued)
+	{
+		bool bAnyPendingMap = false;
+		for (const TWeakObjectPtr<URenderCameraComponent>& WeakCamera : ActiveJob->Cameras)
+		{
+			if (URenderCameraComponent* Camera = WeakCamera.Get())
+			{
+				Camera->FlushInFlightReadbacksToMap();
+				Camera->HarvestCompletedReadbacks();
+				if (Camera->NumPendingMapCommands() > 0)
+				{
+					bAnyPendingMap = true;
+				}
+			}
+		}
+		if (bAnyPendingMap)
+		{
+			FRenderCommandFence MapFence;
+			MapFence.BeginFence();
+			MapFence.Wait();
+			for (const TWeakObjectPtr<URenderCameraComponent>& WeakCamera : ActiveJob->Cameras)
+			{
+				if (URenderCameraComponent* Camera = WeakCamera.Get())
+				{
+					Camera->HarvestCompletedReadbacks();
+				}
+			}
+		}
+	}
+	PumpDrainingJobs();
+	const double Now = ReadMonotonicSeconds();
+	if (FMath::IsFinite(Now))
+	{
+		PumpActiveJob(Now);
+	}
+	bTickingScheduler = false;
+	DrainNotifications();
+}
+
 void URenderCameraSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	if (bTickingScheduler || bShuttingDown) return;
 	bTickingScheduler = true;
+	TMap<const AURLabRenderScene*, bool> SceneReadyCache;
 	for (int32 Index = Cameras.Num() - 1; Index >= 0; --Index)
 	{
 		if (URenderCameraComponent* Camera = Cameras[Index].Get())
 		{
 			const AURLabRenderScene* Scene = Cast<AURLabRenderScene>(Camera->GetOwner());
-			Camera->UpdateCapturePipeline(!Scene
-				|| Scene->AreRenderResourcesReadyForCapture());
+			bool bReady = true;
+			if (Scene)
+			{
+				if (const bool* Cached = SceneReadyCache.Find(Scene))
+				{
+					bReady = *Cached;
+				}
+				else
+				{
+					bReady = Scene->AreRenderResourcesReadyForCapture();
+					if (!bReady && !GIsEditor)
+					{
+						if (UWorld* World = GetWorld())
+						{
+							World->SendAllEndOfFrameUpdates();
+						}
+						bReady = Scene->AreRenderResourcesReadyForCapture();
+					}
+					SceneReadyCache.Add(Scene, bReady);
+				}
+			}
+			Camera->UpdateCapturePipeline(bReady);
 		}
 		else
 			Cameras.RemoveAtSwap(Index, EAllowShrinking::No);
+	}
+	if (ActiveJob.IsValid())
+	{
+		bool bAllReceiptsIssued = (ActiveJob->Receipts.Num() == ActiveJob->Cameras.Num());
+		for (const FRenderCameraCaptureReceipt& Receipt : ActiveJob->Receipts)
+		{
+			if (!Receipt.IsValid())
+			{
+				bAllReceiptsIssued = false;
+				break;
+			}
+		}
+		if (bAllReceiptsIssued)
+		{
+			bool bAllGpuReady = true;
+			bool bAnyPendingMap = false;
+			for (const TWeakObjectPtr<URenderCameraComponent>& WeakCamera : ActiveJob->Cameras)
+			{
+				if (const URenderCameraComponent* Camera = WeakCamera.Get())
+				{
+					if (Camera->NumInFlightReadbacks() > 0)
+					{
+						bAllGpuReady = false;
+					}
+					if (Camera->NumPendingMapCommands() > 0)
+					{
+						bAnyPendingMap = true;
+					}
+				}
+			}
+			if (bAllGpuReady && bAnyPendingMap)
+			{
+				FRenderCommandFence MapFence;
+				MapFence.BeginFence();
+				MapFence.Wait();
+				for (const TWeakObjectPtr<URenderCameraComponent>& WeakCamera : ActiveJob->Cameras)
+				{
+					if (URenderCameraComponent* Camera = WeakCamera.Get())
+					{
+						Camera->HarvestCompletedReadbacks();
+					}
+				}
+			}
+		}
 	}
 	PumpDrainingJobs();
 	const double Now = ReadMonotonicSeconds();

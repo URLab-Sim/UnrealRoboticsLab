@@ -9,6 +9,7 @@
 
 struct mjData_;
 struct mjModel_;
+struct mjvScene_;
 
 struct FMjResolvedRenderCameraOverride
 {
@@ -33,9 +34,17 @@ public:
 		FRenderScene& OutScene,
 		FRenderSceneResources& OutResources, FString& OutError);
 
-	/** Copy a complete body pose from mjData into this adapter's scene revision. */
+	/** Copy a complete body pose from mjData into this adapter's scene revision.
+	 *  FlexScratch, when given, is a caller-owned scene from MakeFlexScratch()
+	 *  reused across frames instead of allocating one per call. */
 	bool FrameFromData(const mjData_* Data, uint64 FrameId, FRenderFrame& Out,
-		FString& OutError) const;
+		FString& OutError, mjvScene_* FlexScratch = nullptr) const;
+	/** Allocate a reusable flex visualization scene sized for Model; free with FreeFlexScratch. */
+	static mjvScene_* MakeFlexScratch(const mjModel_* Model);
+	static void FreeFlexScratch(mjvScene_* Scene);
+	/** True when the installed visualization features need dynamics, not just kinematics. */
+	bool RequiresDynamics() const;
+	bool HasUserCamera() const { return bHasUserCamera; }
 
 	/** Convert exact-sized canonical RHS metre/+wxyz body arrays into a neutral frame. */
 	bool FrameFromCartesian(TConstArrayView<double> BodyPositions,

@@ -17,6 +17,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "RenderingThread.h"
+#include "RenderExactCaptureTestSupport.h"
 #include "Render/RenderCameraComponent.h"
 #include "Render/RenderCameraRig.h"
 #include "Render/RenderWorldSubsystem.h"
@@ -110,10 +111,15 @@ bool Capture(URenderCameraComponent& Camera, uint64 FrameId,
 {
 	Camera.ClearHistory();
 	FlushRenderingCommands();
-	Camera.IssueSyncCapture();
-	FlushRenderingCommands();
-	Camera.WaitAndHarvestReadbacks(2.0);
-	return Camera.GetFrame(FrameId, OutFrame);
+	const FRenderCameraCaptureCompletion Completion =
+		URLabRenderTest::CaptureExact(Camera, 2.0);
+	if (!Completion.IsSuccessful() || !Completion.Frame.IsValid()
+		|| Completion.Frame->Identity.FrameId != FrameId)
+	{
+		return false;
+	}
+	OutFrame = *Completion.Frame;
+	return true;
 }
 
 struct FMaterialFallbackProbe

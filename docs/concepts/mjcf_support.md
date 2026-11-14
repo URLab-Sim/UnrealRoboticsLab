@@ -21,7 +21,7 @@ enums.
 | Bodies | `body`, `inertial`, `frame`, `attach`, `replicate` |
 | Geometry | `geom`, `site` |
 | Joints | `joint`, `freejoint` |
-| Cameras and lights | `camera`, `light` |
+| Cameras and lights | `camera`, `light` (explicit `intensity` is physical, as in MuJoCo's Filament renderer: lux for directional lights, candela for spot and point lights; `type="image"` lights the scene from the skybox) |
 | Assets | `mesh`, `hfield`, `skin`, `bone`, `texture`, `material`, `layer`, `model` |
 | Defaults | `default` and every class partial |
 | Contact, equality, tendon | `pair`, `exclude`, all seven equality types, spatial and fixed tendons with all four wrap types |

@@ -127,7 +127,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FURLabLockedLatestFrameTest,
 bool FURLabLockedLatestFrameTest::RunTest(const FString& Parameters)
 {
 #if !PLATFORM_LINUX
-	AddWarning(TEXT("Windows LockFileEx implementation has not been built or executed on Windows"));
+	AddWarning(TEXT("Windows latest-frame implementation has not been built or executed on Windows"));
 	return true;
 #else
 	const FString Base = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLabTests"),
@@ -174,22 +174,54 @@ bool FURLabLockedLatestFrameTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("new snapshot coalesces without waiting"), Writer->Submit(
 		MakeShared<TArray<uint8>, ESPMode::ThreadSafe>(MoveTemp(New)), Error));
 	FPlatformProcess::SleepNoStats(0.01f);
-	::flock(BlockFd, LOCK_UN);
-	::close(BlockFd);
 
 	TArray<uint8> Read;
 	EURLabLatestFrameRead Result = EURLabLatestFrameRead::NoFrame;
-	for (int32 Attempt = 0; Attempt < 200 && Result == EURLabLatestFrameRead::NoFrame; ++Attempt)
+	FURLabPoseStreamFrame Decoded;
+	for (int32 Attempt = 0; Attempt < 200 && Decoded.Sequence != 2; ++Attempt)
+	{
+		FPlatformProcess::SleepNoStats(0.001f);
+		Result = Reader->ReadLatest(Read, Error);
+		if (Result == EURLabLatestFrameRead::Frame)
+			TestTrue(TEXT("published bytes decode after copy"),
+				FURLabPoseStreamFrameCodec::Decode(Read, Decoded, Error, 56));
+	}
+	TestEqual(TEXT("newest snapshot wins while a foreign file lock is held"),
+		Decoded.Sequence, uint64(2));
+
+	const double ClearStarted = FPlatformTime::Seconds();
+	TestTrue(TEXT("generation barrier clears without waiting for readers"), Writer->Clear(Error));
+	TestTrue(TEXT("generation barrier is immediate"),
+		FPlatformTime::Seconds() - ClearStarted < 0.1);
+	TestEqual(TEXT("cleared object publishes no frame"), Reader->ReadLatest(Read, Error),
+		EURLabLatestFrameRead::NoFrame);
+	uint8 LockBytes[8] = {};
+	TestEqual(TEXT("seqlock is readable"), ::pread(BlockFd, LockBytes, 8, 40), ssize_t(8));
+	TestEqual(TEXT("seqlock is even after publication"), LockBytes[0] & 1, 0);
+
+	TArray<uint8> Third;
+	FURLabPoseStreamFrameCodec::Encode(MakeFrame(3), Third, Error);
+	TestTrue(TEXT("writer publishes after the barrier"), Writer->Submit(
+		MakeShared<TArray<uint8>, ESPMode::ThreadSafe>(MoveTemp(Third)), Error));
+	Result = EURLabLatestFrameRead::NoFrame;
+	for (int32 Attempt = 0; Attempt < 200 && Result != EURLabLatestFrameRead::Frame; ++Attempt)
 	{
 		FPlatformProcess::SleepNoStats(0.001f);
 		Result = Reader->ReadLatest(Read, Error);
 	}
-	TestEqual(TEXT("reader obtains complete coalesced frame"), Result,
-		EURLabLatestFrameRead::Frame);
-	FURLabPoseStreamFrame Decoded;
-	TestTrue(TEXT("coalesced bytes decode after copy"),
-		FURLabPoseStreamFrameCodec::Decode(Read, Decoded, Error, 56));
-	TestEqual(TEXT("newest snapshot wins"), Decoded.Sequence, uint64(2));
+	TestEqual(TEXT("reader sees the post-barrier frame"), Result, EURLabLatestFrameRead::Frame);
+
+	uint8 Busy[8] = {};
+	FMemory::Memcpy(Busy, LockBytes, sizeof(Busy));
+	Busy[0] = uint8(Busy[0] + 5);
+	TestEqual(TEXT("test marks the seqlock busy"), ::pwrite(BlockFd, Busy, 8, 40), ssize_t(8));
+	TUniquePtr<FURLabLockedLatestFrameReader> Fresh =
+		FURLabLockedLatestFrameReader::Create(Consumer, 4096, Error);
+	TestEqual(TEXT("a write in progress reads as no frame"), Fresh->ReadLatest(Read, Error),
+		EURLabLatestFrameRead::NoFrame);
+	::flock(BlockFd, LOCK_UN);
+	::close(BlockFd);
+	Fresh.Reset();
 	Writer->Stop();
 	TArray<uint8> AfterStop = {1};
 	TestFalse(TEXT("stopped writer rejects submit"), Writer->Submit(

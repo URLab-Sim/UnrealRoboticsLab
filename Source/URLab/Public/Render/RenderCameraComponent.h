@@ -13,11 +13,8 @@
 
 class UPrimitiveComponent;
 
-URLAB_API void RenderPumpForcedCapture(const TArray<class URenderCameraComponent*>& Cameras, uint64 TargetFrameId, int32 TimeoutMs);
 URLAB_API void RenderCopyReadbackIntoFrame(const void* Mapped, int32 RowPitchPixels,
     ERenderCameraMode Mode, int32 SegmentationObjectType, FRenderCameraFrame& Frame);
-URLAB_API void RenderSpearForcedCapture(const TArray<class URenderCameraComponent*>& Cameras,
-    const FRenderFrameIdentity& Identity);
 
 UCLASS(ClassGroup = (URLabRender), meta = (BlueprintSpawnableComponent))
 class URLAB_API URenderCameraComponent : public USceneComponent
@@ -97,9 +94,8 @@ public:
 	/**
 	 * Manual-capture-only: the per-frame pipeline harvests completed readbacks but
 	 * never issues an automatic capture. Captures come solely from an on-demand
-	 * IssueSyncCapture (the forced-render path). Used by the render server's
-	 * forced-render mode so the async stream does not compete with the request
-	 * render for the one render thread.
+	 * TryIssueExactCapture. Used by the render server so the async stream does not
+	 * compete with the request render for the one render thread.
 	 */
 	bool bManualCaptureOnly = false;
 
@@ -217,9 +213,16 @@ public:
 	/** Explicit component sets supplied by the scene host; the camera performs no discovery. */
 	void SetVisibilityComponents(const TArray<UPrimitiveComponent*>& ShowOnly,
 		const TArray<UPrimitiveComponent*>& Hidden, int32 InSegmentationObjectType);
-	/** Install immutable neutral-scene subjects selected automatically by capture mode. */
+	/** Install immutable neutral-scene subjects selected automatically by capture mode.
+	 *  Each subject is shown or hidden together with its attached primitives. */
 	void SetNeutralSegmentationComponents(const TArray<UPrimitiveComponent*>& Instance,
 		const TArray<UPrimitiveComponent*>& Semantic);
+	/** Install opaque depth stand-ins for translucent neutral-scene primitives.
+	 *  Index-aligned: in depth mode StandIns[i] is drawn and Translucent[i] is
+	 *  hidden, because translucency never writes scene depth. Every other mode
+	 *  hides the stand-ins. A stand-in may be one of the segmentation subjects. */
+	void SetNeutralDepthComponents(const TArray<UPrimitiveComponent*>& StandIns,
+		const TArray<UPrimitiveComponent*>& Translucent);
 	void SetSceneVisibility(bool bVisible);
 
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnFrameCompleted, const FRenderCameraFrame&);
@@ -291,13 +294,6 @@ public:
 	void RequestReadback();
 
 	/**
-	 * Render on demand: capture the scene and enqueue a readback right now, for
-	 * the current applied state. Requires streaming to be enabled already. Pair
-	 * it with HarvestCompletedReadbacks to pull the finished frame into history.
-	 */
-	void IssueSyncCapture();
-
-	/**
 	 * Try to issue one exact non-blocking capture of the currently applied frame.
 	 * Accepted receipts are never reissued. The optional neutral lease remains
 	 * retained until the associated GPU map/copy writer has actually drained,
@@ -307,6 +303,29 @@ public:
 		FRenderCameraCaptureLifetimeLeasePtr LifetimeLease = {});
 
 	/**
+	 * Validate and prepare the render target for an exact capture without
+	 * immediately executing a standalone ISceneRenderBuilder. Used by the
+	 * multi-camera scheduler to batch all cameras into one UpdateDeferredCaptures
+	 * pass before issuing readbacks.
+	 */
+	FRenderCameraCaptureIssueResult PrepareExactCapture(bool& OutNeedsCameraCutWarmup);
+
+	/** Queue this camera's scene capture into USceneCaptureComponent's deferred batch. */
+	void QueueDeferredSceneCapturePass(bool bCameraCutPass);
+
+	/** Enqueue the GPU-to-staging readback for a camera prepared with PrepareExactCapture. */
+	FRenderCameraCaptureIssueResult IssuePreparedExactCaptureReadback(
+		FRenderCameraCaptureLifetimeLeasePtr LifetimeLease = {},
+		bool bForceSubmit = true);
+
+	/**
+	 * Promote all in-flight readbacks directly to render-thread map commands
+	 * so FRHIGPUTextureReadback::Lock() flushes the RHI thread and waits on the
+	 * GPU fence directly on the render thread without game-thread polling stalls.
+	 */
+	void FlushInFlightReadbacksToMap();
+
+	/**
 	 * Advance the async readback pipeline: dispatch every GPU-ready readback to
 	 * the render thread for its map and copy, then drain the render thread's
 	 * finished frames into the history ring, publishing inline when no delay is
@@ -314,25 +333,11 @@ public:
 	 */
 	void HarvestCompletedReadbacks();
 
-	/**
-	 * Poll the pipeline for up to TimeoutSeconds, yielding between passes so the
-	 * render thread can finish its map and copy. This is how the synchronous
-	 * render path gets a fresh frame without flushing the render thread.
-	 */
-	void WaitAndHarvestReadbacks(double TimeoutSeconds);
-
 	/** Readbacks awaiting GPU completion, excluding those already dispatched. */
 	int32 NumInFlightReadbacks() const { return InFlightReadbacks.Num(); }
 
-	/**
-	 * True while any readback is still awaiting the GPU or its finished frame is
-	 * still queued for harvest, so the synchronous render path can avoid
-	 * re-issuing a capture over one already in flight.
-	 */
-	bool HasPendingReadbacks() const
-	{
-		return InFlightReadbacks.Num() > 0 || PendingMapCommands > 0;
-	}
+	/** Readback map commands dispatched to the render thread and awaiting completion. */
+	int32 NumPendingMapCommands() const { return PendingMapCommands; }
 
 	// --- Frame history -------------------------------------------------------- //
 
@@ -421,6 +426,7 @@ private:
 	 *  id belonging to no object. Called from SetupRenderTarget for seg modes. */
 	void ApplySegmentationShowFlags();
 	void ApplyModeVisibilityComponents();
+	bool HasNeutralModeComponents() const;
 
 
 	/** Current render-frame identity. Only changed after scene/frame validation. */
@@ -438,12 +444,18 @@ private:
 	uint64 NextOverrideSerial = 1;
 	bool bCaptureOverridePoisoned = false;
 	bool ApplyRuntimeCaptureConfiguration(const FRenderCameraEffectiveConfiguration& Configuration,
-		FString& OutError);
+		FString& OutError, bool bRebuildRenderTarget = true);
+	ERenderCameraMode RenderTargetMode = ERenderCameraMode::Real;
+	bool bNeedsCameraCut = true;
 	int32 SegmentationObjectType = -1;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPrimitiveComponent>> NeutralInstanceComponents;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPrimitiveComponent>> NeutralSemanticComponents;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UPrimitiveComponent>> NeutralDepthStandInComponents;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UPrimitiveComponent>> NeutralDepthTranslucentComponents;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPrimitiveComponent>> ExplicitShowOnlyComponents;
 	UPROPERTY(Transient)

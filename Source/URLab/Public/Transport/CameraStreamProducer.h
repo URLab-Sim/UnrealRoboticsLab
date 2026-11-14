@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Transport/CameraStreamFrameCodec.h"
+#include "Transport/LockedLatestFrame.h"
 #include "Transport/ShmExactPayload.h"
 
 struct URLAB_API FURLabCameraStreamProducerConfig
@@ -45,7 +46,7 @@ struct URLAB_API FURLabCameraStreamDelivery
 	FString ZmqEndpoint;
 	TArray<uint8> ZmqTopic;
 	TOptional<FURLabShmLiveObjectDescriptor> ShmObject;
-	uint32 ShmLayoutVersion = 1;
+	uint32 ShmLayoutVersion = URLabLatestFrameLayoutVersion;
 	uint32 MaxFrameBytes = 0;
 };
 

@@ -277,6 +277,28 @@ bool SceneOverlayMaxContacts(int32& OutMax)
 	return true;
 }
 
+void SceneKeys(TArray<FString>& OutKeys)
+{
+	OutKeys.Reset();
+	FString Value;
+	if (!ReadFullFlagValue(TEXT("URLabScene="), Value))
+	{
+		return;
+	}
+	TArray<FString> Tokens;
+	SplitCsv(Value, Tokens);
+	for (const FString& Tok : Tokens)
+	{
+		FString Key = Tok;
+		int32 Equals = INDEX_NONE;
+		if (Tok.FindChar(TEXT('='), Equals))
+		{
+			Key = Tok.Left(Equals).TrimEnd();
+		}
+		OutKeys.AddUnique(Key.ToLower());
+	}
+}
+
 // ---- -URLabNet ---------------------------------------------------------------------------------
 
 bool NetValue(const TCHAR* Key, FString& OutValue)

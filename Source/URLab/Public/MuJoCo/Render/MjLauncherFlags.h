@@ -115,6 +115,8 @@ URLAB_API bool SceneOverlayMask(int32& OutMask);
  *  each frame (0/absent = uncapped). Only meaningful with
  *  overlay=. Returns true (filling OutMax) when present. */
 URLAB_API bool SceneOverlayMaxContacts(int32& OutMax);
+/** Every key named in -URLabScene, lower-cased, in command-line order. */
+URLAB_API void SceneKeys(TArray<FString>& OutKeys);
 
 // ---- -URLabNet ---------------------------------------------------------------------------------
 

@@ -2,6 +2,10 @@
 
 #include "Bridge/RenderCapturePayloadAdapter.h"
 
+#include <atomic>
+
+#include "Async/ParallelFor.h"
+#include "Misc/ScopeLock.h"
 #include "Render/RenderCameraEncoding.h"
 #include "Transport/ShmExactPayload.h"
 
@@ -304,38 +308,59 @@ FURLabCapturePayloadMaterialization FURLabCapturePayloadAdmission::Materialize(
 		Camera.CaptureSerial = Frame->CaptureSerial;
 	}
 
-	if (State->EncodedBytes.IsEmpty())
-	{
-		State->EncodedBytes.Reserve(static_cast<int32>(State->Plan.AggregateLogicalPixelBytes));
-		State->EncodedBytes.SetNumUninitialized(
-			static_cast<int32>(State->Plan.AggregateLogicalPixelBytes));
-		for (int32 Index = 0; Index < Snapshot.Frames.Num(); ++Index)
-		{
-			const FRenderCameraFrame& Frame = *Snapshot.Frames[Index];
-			FString Encoding;
-			int32 StrideBytes = 0;
-			TArray<uint8> CameraBytes;
-			FString EncodeError;
-			if (!RenderEncodeCameraFrame(Frame, State->Plan.Cameras[Index], Encoding,
-				StrideBytes, CameraBytes, EncodeError))
-			{
-				FURLabCapturePayloadMaterialization Failure = Failed(MoveTemp(EncodeError));
-				Failure.Identity = SubmittedIdentity;
-				State->Cached = MoveTemp(Failure);
-				State->EncodedBytes.Empty();
-				State->ReleaseProducer();
-				return State->Cached.GetValue();
-			}
-			FMemory::Memcpy(State->EncodedBytes.GetData() + Metadata[Index].ByteOffset,
-				CameraBytes.GetData(), CameraBytes.Num());
-		}
-		State->EncodedBytes.Shrink();
-	}
-
 	FURLabStoredPayloadDescriptor Descriptor;
 	FURLabPayloadPin Pin;
-	const FURLabPayloadStoreStatus Status = State->Store->SealProduced(
-		State->Owner, State->Producer, MoveTemp(State->EncodedBytes), Descriptor, Pin);
+	const FURLabPayloadStoreStatus Status = State->Store->SealProducedWithFill(
+		State->Owner, State->Producer,
+		[&](TArrayView<uint8> Destination, FString& OutEncodeError) -> bool
+		{
+			if (Snapshot.Frames.Num() <= 1)
+			{
+				for (int32 Index = 0; Index < Snapshot.Frames.Num(); ++Index)
+				{
+					const FRenderCameraFrame& Frame = *Snapshot.Frames[Index];
+					FString Encoding;
+					int32 StrideBytes = 0;
+					TArrayView<uint8> CameraSlice = Destination.Slice(
+						static_cast<int32>(Metadata[Index].ByteOffset),
+						static_cast<int32>(Metadata[Index].ByteLength));
+					if (!RenderEncodeCameraFrame(Frame, State->Plan.Cameras[Index], Encoding,
+						StrideBytes, CameraSlice, OutEncodeError))
+					{
+						return false;
+					}
+				}
+				return true;
+			}
+			std::atomic<bool> bAllOk{true};
+			FCriticalSection ErrorMutex;
+			ParallelFor(Snapshot.Frames.Num(), [&](int32 Index)
+			{
+				if (!bAllOk.load(std::memory_order_relaxed))
+				{
+					return;
+				}
+				const FRenderCameraFrame& Frame = *Snapshot.Frames[Index];
+				FString Encoding;
+				int32 StrideBytes = 0;
+				FString LocalError;
+				TArrayView<uint8> CameraSlice = Destination.Slice(
+					static_cast<int32>(Metadata[Index].ByteOffset),
+					static_cast<int32>(Metadata[Index].ByteLength));
+				if (!RenderEncodeCameraFrame(Frame, State->Plan.Cameras[Index], Encoding,
+					StrideBytes, CameraSlice, LocalError))
+				{
+					bAllOk.store(false, std::memory_order_relaxed);
+					FScopeLock ErrorLock(&ErrorMutex);
+					if (OutEncodeError.IsEmpty())
+					{
+						OutEncodeError = MoveTemp(LocalError);
+					}
+				}
+			});
+			return bAllOk.load(std::memory_order_relaxed);
+		},
+		Descriptor, Pin);
 	if (!Status)
 	{
 		FURLabCapturePayloadMaterialization Failure = Failed(Status.Message);

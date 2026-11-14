@@ -15,8 +15,7 @@
  */
 
 /** Request/reply over gRPC: one UrlabPacket per call (op read from the msgpack
- *  request, payload passed through). Used by MjRendererDriverClient for
- *  render_hello (model fetch) and render_perturb. */
+ *  request, payload passed through). */
 UCLASS()
 class UURLabDmEnvRpcRpcClientTransport : public UURLabRpcClientTransport
 {

@@ -9,6 +9,7 @@
 
 #include <condition_variable>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
 
@@ -33,6 +34,9 @@ void PutDoubleLe(uint8* Out, double Value)
 	FMemory::Memcpy(&Bits, &Value, sizeof(Bits));
 	for (int32 Index = 0; Index < 8; ++Index) Out[Index] = uint8(Bits >> (Index * 8));
 }
+
+/** Late ZMQ subscribers receive the newest frame within this interval even when idle. */
+constexpr std::chrono::milliseconds ZmqRepeatInterval(1000);
 }
 
 struct FURLabPoseStreamProducer::FImpl
@@ -40,6 +44,7 @@ struct FURLabPoseStreamProducer::FImpl
 	mutable FCriticalSection StateMutex;
 	FURLabPoseStreamDescriptor Descriptor;
 	uint64 Sequence = 0;
+	uint64 SubmittedSequence = 0;
 	uint32 Capacity = 0;
 	FURLabShmLiveObjectPtr ShmObject;
 	TUniquePtr<FURLabLockedLatestFrameWriter> ShmWriter;
@@ -49,6 +54,7 @@ struct FURLabPoseStreamProducer::FImpl
 	std::mutex PendingMutex;
 	std::condition_variable Wakeup;
 	TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> Pending;
+	TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> Latest;
 	std::atomic<bool> bStopped{false};
 	bool bReady = false;
 	FString StartupError;
@@ -91,10 +97,12 @@ struct FURLabPoseStreamProducer::FImpl
 			TSharedPtr<const TArray<uint8>, ESPMode::ThreadSafe> Frame;
 			{
 				std::unique_lock<std::mutex> Lock(PendingMutex);
-				Wakeup.wait(Lock, [this] { return bStopped.load() || Pending.IsValid(); });
+				const bool bWoken = Wakeup.wait_for(Lock, ZmqRepeatInterval,
+					[this] { return bStopped.load() || Pending.IsValid(); });
 				if (bStopped.load()) break;
-				Frame = MoveTemp(Pending);
+				Frame = bWoken ? MoveTemp(Pending) : Latest;
 			}
+			if (!Frame) continue;
 			if (zmq_send(ZmqSocket, ZmqDelivery.Topic.GetData(), ZmqDelivery.Topic.Num(),
 				ZMQ_SNDMORE | ZMQ_DONTWAIT) >= 0)
 			{
@@ -199,9 +207,16 @@ bool FURLabPoseStreamProducer::CommitSource(const FString& SourceRevision,
 			OutError = TEXT("pose-stream generation exhausted signed64 range");
 			return false;
 		}
+		{
+			std::lock_guard<std::mutex> PendingLock(Impl->PendingMutex);
+			Impl->Pending.Reset();
+			Impl->Latest.Reset();
+		}
+		if (Impl->ShmWriter && !Impl->ShmWriter->Clear(OutError)) return false;
 		Impl->Descriptor.SourceRevision = SourceRevision;
 		++Impl->Descriptor.StreamGeneration;
 		Impl->Sequence = 0;
+		Impl->SubmittedSequence = 0;
 	}
 	OutDescriptor = Impl->Descriptor;
 	return true;
@@ -268,12 +283,21 @@ bool FURLabPoseStreamProducer::Publish(uint64 FrameId, double SourceTime,
 	if (!FURLabPoseStreamFrameCodec::Encode(Frame, Encoded, OutError)) return false;
 	if (Encoded.Num() > Impl->Capacity)
 	{
-		OutError = TEXT("encoded pose-stream frame exceeds configured capacity");
+		OutError = FString::Printf(
+			TEXT("encoded pose-stream frame of %d bytes exceeds the %u-byte stream capacity"),
+			Encoded.Num(), Impl->Capacity);
 		return false;
 	}
 	TSharedRef<const TArray<uint8>, ESPMode::ThreadSafe> Snapshot =
 		MakeShared<TArray<uint8>, ESPMode::ThreadSafe>(MoveTemp(Encoded));
+	FScopeLock StateLock(&Impl->StateMutex);
+	if (Frame.StreamGeneration != Impl->Descriptor.StreamGeneration
+		|| Frame.Sequence <= Impl->SubmittedSequence)
+	{
+		return true;
+	}
 	if (Impl->ShmWriter && !Impl->ShmWriter->Submit(Snapshot, OutError)) return false;
+	Impl->SubmittedSequence = Frame.Sequence;
 	if (!Impl->ZmqDelivery.Endpoint.IsEmpty())
 	{
 		std::lock_guard<std::mutex> Lock(Impl->PendingMutex);
@@ -283,6 +307,7 @@ bool FURLabPoseStreamProducer::Publish(uint64 FrameId, double SourceTime,
 			return false;
 		}
 		Impl->Pending = Snapshot;
+		Impl->Latest = Snapshot;
 		Impl->Wakeup.notify_all();
 	}
 	return true;
@@ -328,6 +353,7 @@ void FURLabPoseStreamProducer::Stop()
 		std::lock_guard<std::mutex> Lock(Impl->PendingMutex);
 		Impl->bStopped.store(true);
 		Impl->Pending.Reset();
+		Impl->Latest.Reset();
 	}
 	Impl->Wakeup.notify_all();
 	if (Impl->Worker.joinable()) Impl->Worker.join();

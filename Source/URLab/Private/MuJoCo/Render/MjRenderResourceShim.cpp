@@ -148,6 +148,8 @@ void BuildMeshArrays(const mjModel& Model, int32 MeshId, FRenderMeshResource& Ou
 
 	TArray<FVector> FaceGeoNormals;
 	FaceGeoNormals.SetNumUninitialized(FaceNum);
+	TArray<double> FaceGeoAreas;
+	FaceGeoAreas.SetNumUninitialized(FaceNum);
 	int32 OrientVote = 0;
 	for (int32 Face = 0; Face < FaceNum; ++Face)
 	{
@@ -155,7 +157,9 @@ void BuildMeshArrays(const mjModel& Model, int32 MeshId, FRenderMeshResource& Ou
 		const FVector P0 = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(Model.mesh_vert + 3 * (FaceVerts[0] + VertAdr));
 		const FVector P1 = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(Model.mesh_vert + 3 * (FaceVerts[1] + VertAdr));
 		const FVector P2 = URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(Model.mesh_vert + 3 * (FaceVerts[2] + VertAdr));
-		FVector Normal = FVector::CrossProduct(P1 - P0, P2 - P0).GetSafeNormal();
+		const FVector RawCross = FVector::CrossProduct(P1 - P0, P2 - P0);
+		FaceGeoAreas[Face] = FMath::Max(RawCross.Size(), static_cast<double>(KINDA_SMALL_NUMBER));
+		FVector Normal = RawCross.GetSafeNormal();
 		const int32 NormalIndex = Model.mesh_facenormal[3 * (FaceAdr + Face)] + NormalAdr;
 		const double MjNormal[3] = {Model.mesh_normal[3 * NormalIndex],
 			Model.mesh_normal[3 * NormalIndex + 1], Model.mesh_normal[3 * NormalIndex + 2]};
@@ -182,32 +186,26 @@ void BuildMeshArrays(const mjModel& Model, int32 MeshId, FRenderMeshResource& Ou
 	for (int32 Vertex = 0; Vertex < VertNum; ++Vertex)
 	{
 		const TArray<int32, TInlineAllocator<8>>& Faces = IncidentFaces[Vertex];
-		TArray<FVector, TInlineAllocator<8>> GroupSums;
-		TArray<int32, TInlineAllocator<16>> FaceGroups;
-		FaceGroups.SetNumUninitialized(Faces.Num());
-		for (int32 Index = 0; Index < Faces.Num(); ++Index)
-		{
-			const FVector FaceNormal = FaceGeoNormals[Faces[Index]];
-			int32 Group = INDEX_NONE;
-			for (int32 Candidate = 0; Candidate < GroupSums.Num(); ++Candidate)
-			{
-				if (FVector::DotProduct(FaceNormal, GroupSums[Candidate].GetSafeNormal()) >= CreaseDot)
-				{
-					GroupSums[Candidate] += FaceNormal;
-					Group = Candidate;
-					break;
-				}
-			}
-			FaceGroups[Index] = Group != INDEX_NONE ? Group : GroupSums.Add(FaceNormal);
-		}
 		for (int32 Index = 0; Index < Faces.Num(); ++Index)
 		{
 			const int32 Face = Faces[Index];
+			const FVector FaceNormal = FaceGeoNormals[Face];
+			FVector WeightedSum = FVector::ZeroVector;
+			for (int32 OtherIdx = 0; OtherIdx < Faces.Num(); ++OtherIdx)
+			{
+				const int32 OtherFace = Faces[OtherIdx];
+				if (FVector::DotProduct(FaceNormal, FaceGeoNormals[OtherFace]) >= CreaseDot)
+				{
+					WeightedSum += FaceGeoNormals[OtherFace] * FaceGeoAreas[OtherFace];
+				}
+			}
+			const FVector ResolvedNormal = WeightedSum.GetSafeNormal().IsNearlyZero()
+				? FaceNormal : WeightedSum.GetSafeNormal();
 			const int32* FaceVerts = Model.mesh_face + 3 * (FaceAdr + Face);
 			for (int32 Corner = 0; Corner < 3; ++Corner)
 			{
 				if (FaceVerts[Corner] == Vertex)
-					CornerNormals[3 * Face + Corner] = GroupSums[FaceGroups[Index]].GetSafeNormal();
+					CornerNormals[3 * Face + Corner] = ResolvedNormal;
 			}
 		}
 	}
@@ -219,12 +217,27 @@ void BuildMeshArrays(const mjModel& Model, int32 MeshId, FRenderMeshResource& Ou
 	for (int32 Face = 0; Face < FaceNum; ++Face)
 	{
 		const int32* FaceVerts = Model.mesh_face + 3 * (FaceAdr + Face);
+		const int32* FaceNormals = Model.mesh_facenormal + 3 * (FaceAdr + Face);
 		const int32* FaceTexcoords = bHasUV ? Model.mesh_facetexcoord + 3 * (FaceAdr + Face) : nullptr;
 		for (int32 Corner = 0; Corner < 3; ++Corner)
 		{
 			Out.Positions.Add(URLabCoordinateConversion::RightHandedMetresPositionToUnrealCentimetres(
 				Model.mesh_vert + 3 * (FaceVerts[Corner] + VertAdr)));
-			Out.Normals.Add(CornerNormals[3 * Face + Corner].GetSafeNormal());
+			FVector CornerNormal = CornerNormals[3 * Face + Corner].GetSafeNormal();
+			if (bHasUV && FaceNormals)
+			{
+				const int32 NormalIdx = FaceNormals[Corner] + NormalAdr;
+				const double MjCornerNormal[3] = {
+					Model.mesh_normal[3 * NormalIdx],
+					Model.mesh_normal[3 * NormalIdx + 1],
+					Model.mesh_normal[3 * NormalIdx + 2]};
+				const FVector AuthoredNormal = URLabCoordinateConversion::RightHandedDirectionToUnreal(MjCornerNormal).GetSafeNormal();
+				if (!AuthoredNormal.IsNearlyZero())
+				{
+					CornerNormal = AuthoredNormal;
+				}
+			}
+			Out.Normals.Add(CornerNormal);
 			if (FaceTexcoords)
 			{
 				const int32 Index = FaceTexcoords[Corner] + TexAdr;
@@ -367,14 +380,38 @@ bool BuildHeightfieldArrays(const mjModel& Model, int32 HfieldId,
 	return true;
 }
 
+float SrgbChannelToLinear(float C)
+{
+	const float V = FMath::Clamp(C, 0.0f, 1.0f);
+	return (V <= 0.04045f) ? (V / 12.92f) : FMath::Pow((V + 0.055f) / 1.055f, 2.4f);
+}
+
+FLinearColor SrgbRgbaToLinear(const float* Rgba)
+{
+	return FLinearColor(
+		SrgbChannelToLinear(Rgba[0]),
+		SrgbChannelToLinear(Rgba[1]),
+		SrgbChannelToLinear(Rgba[2]),
+		Rgba[3]);
+}
+
 FRenderSurfaceBinding SurfaceBinding(int32 MaterialIndex, const float* Rgba,
 	const FVector2D& UniformExtent)
 {
 	FRenderSurfaceBinding Out;
 	Out.MaterialIndex = MaterialIndex;
-	Out.Rgba = FLinearColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]);
+	Out.Rgba = SrgbRgbaToLinear(Rgba);
 	Out.TexUniformScale = UniformExtent;
 	return Out;
+}
+
+// MuJoCo's visualizer uses the material colour only while the object's own rgba
+// is still the compiler default; any authored rgba (including alpha 0) wins.
+const float* EffectiveRgba(const mjModel& Model, int32 MaterialId, const float* ObjectRgba)
+{
+	const bool bDefault = ObjectRgba[0] == 0.5f && ObjectRgba[1] == 0.5f
+		&& ObjectRgba[2] == 0.5f && ObjectRgba[3] == 1.0f;
+	return MaterialId == INDEX_NONE || !bDefault ? ObjectRgba : Model.mat_rgba + 4 * MaterialId;
 }
 }
 
@@ -409,15 +446,21 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 		const int32 Channels = Model->tex_nchannel[TextureId];
 		if (!Require(Texture.Width > 0 && Texture.Height > 0 && Channels >= 1 && Channels <= 4,
 			TEXT("MuJoCo texture dimensions or channel count are invalid"), OutError)) return false;
-		const int64 Pixels = static_cast<int64>(Texture.Width) * Texture.Height;
-		if (!Require(Pixels <= MAX_int32 / 4,
+		const int64 SourcePixels = static_cast<int64>(Texture.Width) * Texture.Height;
+		if (!Require(SourcePixels <= MAX_int32 / 4,
 			TEXT("MuJoCo texture RGBA8 payload exceeds renderer limits"), OutError)) return false;
-		const int64 SourceBytes = Pixels * Channels;
+		const int64 SourceBytes = SourcePixels * Channels;
 		const int64 SourceAddress = Model->tex_adr[TextureId];
 		if (!Require(SourceAddress >= 0 && SourceBytes <= Model->ntexdata
 			&& SourceAddress <= Model->ntexdata - SourceBytes,
 			TEXT("MuJoCo texture source is out of bounds"), OutError)) return false;
 
+		if (Model->tex_type && Model->tex_type[TextureId] == mjTEXTURE_CUBE
+			&& Texture.Height == 6 * Texture.Width)
+		{
+			Texture.Height = Texture.Width;
+		}
+		const int64 Pixels = static_cast<int64>(Texture.Width) * Texture.Height;
 		Texture.Rgba8.SetNumUninitialized(static_cast<int32>(Pixels * 4));
 		const uint8* Source = Model->tex_data + SourceAddress;
 		for (int32 Pixel = 0; Pixel < static_cast<int32>(Pixels); ++Pixel)
@@ -441,7 +484,7 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 	{
 		FRenderMaterialResource& Material = Candidate.Materials[MaterialId];
 		const float* Rgba = Model->mat_rgba + 4 * MaterialId;
-		Material.Rgba = FLinearColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]);
+		Material.Rgba = SrgbRgbaToLinear(Rgba);
 		Material.Emission = Model->mat_emission[MaterialId];
 		Material.Specular = Model->mat_specular[MaterialId];
 		Material.Shininess = Model->mat_shininess[MaterialId];
@@ -482,15 +525,15 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 		const int32 MaterialId = Model->geom_matid[GeomId];
 		if (!Require(MaterialId == INDEX_NONE || Candidate.Materials.IsValidIndex(MaterialId),
 			TEXT("MuJoCo geom material id is out of bounds"), OutError)) return false;
-		const float* Rgba = MaterialId == INDEX_NONE
-			? Model->geom_rgba + 4 * GeomId : Model->mat_rgba + 4 * MaterialId;
+		const float* Rgba = EffectiveRgba(*Model, MaterialId, Model->geom_rgba + 4 * GeomId);
 		const bool bPlane = Model->geom_type[GeomId] == mjGEOM_PLANE;
 		const double SizeX = Model->geom_size[3 * GeomId] > 0.0 ? Model->geom_size[3 * GeomId]
 			: (bPlane ? InfinitePlaneHalfM : 0.0);
 		const double SizeY = Model->geom_size[3 * GeomId + 1] > 0.0 ? Model->geom_size[3 * GeomId + 1]
 			: (bPlane ? InfinitePlaneHalfM : 0.0);
 		Candidate.Geoms[GeomId] = SurfaceBinding(MaterialId, Rgba, FVector2D(SizeX, SizeY));
-		if (Model->geom_type[GeomId] == mjGEOM_MESH)
+		if (Model->geom_type[GeomId] == mjGEOM_MESH
+			|| (Model->geom_type[GeomId] == mjGEOM_SDF && Model->geom_dataid[GeomId] >= 0))
 		{
 			const int32 MeshId = Model->geom_dataid[GeomId];
 			if (!Require(MeshId >= 0 && MeshId < Model->nmesh,
@@ -510,8 +553,7 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 		const int32 MaterialId = Model->flex_matid[FlexId];
 		if (!Require(MaterialId == INDEX_NONE || Candidate.Materials.IsValidIndex(MaterialId),
 			TEXT("MuJoCo flex material id is out of bounds"), OutError)) return false;
-		const float* Rgba = MaterialId == INDEX_NONE
-			? Model->flex_rgba + 4 * FlexId : Model->mat_rgba + 4 * MaterialId;
+		const float* Rgba = EffectiveRgba(*Model, MaterialId, Model->flex_rgba + 4 * FlexId);
 		Candidate.Deformables[FlexId] = SurfaceBinding(MaterialId, Rgba, FVector2D::ZeroVector);
 	}
 	for (int32 SkinId = 0; SkinId < Model->nskin; ++SkinId)
@@ -519,8 +561,7 @@ bool MjRenderResourceShim::Fill(FRenderSceneResources& Out, const mjModel_* Mode
 		const int32 MaterialId = Model->skin_matid[SkinId];
 		if (!Require(MaterialId == INDEX_NONE || Candidate.Materials.IsValidIndex(MaterialId),
 			TEXT("MuJoCo skin material id is out of bounds"), OutError)) return false;
-		const float* Rgba = MaterialId == INDEX_NONE
-			? Model->skin_rgba + 4 * SkinId : Model->mat_rgba + 4 * MaterialId;
+		const float* Rgba = EffectiveRgba(*Model, MaterialId, Model->skin_rgba + 4 * SkinId);
 		Candidate.Deformables[Model->nflex + SkinId] =
 			SurfaceBinding(MaterialId, Rgba, FVector2D::ZeroVector);
 	}

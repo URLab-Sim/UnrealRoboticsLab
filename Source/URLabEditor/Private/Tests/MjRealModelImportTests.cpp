@@ -54,11 +54,13 @@
 namespace MjRealModelImportTests
 {
 
-/** The fixture path, from the environment when set and from the default when not. */
-FString FixturePath(const TCHAR* EnvVar, const TCHAR* Fallback)
+/**
+ * The fixture path from `EnvVar`. These models are not redistributed with the
+ * plugin, so each test skips with a warning when the variable is unset.
+ */
+FString FixturePath(const TCHAR* EnvVar)
 {
-	const FString FromEnv = FPlatformMisc::GetEnvironmentVariable(EnvVar);
-	return FromEnv.IsEmpty() ? FString(Fallback) : FromEnv;
+	return FPlatformMisc::GetEnvironmentVariable(EnvVar);
 }
 
 /**
@@ -195,11 +197,10 @@ bool FMjCardsImportTest::RunTest(const FString& Parameters)
 {
 	using namespace MjRealModelImportTests;
 
-	const FString Xml = FixturePath(
-		TEXT("URLAB_CARDS_XML"), TEXT("C:/Users/jonat/ParticipantXml/GitHub/mujoco-urlab/model/cards/cards.xml"));
+	const FString Xml = FixturePath(TEXT("URLAB_CARDS_XML"));
 	if (!FPaths::FileExists(Xml))
 	{
-		AddWarning(FString::Printf(TEXT("Skipping: no cards fixture at %s (set URLAB_CARDS_XML)"), *Xml));
+		AddWarning(FString::Printf(TEXT("Skipping: URLAB_CARDS_XML is unset or names a missing file (cards fixture: '%s')"), *Xml));
 		return true;
 	}
 
@@ -267,11 +268,10 @@ bool FMjSkydioImportTest::RunTest(const FString& Parameters)
 {
 	using namespace MjRealModelImportTests;
 
-	const FString Xml = FixturePath(
-		TEXT("URLAB_X2_XML"), TEXT("C:/Users/jonat/ParticipantXml/GitHub/mujoco_menagerie/skydio_x2/x2.xml"));
+	const FString Xml = FixturePath(TEXT("URLAB_X2_XML"));
 	if (!FPaths::FileExists(Xml))
 	{
-		AddWarning(FString::Printf(TEXT("Skipping: no skydio_x2 fixture at %s (set URLAB_X2_XML)"), *Xml));
+		AddWarning(FString::Printf(TEXT("Skipping: URLAB_X2_XML is unset or names a missing file (skydio_x2 fixture: '%s')"), *Xml));
 		return true;
 	}
 
@@ -347,11 +347,10 @@ bool FMjSpotImportTest::RunTest(const FString& Parameters)
 {
 	using namespace MjRealModelImportTests;
 
-	const FString Xml = FixturePath(TEXT("URLAB_SPOT_XML"),
-		TEXT("C:/Users/jonat/ParticipantXml/GitHub/mujoco_menagerie/boston_dynamics_spot/spot_ue.xml"));
+	const FString Xml = FixturePath(TEXT("URLAB_SPOT_XML"));
 	if (!FPaths::FileExists(Xml))
 	{
-		AddWarning(FString::Printf(TEXT("Skipping: no spot fixture at %s (set URLAB_SPOT_XML)"), *Xml));
+		AddWarning(FString::Printf(TEXT("Skipping: URLAB_SPOT_XML is unset or names a missing file (spot fixture: '%s')"), *Xml));
 		return true;
 	}
 

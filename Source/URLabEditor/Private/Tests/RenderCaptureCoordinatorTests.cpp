@@ -183,23 +183,43 @@ bool FURLabCaptureCoordinatorBoundedFifoTest::RunTest(const FString&)
 
 	int32 Notifications = 0;
 	TArray<FURLabRenderCaptureJob> Jobs;
+	// An idle scheduler starts the head job at admission: render-server cameras
+	// render on demand, so the request is issued without waiting for a tick. The
+	// first admission therefore occupies the single active slot, and the bounded
+	// FIFO of MaxQueuedExactCaptureJobs fills behind it.
+	const FURLabRenderCaptureJobAdmission Head = Scheduler->SubmitExactCapture(
+		MakeRequest(*Scheduler, Registration, TEXT("fifo-scene"), 2, 20.0,
+			[&Notifications]() { ++Notifications; }));
+	if (!TestTrue(TEXT("head job is admitted"), Head.bAccepted)) return false;
+	Jobs.Add(Head.Job);
+	TestEqual(TEXT("idle scheduler starts the head job at admission"),
+		Head.Job.PollStatus().State, EURLabRenderCaptureJobState::Running);
+	AURLabRenderScene* Actor = Coordinator->ResolveActiveScene(Registration);
+	if (!TestNotNull(TEXT("active scene"), Actor)) return false;
+	TestEqual(TEXT("the active head job holds its own presentation"),
+		Actor->GetAppliedFrame().Identity.FrameId, static_cast<uint64>(2));
 	for (int32 Index = 0;
 		Index < URenderCameraSubsystem::MaxQueuedExactCaptureJobs; ++Index)
 	{
 		FURLabRenderCaptureJobAdmission Admission = Scheduler->SubmitExactCapture(
 			MakeRequest(*Scheduler, Registration, TEXT("fifo-scene"),
-				static_cast<uint64>(Index + 2), 20.0 + Index,
+				static_cast<uint64>(Index + 3), 21.0 + Index,
 				[&Notifications]() { ++Notifications; }));
 		if (TestTrue(TEXT("bounded FIFO accepts reserved slot"), Admission.bAccepted))
+		{
+			TestEqual(TEXT("FIFO admission waits behind the active job"),
+				Admission.Job.PollStatus().State, EURLabRenderCaptureJobState::Queued);
 			Jobs.Add(Admission.Job);
+		}
 	}
+	TestEqual(TEXT("active slot plus full FIFO is the retained bound"),
+		Jobs.Num(), URenderCameraSubsystem::MaxRetainedExactCaptureJobs);
 	const FURLabRenderCaptureJobAdmission Overflow = Scheduler->SubmitExactCapture(
 		MakeRequest(*Scheduler, Registration, TEXT("fifo-scene"), 100, 100.0));
-	TestFalse(TEXT("seventeenth queued job is rejected"), Overflow.bAccepted);
-	AURLabRenderScene* Actor = Coordinator->ResolveActiveScene(Registration);
-	if (!TestNotNull(TEXT("active scene"), Actor)) return false;
-	TestEqual(TEXT("admission and overflow do not mutate presentation"),
-		Actor->GetAppliedFrame().Identity.FrameId, static_cast<uint64>(1));
+	TestFalse(TEXT("admission beyond the active slot and a full FIFO is rejected"),
+		Overflow.bAccepted);
+	TestEqual(TEXT("queued admission and overflow do not mutate presentation"),
+		Actor->GetAppliedFrame().Identity.FrameId, static_cast<uint64>(2));
 
 	FRenderScene ReplacementScene;
 	FRenderSceneResources ReplacementResources;
@@ -224,26 +244,34 @@ bool FURLabCaptureCoordinatorBoundedFifoTest::RunTest(const FString&)
 	TestTrue(TEXT("related callback ran"), bInsideRelatedCommit);
 	TestFalse(TEXT("fixture replacement rejected"), Rejected.bCommitted);
 	for (const FURLabRenderCaptureJob& Job : Jobs)
-		TestEqual(TEXT("old-scene queued job is explicitly cancelled"),
+		TestEqual(TEXT("old-scene active and queued jobs are explicitly cancelled"),
 			Job.PollStatus().State, EURLabRenderCaptureJobState::Cancelled);
 	TestEqual(TEXT("callbacks remain deferred after coordinator mutation"),
 		Notifications, 0);
-	FURLabRenderCaptureJobAdmission LastRetained = Scheduler->SubmitExactCapture(
-		MakeRequest(*Scheduler, Registration, TEXT("fifo-scene"), 200, 200.0,
-			[&Notifications]() { ++Notifications; }));
-	if (TestTrue(TEXT("one final retained record fits the total bound"),
-		LastRetained.bAccepted))
-	{
-		TestTrue(TEXT("final retained job cancels"),
-			Scheduler->CancelExactCapture(LastRetained.Job, Error));
-	}
+	TestEqual(TEXT("cancelling the active job restores authoritative presentation"),
+		Actor->GetAppliedFrame().Identity.FrameId, static_cast<uint64>(1));
+	// Cancelled records are retained until a later scheduler pass retires them, and
+	// they still count against the total bound, so cancel-submit churn cannot grow
+	// the retained set.
 	const FURLabRenderCaptureJobAdmission RetainedOverflow = Scheduler->SubmitExactCapture(
-		MakeRequest(*Scheduler, Registration, TEXT("fifo-scene"), 201, 201.0));
+		MakeRequest(*Scheduler, Registration, TEXT("fifo-scene"), 200, 200.0));
 	TestFalse(TEXT("cancel-submit churn cannot exceed retained record bound"),
 		RetainedOverflow.bAccepted);
 	Scheduler->Tick(0.0f);
 	TestEqual(TEXT("scheduler later drains every terminal notification"),
 		Notifications, URenderCameraSubsystem::MaxRetainedExactCaptureJobs);
+	// The drain retired the records, so the bound admits work again.
+	const FURLabRenderCaptureJobAdmission AfterDrain = Scheduler->SubmitExactCapture(
+		MakeRequest(*Scheduler, Registration, TEXT("fifo-scene"), 201, 201.0,
+			[&Notifications]() { ++Notifications; }));
+	if (TestTrue(TEXT("retired records free retained capacity"), AfterDrain.bAccepted))
+	{
+		TestTrue(TEXT("post-drain job cancels"),
+			Scheduler->CancelExactCapture(AfterDrain.Job, Error));
+		Scheduler->Tick(0.0f);
+		TestEqual(TEXT("post-drain cancellation notifies once"),
+			Notifications, URenderCameraSubsystem::MaxRetainedExactCaptureJobs + 1);
+	}
 	TestEqual(TEXT("rejected replacement preserves authoritative presentation"),
 		Actor->GetAppliedFrame().Identity.FrameId, static_cast<uint64>(1));
 	return !HasAnyErrors();

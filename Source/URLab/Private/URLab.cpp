@@ -30,6 +30,8 @@
 
 #include <mujoco/mujoco.h>
 
+#include <atomic>
+
 #if PLATFORM_LINUX
 #include <dlfcn.h>
 #endif
@@ -56,6 +58,9 @@
 
 namespace
 {
+/** Written once at module startup, read from RPC threads afterwards. */
+std::atomic<bool> GHasMjzDecoder{false};
+
 /**
  * The elements that are built as a hand subclass rather than the generated class.
  *
@@ -162,7 +167,10 @@ void FURLabModule::StartupModule()
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq-*-mt-*.dll"), TEXT("libzmq"), TEXT("bin"));
 	// After MuJoCo, which it links against.
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("urlab_mjshim.dll"), TEXT("MjShim"), TEXT("bin"));
+#if WITH_EDITOR
+	// CoACD only backs editor convex decomposition; runtime targets do not link it.
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.dll"), TEXT("CoACD"), TEXT("bin"));
+#endif
 #elif PLATFORM_LINUX
 	// These two libraries are linked into the module. The dynamic linker has
 	// loaded their exact SONAMEs before StartupModule runs. Check the resident
@@ -190,8 +198,34 @@ void FURLabModule::StartupModule()
 	// After MuJoCo, which it links against.
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("liburlab_mjshim.so*"), TEXT("MjShim"), TEXT("lib"));
 	bAllDepsLoaded &= VerifyLinkedDependency("zmq_version", TEXT("libzmq"));
+#if WITH_EDITOR
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.so*"), TEXT("CoACD"), TEXT("lib"));
 #endif
+#endif
+
+	// The MJZ archive decoder is compiled into the MuJoCo runtime and registers
+	// itself when the library loads, so it is present exactly when that runtime
+	// is the one we built. Probe it once and publish the result through
+	// FURLabModule::HasMjzDecoder so MJZ installs can be refused up front instead
+	// of failing inside mj_parse.
+	if (bAllDepsLoaded)
+	{
+		char ProbeName[] = "probe.mjz";
+		mjResource Probe{};
+		Probe.name = ProbeName;
+		GHasMjzDecoder.store(mjp_findDecoder(&Probe, "application/zip") != nullptr, std::memory_order_release);
+		if (HasMjzDecoder())
+		{
+			UE_LOG(LogURLab, Log, TEXT("MuJoCo MJZ decoder available"));
+		}
+		else
+		{
+			UE_LOG(LogURLab, Error,
+				TEXT("MuJoCo %hs has no MJZ decoder registered; MJZ model sources cannot be decoded. "
+					 "Stage the libmujoco built under third_party/install/MuJoCo."),
+				mj_versionString());
+		}
+	}
 
 	// MuJoCo's first-party plugins -- the PID actuator, cable and shell
 	// elasticity, the touch-grid sensor, SDF shapes -- are separate shared
@@ -267,6 +301,11 @@ void FURLabModule::StartupModule()
 
 void FURLabModule::ShutdownModule()
 {
+}
+
+bool FURLabModule::HasMjzDecoder()
+{
+	return GHasMjzDecoder.load(std::memory_order_acquire);
 }
 
 #undef LOCTEXT_NAMESPACE

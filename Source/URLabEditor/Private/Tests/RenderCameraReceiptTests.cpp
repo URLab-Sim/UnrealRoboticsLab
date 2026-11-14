@@ -10,6 +10,7 @@
 #include "RenderingThread.h"
 
 #include "Render/RenderCameraComponent.h"
+#include "RenderExactCaptureTestSupport.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -122,29 +123,6 @@ struct FReceiptCameraHost
 
 	~FReceiptCameraHost() { Cleanup(); }
 };
-
-FRenderCameraCaptureIssueResult IssueReady(
-	URenderCameraComponent& Camera, FRenderCameraCaptureLifetimeLeasePtr Lease)
-{
-	FRenderCameraCaptureIssueResult Result =
-		Camera.TryIssueExactCapture(Lease);
-	for (int32 Attempt = 0; Attempt < 4 && Result.IsRetryable(); ++Attempt)
-	{
-		FlushRenderingCommands();
-		Result = Camera.TryIssueExactCapture(Lease);
-	}
-	return Result;
-}
-
-FRenderCameraCaptureCompletion HarvestReceipt(
-	URenderCameraComponent& Camera, const FRenderCameraCaptureReceipt& Receipt)
-{
-	FlushRenderingCommands();
-	Camera.WaitAndHarvestReadbacks(1.0);
-	FlushRenderingCommands();
-	Camera.HarvestCompletedReadbacks();
-	return Receipt.Poll();
-}
 
 class FWaitForDetachedReceiptDrain final : public IAutomationLatentCommand
 {
@@ -280,7 +258,7 @@ bool FURLabRenderCameraExactReceiptTest::RunTest(const FString&)
 	RenderGate->Trigger();
 	FlushRenderingCommands();
 	FPlatformProcess::ReturnSynchEventToPool(RenderGate);
-	Cancelled = HarvestReceipt(*Host.Camera, CancelReceipt);
+	Cancelled = URLabRenderTest::WaitForReceipt(*Host.Camera, CancelReceipt, 1.0);
 	TestEqual(TEXT("harvest cannot overwrite cancellation"), Cancelled.Outcome,
 		ERenderCameraCaptureOutcome::Cancelled);
 	TestTrue(TEXT("cancelled GPU writer eventually drains"), Cancelled.bGpuWriterDrained);
@@ -291,7 +269,8 @@ bool FURLabRenderCameraExactReceiptTest::RunTest(const FString&)
 		LiveLeases->load(std::memory_order_relaxed), 0);
 
 	Host.Camera->SetAppliedFrameIdentity(ReceiptIdentity(11));
-	FRenderCameraCaptureIssueResult ChangedIssue = IssueReady(*Host.Camera, NewLease());
+	FRenderCameraCaptureIssueResult ChangedIssue =
+		URLabRenderTest::IssueExactCapture(*Host.Camera, NewLease());
 	if (!TestTrue(TEXT("configuration fixture capture is accepted"),
 		ChangedIssue.IsAccepted())) return false;
 	FRenderCameraCaptureReceipt ChangedReceipt = MoveTemp(ChangedIssue.Receipt);
@@ -299,7 +278,7 @@ bool FURLabRenderCameraExactReceiptTest::RunTest(const FString&)
 	FRenderCameraCaptureCompletion Changed = ChangedReceipt.Poll();
 	TestEqual(TEXT("effective mutation invalidates exact receipt"), Changed.Outcome,
 		ERenderCameraCaptureOutcome::ConfigurationChanged);
-	Changed = HarvestReceipt(*Host.Camera, ChangedReceipt);
+	Changed = URLabRenderTest::WaitForReceipt(*Host.Camera, ChangedReceipt, 1.0);
 	TestEqual(TEXT("late pixels cannot relabel changed configuration"), Changed.Outcome,
 		ERenderCameraCaptureOutcome::ConfigurationChanged);
 	TestTrue(TEXT("changed-configuration writer drains"), Changed.bGpuWriterDrained);
@@ -308,11 +287,13 @@ bool FURLabRenderCameraExactReceiptTest::RunTest(const FString&)
 		LiveLeases->load(std::memory_order_relaxed), 0);
 
 	Host.Camera->SetAppliedFrameIdentity(ReceiptIdentity(12));
-	FRenderCameraCaptureIssueResult SuccessIssue = IssueReady(*Host.Camera, NewLease());
+	FRenderCameraCaptureIssueResult SuccessIssue =
+		URLabRenderTest::IssueExactCapture(*Host.Camera, NewLease());
 	if (!TestTrue(TEXT("successful exact capture is accepted"), SuccessIssue.IsAccepted()))
 		return false;
 	FRenderCameraCaptureReceipt SuccessReceipt = MoveTemp(SuccessIssue.Receipt);
-	FRenderCameraCaptureCompletion Success = HarvestReceipt(*Host.Camera, SuccessReceipt);
+	FRenderCameraCaptureCompletion Success =
+		URLabRenderTest::WaitForReceipt(*Host.Camera, SuccessReceipt, 1.0);
 	if (TestEqual(TEXT("exact receipt succeeds"), Success.Outcome,
 		ERenderCameraCaptureOutcome::Succeeded)
 		&& TestTrue(TEXT("successful exact pixels are retained"), Success.Frame.IsValid()))

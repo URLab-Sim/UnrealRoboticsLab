@@ -19,11 +19,17 @@ namespace MjModelSource
  * Compile Bytes to an mjModel. Format is "mjb" | "xml" | "mjz" (case-insensitive):
  *   mjb  loaded directly (fast, but version-locked to this libmujoco);
  *   xml  parsed to a spec against Assets mounted in a VFS, then compiled;
- *   mjz  decoded to a spec through the resource decoder registry, then compiled.
+ *   mjz  expanded in memory (stored/deflate zip), then compiled as its model.xml with the
+ *        archive entries as assets.
  * Assets are keyed by the filename the model references them under (ignored for mjb;
  * mjz archives are usually self-contained but any extras are mounted alongside). Supplied
  * asset names/data must be non-empty, every VFS mount must succeed, and XML may not contain
  * an embedded NUL byte.
+ *
+ * xml/mjz never read the host filesystem: asset names and every file reference must be
+ * relative paths without '..', a root, a drive or a scheme, and every file reference
+ * (including <include> and sub-models) must name a supplied asset. Violations fail before
+ * MuJoCo parses anything.
  *
  * Returns a newly-owned mjModel the caller must mj_deleteModel, or nullptr with OutError set.
  */
@@ -34,8 +40,8 @@ URLAB_API mjModel* FromBytes(const TArray<uint8>& Bytes, const FString& Format,
  * Compile a model file on disk to an MJB buffer with this libmujoco. Format is
  * "mjb" | "xml" | "mjz" (case-insensitive). For "xml" the file is parsed with
  * mj_loadXML, so its meshdir/texturedir and <include>s resolve from the file's own
- * directory on disk -- no side-channel assets needed. "mjz" is decoded as a
- * self-contained archive; "mjb" is loaded and re-saved. Used by the render
+ * directory on disk -- no side-channel assets needed. "mjz" is read and compiled
+ * like FromBytes (self-contained); "mjb" is loaded and re-saved. Used by the render
  * launcher so -URLabFastXml / -URLabFastMjz can boot the render server directly.
  *
  * Returns true and fills OutMjb, or false with OutError set.

@@ -83,8 +83,7 @@ public class URLab : ModuleRules
 			PrivateDependencyModuleNames.AddRange(new string[]
 			{
 				"UnrealEd",
-				"AssetTools",
-				"MaterialEditor"  // MjSkyImporter builds the skybox display material at load
+				"AssetTools"
 			});
 		}
 
@@ -96,12 +95,13 @@ public class URLab : ModuleRules
 			"Chaos",
 			"Landscape",
 			"Eigen",
-			"DesktopPlatform",
 			// rpclib: msgpack-cxx headers (clmdep_msgpack namespace) +
 			// pre-built static rpc.lib. Used by MjMsgpackHelpers for
 			// the step server's binary wire format. JSON fallback is
 			// kept for debugging via the hello "encoding" flag.
-			"RPCLib"
+			"RPCLib",
+			// Lossless chunked compression for network payload_read replies.
+			"zstd"
 		});
 
 		DynamicallyLoadedModuleNames.AddRange(new string[]
@@ -522,9 +522,23 @@ public class URLab : ModuleRules
 		return M.Groups[1].Value;
 	}
 
+	// CoACD backs editor-only convex decomposition. Runtime targets compile its
+	// headers but neither link nor stage the library, so a packaged render
+	// server does not depend on it.
 	protected void AddCoACD(ReadOnlyTargetRules Target)
 	{
-		AddThirdPartyLibrary("CoACD", Target);
+		if (Target.bBuildEditor)
+		{
+			AddThirdPartyLibrary("CoACD", Target);
+		}
+		else
+		{
+			string IncludePath = Path.Combine(ThirdPartyPath, "CoACD", "include");
+			if (Directory.Exists(IncludePath))
+			{
+				PublicIncludePaths.Add(IncludePath);
+			}
+		}
 		PublicDefinitions.Add("COACD_EXPORTS=1");
 	}
 

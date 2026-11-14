@@ -54,11 +54,12 @@ public:
 	}
 	const FString& GetSceneRevision() const { return Resources.SceneRevision; }
 	const FRenderSceneResources& GetResources() const { return Resources; }
-#if WITH_EDITOR
-	// Editor route: a shared UStaticMesh keyed by mesh resource index.
-	// BuildFromMeshDescriptions is editor-only. Null on a bad index.
+
+	// Shared UStaticMesh keyed by mesh resource index (transient in play/packaged,
+	// or package-backed during an explicit editor bake). Null on a bad index.
 	UStaticMesh* GetOrBuildStaticMesh(int32 MeshId);
 
+#if WITH_EDITOR
 	/** Explicit editor action: write the loaded model's meshes and textures into
 	 *  /Game/URLabRender/<hash>/ as saved assets, so a saved render level can
 	 *  reference them. Returns the number of packages written.
@@ -127,6 +128,9 @@ private:
 	// Rooted so GC cannot collect the loaded master material while components create MIDs.
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> Master;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> TranslucentMaster;
 
 	// Textures built from owned RGBA8 resources, keyed by texture resource index, so a
 	// texture shared across materials/geoms is built once. Transient; rebuilt on

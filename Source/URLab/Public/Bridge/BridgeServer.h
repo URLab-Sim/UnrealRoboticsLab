@@ -16,6 +16,13 @@
 
 class UURLabRpcTransport;
 
+/** GetTransportName() of the command transports a headless boot must have bound. */
+namespace URLabBridgeTransportNames
+{
+	inline const TCHAR* const Zmq = TEXT("zmq");
+	inline const TCHAR* const Grpc = TEXT("dm_env_rpc");
+}
+
 /**
  * @class UURLabBridgeServer
  * @brief Owns the FURLabRpcDispatcher and every RPC transport.
@@ -46,6 +53,15 @@ public:
 	bool IsRunning() const { return Dispatcher.IsValid(); }
 
 	bool HasBoundRpcTransport() const { return RpcTransports.Num() > 0; }
+
+	/** True when a bound command transport reports `Name` (see URLabBridgeTransportNames). */
+	bool HasRpcTransportNamed(const FString& Name) const;
+
+	/** Whether every command transport this process is expected to serve is bound:
+	 *  the ZMQ step socket always, and the gRPC server whenever its module is loaded
+	 *  and a gRPC port is configured. False with a reason when a bind failed, so a
+	 *  headless boot can exit instead of running with no listener. */
+	bool VerifyCommandTransportsBound(FString& OutError) const;
 
 	/** Bind a ZMQ REP listener if not already bound on `Endpoint`. */
 	bool EnsureZmqBound(const FString& Endpoint);

@@ -18,15 +18,16 @@
  * (-URLabWorkflow / -URLabSimulationSource), the boot is resolved by the shared
  * FMjRendererBoot::FromCommandLine() and executed in the PLAY world by the runtime
  * UMjRendererLauncher -- the same code, in the same order, as the cooked binary. All this
- * subsystem still does is switch the editor to a clean dedicated level so pressing Play
- * boots into an empty world rather than into the project's default map, and report a
+ * subsystem still does is switch the editor to the render map /Game/FastPath/FastPathRender
+ * (the packaged and python default; created empty when the project has none) so pressing
+ * Play boots into it rather than into the project's default map, and report a
  * command line that names no buildable shape.
  *
  * Legacy discovery and browser-preview launch paths have been retired; authored models
  * continue through the manager-owned compile and simulation-world handoff.
 
  * The launch is deferred off a ticker until the editor world exists and the initial map has
- * settled, so switching to the fresh level is clean.
+ * settled, so switching to the render map is clean.
  */
 UCLASS()
 class URLABEDITOR_API UMjRendererEditorLauncher : public UEditorSubsystem

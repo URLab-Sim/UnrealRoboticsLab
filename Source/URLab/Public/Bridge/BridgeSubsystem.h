@@ -50,6 +50,13 @@ public:
 	 *  branch, which is the one a render server takes. */
 	static void SetUnboundForTest(bool bUnbound);
 
+	/** Test seam: stand the bridge up owned by this world and bound to `Endpoint`
+	 *  instead of the configured step port. Pass a wildcard port such as
+	 *  tcp://127.0.0.1:* to bind an ephemeral loopback port, so an automation test
+	 *  can drive the real standup path, including its bind verification, beside the
+	 *  editor's bridge. An empty endpoint restores the configured behaviour. */
+	static void SetIsolatedEndpointForTest(const FString& Endpoint);
+
 	virtual void Deinitialize() override;
 
 	UURLabBridgeServer* GetServer() const { return Server; }

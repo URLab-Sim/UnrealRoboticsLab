@@ -34,6 +34,13 @@ All three default to `false` so exported XML preserves the authored representati
 
 Referenced meshes, textures, and included XML files are supplied to MuJoCo through `mjVFS` (`FMJVFSHandle` / `UMJAssetLibrary::PopulateVFS` via `mj_addBufferVFS`), keeping runtime and editor compilation self-contained.
 
+## Corpus parity testing
+
+URLab verifies `MuJoCoSpec` round-trip fidelity (XML -> `UMJModelComponent` -> `mjSpec` -> `mj_compile` + 100-step dynamics/sensor comparison against native MuJoCo) with two automation tests in `Source/URLabEditor/Private/MuJoCoSpec/Tests/MJCorpusParityTests.cpp`:
+
+- **`MuJoCoUE.UpstreamMuJoCoCorpusParity`:** Runs offline against all `.xml` models under `third_party/MuJoCo/src/model` and `third_party/MuJoCo/src/test` (with a small allowlist for non-round-trippable `<flexcomp>` `explicitinertial`, external relative includes, plugin geoms, and 1-ULP chaotic multi-contact drift over 100 steps).
+- **`MuJoCoUE.MenagerieFullCorpusParity`:** Scans `$URLAB_MENAGERIE_DIR` when set (skips with a warning if unset).
+
 ## Related
 
 - [The Component Model](model.md): `UMJModelComponent`, components, and `UMJAssetLibrary`.

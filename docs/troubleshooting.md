@@ -79,29 +79,25 @@ relative to the current source.
 
 After the build succeeds, reopen the project.
 
-## Dashboard not appearing
+## Build error: `MuJoCoSpec` codegen drift
 
-**Symptom.** The Simulate dashboard widget does not show in PIE.
+**Symptom.** `Scripts/build_and_test_linux.sh` exits with code `4` or `generate_ue_spec.py --check` reports drift.
 
-**Cause / fix.** The widget is context-sensitive. Check all three:
+**Cause.** The generated files under `Source/URLab/{Public,Private}/MuJoCoSpec/Generated/` do not match `third_party/MuJoCo/src` or `Tools/SpecCodegen/`.
 
-- An `MjManager` actor is present in the level.
-- `bAutoCreateSimulateWidget` is enabled in the `MjManager` settings.
-- **Show Plugin Content** is on in the Content Browser settings, so the
-  UI assets are visible to the engine (see [Installation](installation.md)).
+**Fix.** Regenerate the checked-in `MuJoCoSpec` files:
 
-## Robot is static
+```bash
+python3 Tools/SpecCodegen/generate_ue_spec.py
+```
 
-**Symptom.** The robot does not move when you send control.
+## Packaged server logs `required plugin assets did not load`
 
-**Cause / fix.** Check, in order:
+**Symptom.** A packaged render server fails to load `/UnrealRoboticsLab/Materials/M_MuJoCo_Master`, `M_MuJoCo_Master_Translucent`, or `M_MjOverlay`, and segmentation is unavailable.
 
-- **Control source.** If the `MjManager` or `MjArticulation` control
-  source is set to **UI**, ZMQ writes are ignored, and vice versa. Set
-  it to match where your control comes from (UI sliders vs ZMQ client).
-- **Paused.** Ensure the `MjManager` is not paused.
-- **Static.** Ensure the robot is not set to `Static` in its component
-  settings.
+**Cause.** The host project's `Config/DefaultGame.ini` overrode packaging settings without including `/UnrealRoboticsLab/Materials`.
+
+**Fix.** Add `+DirectoriesToAlwaysCook=(Path="/UnrealRoboticsLab/Materials")` to `[/Script/UnrealEd.ProjectPackagingSettings]` in the host project's `Config/DefaultGame.ini`, or package with `Scripts/package_render_server_linux.sh` (which adds this rule automatically).
 
 ## Older UE versions: assets will not load
 

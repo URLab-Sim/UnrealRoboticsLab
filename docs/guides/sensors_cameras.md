@@ -1,67 +1,38 @@
 # Sensors & Cameras
 
-Read simulation state through MuJoCo sensors, and capture the scene through cameras that output photoreal RGB, depth, or segmentation masks.
+Read simulation state through `UMJSensorComponent`, capture RGB/depth/segmentation through `URenderCameraComponent`, and light scenes with physical MJCF units.
 
-## Sensors
+## Sensors (`UMJSensorComponent`)
 
-A sensor reads a quantity from the simulation each step. Every MuJoCo sensor tag is its own component class (`MjTouch`, `MjGyro`, `MjJointpos`, `MjFramepos` and so on), imported from MJCF and addable in the Blueprint editor. What a sensor measures is the reference property its own MJCF element declares: `Site` on a touch or force sensor, `Joint` on a joint sensor, `Objtype` and `Objname` on the frame sensors. Each is a dropdown over the valid targets in the same spec. See [Articulations](articulations.md).
+Add `UMJSensorComponent` (`Source/URLab/Public/MuJoCoSpec/MJActorComponents.h`) to an Actor with a `UMJModelComponent`:
 
-Rather than memorise individual classes, think in categories:
+- Configure `Spec` (`FMJSensorSpec`, including `Type`, `Noise`, `Cutoff`, and `User`) and target references (`ObjRef`, `RefObjRef` via `FMJElementRef`).
+- `UMJModelComponent` marshals every `UMJSensorComponent` into `mjSpec` (`mjs_addSensor`), and MuJoCo populates `mjData->sensordata` each step.
+- From Python, read sensor and state observations through `SimulationClient` (see [Python & External Control](../python/index.md)).
 
-- **Joint and tendon state.** Position, velocity, and force/torque for joints, tendons, and their limits.
-- **Actuator state.** Commanded position, velocity, and force per actuator.
-- **Body and frame state.** Position, orientation, axes, linear/angular velocity, and linear/angular acceleration of a body, site, or geom frame; subtree center of mass, linear velocity, and angular momentum.
-- **Inertial measurement.** Accelerometer, gyroscope, velocimeter, magnetometer (the building blocks of an IMU).
-- **Contact and touch.** Touch sensors, contact sensors, force and torque at a site, and tactile arrays.
-- **Geometry queries.** Range finders, geom-to-geom distance, normals, and whether a point lies inside a site.
-- **Energy and clock.** Kinetic and potential energy, simulation time.
-- **Custom.** User and plugin sensors for values your own code computes.
+## Cameras (`UMJCameraComponent` & `URenderCameraComponent`)
 
-### Reading sensors
-
-Each sensor returns either a single scalar or a short vector. Read them by name from the articulation:
-
-```cpp
-float Touch = Robot->GetSensorScalar("fingertip_touch"); // scalar sensors
-TArray<float> Force = Robot->GetSensorReading("wrist_force"); // vector sensors
-float Angle = Robot->GetJointAngle("elbow"); // joint-position shortcut
-```
-
-Use `GetSensorScalar` for scalar readings (touch, joint position, clock) and `GetSensorReading` for vector readings (force, accelerometer, gyro). Both are Blueprint-callable. Live readouts also appear in the [Simulate Dashboard](dashboard.md), and sensor values stream to Python over the bridge (see [Python](../python/index.md)).
-
-## Cameras
-
-A `UMjCamera` renders the scene from a fixed viewpoint into a render target you can preview in the dashboard or stream to Python. Imported cameras keep their MuJoCo intrinsics: where the MJCF used `focal`, `focalpixel`, or `sensorsize`, the importer derives the field of view so the Unreal camera matches MuJoCo. See [Importing Robots](importing.md).
+- **Authoring:** `UMJCameraComponent` (`Source/URLab/Public/MuJoCoSpec/MJSceneComponents.h`) holds `FMJCameraSpec` (projection, `fovy`, `focal`, `sensorsize`, `intrinsic`, `resolution`) and marshals directly to `mjsCamera`.
+- **Neutral rendering:** At runtime, `URenderCameraRig` spawns `URenderCameraComponent` instances (`Source/URLab/Public/Render/RenderCameraComponent.h`) for each camera in the installed scene.
 
 ### Capture modes
 
-Each camera has a `CaptureMode` property (`EMjCameraMode`), set per-camera at design time in the Details panel. It decides what the render target contains:
+Requested per-camera through `RenderClient` or `urlab_client.Renderer` (or configured on a continuous camera stream and read via `OutputReader`):
 
-| Mode | Output |
-|---|---|
-| `Real` (default) | Photoreal RGB. Matches the viewport, respects post-process. |
-| `Depth` | Linear scene depth, in centimetres. |
-| `SemanticSegmentation` | A color tint per actor class. |
-| `InstanceSegmentation` | A unique color tint per body. |
+| Mode | Output format | Notes |
+|---|---|---|
+| `real` | `RGBA8` | Photoreal RGB respecting Unreal lighting and post-process |
+| `depth` | `float32` (metres) | Uses `SetNeutralDepthComponents` opaque stand-ins for `M_MuJoCo_Master_Translucent` meshes |
+| `segmentation` | `int32` pairs | Object ID and object type per pixel |
 
-One camera produces one stream. To capture RGB plus depth plus masks from the same viewpoint, place several cameras at the same transform with different modes. Segmentation modes do not swap materials on the real meshes, so an RGB camera and a segmentation camera can stream the same frame at once without contaminating each other.
+For `urlab_client.Renderer` and `RenderClient` examples, see the companion [URLab_Bridge Getting Started](https://github.com/URLab-Sim/URLab_Bridge/blob/main/docs/getting_started.md) and [Typed Render Service](https://github.com/URLab-Sim/URLab_Bridge/blob/main/docs/render_server.md) guides.
 
-For `Depth`, also set `DepthNearCm` (default 10) and `DepthFarCm` (default 10000); the dashboard uses these to normalise the grayscale preview.
+## Physical lighting (`UMJLightComponent`)
 
-!!! note
-    `CaptureMode` is read when streaming starts. To change the mode of a camera that is already running, toggle streaming off and on:
+`UMJLightComponent` (`FMJLightSpec`) and MJCF `<light>` elements use physical light units matching MuJoCo's Filament renderer (`MjRenderSceneAdapter`):
 
-    ```cpp
-    Cam->SetStreamingEnabled(false);
-    Cam->CaptureMode = EMjCameraMode::Depth;
-    Cam->SetStreamingEnabled(true);
-    ```
+- **Directional lights:** `intensity` is in **lux** (for example, daylight is ~100,000 lux).
+- **Punctual lights (spot / point):** `intensity` is in **candela** (small values like `5` will appear nearly black).
+- **Image-based lighting:** `<light type="image" texture="sky" intensity="..."/>` drives Unreal's sky light from the referenced skybox texture.
 
-### Previewing and streaming
-
-The dashboard's camera panel shows every camera on the selected articulation, each rendering its configured mode live, with no extra setup. See [Simulate Dashboard](dashboard.md).
-
-For headless or full-framerate capture, stream frames to Python over the bridge. Each camera can broadcast over ZMQ or shared memory; the consumer interprets the bytes per the camera's mode (RGBA for `Real`, float32 centimetres for `Depth`, BGRA tint for the segmentation modes). See [Python Policies](../python/policies.md) and the [bridge protocol](../reference/protocol.md).
-
-!!! warning
-    Camera capture modes are independent of the key-`6` viewport segmentation overlay in [Debug Visualization](debug.md). The hotkey overlay swaps real materials and therefore appears in any capture; the per-camera modes are the right tool for clean, persistent RGB, depth, or mask streams. Note that the segmentation tints are lit-shaded rather than flat, so they are good for visual debugging but not pixel-exact ground truth.
+Turn off MuJoCo's default headlight (`<headlight active="0"/>`) when lighting a scene explicitly.

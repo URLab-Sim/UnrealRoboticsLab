@@ -28,6 +28,17 @@ Actor
 5. **Add actuators, sensors, and tendons.** Add `UMJActuatorComponent` (pick `EMJActuatorShortcut` such as `General`, `Motor`, `Position`, `Velocity`, etc., mapped to `mjs_setTo*`), `UMJSensorComponent`, and `UMJTendonComponent`.
 6. **Attach sub-models.** Use `UMJAttachComponent` to attach another model via MuJoCo 4 `mjs_attach`.
 
+## Editor UX: Details customizations & visualizers
+
+URLab registers custom Details panels (`MJSpecDetails`) and viewport component visualizers (`MJSpecVisualizers`) in `URLabEditor` to streamline authoring:
+
+- **Actuator shortcut switcher (`FMJActuatorDetails`):** On `UMJActuatorComponent`, changing `Shortcut` (`EMJActuatorShortcut`) dynamically filters **MuJoCo|Actuator > Active Shortcut Parameters** to show only the fields relevant to that shortcut (`Motor`, `Position`, `Velocity`, `IntVelocity`, `Damper`, `Cylinder`, `Muscle`, `Adhesion`, `PID`, `Orientation`, `DCMotor`), or displays a note when `General` uses `Spec` fields directly.
+- **From-To endpoint toggles (`FMJGeomDetails`, `FMJSiteDetails`):** On `UMJGeomComponent` and `UMJSiteComponent`, `bUseFromTo`, `From`, and `To` are grouped under **From-To Endpoints**; `From` and `To` appear only when `bOverride_FromTo` and `bUseFromTo` are enabled.
+- **Viewport visualizers (`MJSpecVisualizers`):**
+  - `UMJJointComponent` (`FMJJointVisualizer`): draws a directional arrow along `Spec.Axis` plus a type indicator (circle for `Hinge`, back-line for `Slide`, wireframe sphere for `Ball`).
+  - `UMJSiteComponent` (`FMJSiteVisualizer`): draws local RGB axes and a wireframe shape (`Box`, `Capsule`, `Cylinder`, or `Sphere`) using `Spec.Size` and `Spec.Rgba`.
+  - `UMJFrameComponent` (`FMJFrameVisualizer`): draws local RGB coordinate axes.
+
 ## Compiling, stepping, and exporting
 
 - Call `BuildSpecFromActor(OutError)` followed by `CompileModel(OutError)` (or `RecompileModel(OutError)` to preserve `qpos` / `qvel` across edits).

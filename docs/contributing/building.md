@@ -141,6 +141,34 @@ UE on Linux does not auto-stage `RuntimeDependencies` for editor builds, and UBT
 
 For packaged (non-editor) builds, `RuntimeDependencies.Add(...)` in `URLab.Build.cs` stages the libs through `BuildCookRun` and UBT's `${ORIGIN}` RPATH resolves them, so no manual step is needed.
 
+## Running tests and packaging
+
+### Automation tests (Linux)
+
+Run the plugin build, `generate_ue_spec.py --check` drift gate, and Unreal automation suite with:
+
+```bash
+./Scripts/build_and_test_linux.sh \
+  --engine "$UE_ROOT" \
+  --project /path/to/Host.uproject \
+  --filter "URLab+MuJoCoUE"
+```
+
+Key `MuJoCoUE` parity tests (`Source/URLabEditor/Private/MuJoCoSpec/Tests/MJCorpusParityTests.cpp`):
+
+- `MuJoCoUE.UpstreamMuJoCoCorpusParity`: runs offline against `third_party/MuJoCo/src/model` and `third_party/MuJoCo/src/test`.
+- `MuJoCoUE.MenagerieFullCorpusParity`: runs against `$URLAB_MENAGERIE_DIR` (skips with a warning if unset).
+
+### Packaging a Linux render server
+
+Use `Scripts/package_render_server_linux.sh` to cook, stage, and pak a render server:
+
+```bash
+UE_ROOT="$UE_ROOT" ./Scripts/package_render_server_linux.sh /abs/path/Host.uproject [out_dir] [Development|Test|Shipping]
+```
+
+See [Packaging a render server](../guides/render_server_packaging.md) and [The gRPC (dm_env_rpc) transport](grpc_dmenv.md) (for building `third_party/grpc/build.sh` on Linux).
+
 ## Related
 
 - [Installation](../installation.md): basic first-build flow on Windows and Linux.

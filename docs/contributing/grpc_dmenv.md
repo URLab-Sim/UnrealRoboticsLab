@@ -23,10 +23,6 @@ resolves to no factory. The `URLabDmEnvRpc.Build.cs` file still carries a Win64
 branch listing `ws2_32` and friends; that is scaffolding for a Windows build that
 does not currently happen, not evidence that one works.
 
-<!-- REVISIT: transport scheme resolution is being made strict under the blocker
-     work. Today a grpc:// endpoint on a platform with no factory fails without
-     naming the reason; once that lands, this should say what the error looks
-     like. -->
 
 ## Building gRPC
 
